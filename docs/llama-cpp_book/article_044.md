@@ -1,5 +1,5 @@
 
-# 45 预设配置系统 —— 像值机系统一样管理参数
+# 第44章 45 预设配置系统 —— 像值机系统一样管理参数
 
 ## 学习目标
 
@@ -11,11 +11,11 @@
 - 熟悉特殊参数处理技巧：KV 缓存类型转换、布尔值解析、CSV 设备列表、RPC 设备注册等
 - 理解 common_params_context 作为解析上下文的作用，以及预设专属参数（preset_only）的注册机制
 
-## 45.1 生活类比
+## 44.1 生活类比
 
 想象 llama.cpp 的参数系统是一个大型机场的 multilingual 值机系统：common_arg 就像值机柜台工作人员的标准操作手册，详细记录每个手续的名称、所需材料、适用航线以及备用联系方式；五种处理器分别对应不同类型的柜台——handler_void 是自助值机，无需材料，刷身份证即可，handler_int 是行李托运，需要精确的整数重量，handler_bool 是偏好选择，支持正反两种表达，handler_string 是目的地填写，自由文本，handler_str_str 则是中转联程，需要出发地和目的地两个值。链式配置如同工作人员的岗前培训，set_env 分配对讲机频道，set_examples 划定负责区域，set_sparam 标记为 VIP 服务专员。环境变量与 CLI 参数的关系就像网上预约与现场办理：旅客可以先在网上预约座位，但现场值机时可以覆盖之前的选择。common_params_parse_ex 的三阶段流程恰似值机流程：首先检查旅客的网上预办理记录，然后现场办理登机牌和托运行李，如果是联程航班则自动下载后续航段的登机牌。common_params_context 就像值机工作站的配置终端，保存着当前航线的所有参数设置和待处理的乘客列表。而 to_string 的排版艺术则如同机场航班信息显示屏，自动对齐航班号、智能折行目的地信息，确保所有信息整齐易读。就像优秀的值机系统能通过标准化流程处理各种复杂票务需求，llama.cpp 的参数系统通过统一的抽象处理了数百个命令行参数的解析、验证和默认值处理。
 
-## 45.2 源码地图
+## 44.2 源码地图
 
 ```
 common/arg.h
@@ -124,11 +124,11 @@ common/arg.cpp
             └── 预设模型配置（fim-qwen-*、embd-gemma-default 等）
 ```
 
-## 45.3 参数定义基石 —— common_arg 的「参数蓝图」
+## 44.3 参数定义基石 —— common_arg 的「参数蓝图」
 
 就像值机柜台的标准操作手册，llama.cpp 拥有数百个命令行参数，每个参数都需要名称、类型、帮助文本、环境变量绑定、适用示例类型等元数据。common_arg 将这些元数据集中管理，像一个“参数身份证”，使得参数注册可以声明式完成。
 
-### 45.3.1 common_arg 构造函数：定义参数蓝图
+### 44.3.1 common_arg 构造函数：定义参数蓝图
 
 源码路径：`common/arg.h` - `common_arg`（36-63行）
 
@@ -214,7 +214,7 @@ classDiagram
     }
 ```
 
-### 45.3.2 common_arg 链式配置方法：Builder 模式接口
+### 44.3.2 common_arg 链式配置方法：Builder 模式接口
 
 源码路径：`common/arg.h` - `common_arg`（65-69行，声明）
 
@@ -245,7 +245,7 @@ flowchart TD
     G --> H[结束: 参数定义完成]
 ```
 
-### 45.3.3 模块依赖图
+### 44.3.3 模块依赖图
 
 ```mermaid
 graph TD
@@ -261,11 +261,11 @@ graph TD
     J --> K[ctx_arg.options]
 ```
 
-## 45.4 环境变量的「隐形之手」 —— get_value_from_env 与优先级策略
+## 44.4 环境变量的「隐形之手」 —— get_value_from_env 与优先级策略
 
 如同旅客可以先在网上预约座位，环境变量允许用户在启动脚本中预设参数，避免在命令行中重复输入。common_arg 通过 `get_value_from_env` 和 `has_value_from_env` 支持环境变量的读取和冲突检测，并巧妙设计了正反双向环境变量机制。
 
-### 45.4.1 common_arg::get_value_from_env：环境变量读取实现
+### 44.4.1 common_arg::get_value_from_env：环境变量读取实现
 
 源码路径：`common/arg.cpp` - `common_arg::get_value_from_env()`（197-216行）
 
@@ -317,7 +317,7 @@ flowchart TD
     H -->|否| J[返回 false]
 ```
 
-### 45.4.2 common_arg::has_value_from_env：环境变量存在性检查
+### 44.4.2 common_arg::has_value_from_env：环境变量存在性检查
 
 源码路径：`common/arg.cpp` - `common_arg::has_value_from_env()`（218-229行）
 
@@ -353,11 +353,11 @@ flowchart TD
     F -->|否| H[返回 false]
 ```
 
-## 45.5 状态检查与示例过滤 —— in_example 与 is_exclude 的「守门员」
+## 44.5 状态检查与示例过滤 —— in_example 与 is_exclude 的「守门员」
 
 llama.cpp 支持多种工具（CLI、SERVER、EMBEDDING 等），每个参数需要声明适用的示例类型。`in_example` 和 `is_exclude` 方法实现了参数的动态过滤。
 
-### 45.5.1 common_arg::in_example 与 common_arg::is_exclude：正向过滤与反向排除
+### 44.5.1 common_arg::in_example 与 common_arg::is_exclude：正向过滤与反向排除
 
 源码路径：`common/arg.cpp` - `common_arg::in_example()` 和 `common_arg::is_exclude()`（189-195行）
 
@@ -388,11 +388,11 @@ flowchart TD
     F -->|否| H[参数不适用]
 ```
 
-## 45.6 参数格式化输出 —— to_string 的「帮助排版艺术」
+## 44.6 参数格式化输出 —— to_string 的「帮助排版艺术」
 
 llama.cpp 有 200+ 参数，可读的帮助信息是用户体验的关键。`to_string` 方法实现了一个自动排版引擎，包括参数名对齐、多行帮助文本缩进、词边界换行。
 
-### 45.6.1 common_arg::to_string：to_string 排版实现
+### 44.6.1 common_arg::to_string：to_string 排版实现
 
 源码路径：`common/arg.cpp` - `common_arg::to_string()`（256-291行）
 
@@ -468,7 +468,7 @@ flowchart TD
     M --> N[返回格式化字符串]
 ```
 
-### 45.6.2 break_str_into_lines：智能换行算法
+### 44.6.2 break_str_into_lines：智能换行算法
 
 源码路径：`common/arg.cpp` - `break_str_into_lines()`（231-254行）
 
@@ -524,11 +524,11 @@ flowchart TD
     J --> K[返回结果]
 ```
 
-## 45.7 参数注册中心 —— add_opt、parser_init 与参数表的构建
+## 44.7 参数注册中心 —— add_opt、parser_init 与参数表的构建
 
 参数定义完成后，需要注册到解析上下文中。这个过程就像值机柜台根据不同的航线（示例类型）配置可用的手续（参数），add_opt lambda 负责过滤出当前工具可用的参数，而 common_params_parser_init 和 ms_parser_init 则构成了整个参数注册表的构建流程。
 
-### 45.7.1 add_opt lambda：add_opt 过滤机制
+### 44.7.1 add_opt lambda：add_opt 过滤机制
 
 源码路径：`common/arg.cpp` - `ms_parser_init()` 中的 add_opt lambda（995-1780行）
 
@@ -559,7 +559,7 @@ flowchart TD
     F --> G[参数注册完成]
 ```
 
-### 45.7.2 common_params_parser_init：解析器初始化入口
+### 44.7.2 common_params_parser_init：解析器初始化入口
 
 common_params_parser_init 是参数解析的初始化入口，它根据不同的示例类型设置合理的默认值，加载所有动态后端，然后调用 ms_parser_init 来构建参数注册表，最后返回解析上下文。就像值机系统启动时，先连接所有航线数据库，再加载标准操作手册。
 
@@ -594,7 +594,7 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
 - 第 16 行：调用 ms_parser_init 注册所有参数，它内部会填充 ctx_arg.options。
 - 第 17 行：返回上下文，供后续解析使用。
 
-### 45.7.3 ms_parser_init：参数注册表构建
+### 44.7.3 ms_parser_init：参数注册表构建
 
 ms_parser_init 是参数注册的核心，它通过数百个 add_opt 调用，将定义好的 common_arg 对象注册到上下文中。每个调用都通过链式配置方法设置环境变量、示例类型、是否为采样参数等。标记为 set_preset_only() 的参数不会通过 add_opt 注册，它们只在预设文件中生效，需要通过 common_params_add_preset_options 单独添加，这就像值机系统中有些 VIP 服务专柜不对外开放，仅限特定旅客使用。
 
@@ -659,11 +659,11 @@ void ms_parser_init(common_params & params, llama_example ex, void(*print_usage)
 
 通过 ms_parser_init，llama.cpp 构建了一个包含 200+ 参数的注册表，每个参数都根据其适用示例被精确过滤，确保每个工具只看到自己需要的参数。
 
-## 45.8 解析主循环 —— common_params_parse_ex 的「调度中心」
+## 44.8 解析主循环 —— common_params_parse_ex 的「调度中心」
 
 正如值机流程分为网上预办理、现场办理和行李托运三个阶段，common_params_parse_ex 是参数解析的核心函数，负责三阶段解析：环境变量应用、CLI 参数解析、远程预设与模型下载。
 
-### 45.8.1 环境变量应用阶段
+### 44.8.1 环境变量应用阶段
 
 源码路径：`common/arg.cpp` - `common_params_parse_ex()`（470-640行，环境变量部分）
 
@@ -735,7 +735,7 @@ flowchart TD
     N -->|结束| O[阶段完成]
 ```
 
-### 45.8.2 CLI 参数解析阶段
+### 44.8.2 CLI 参数解析阶段
 
 源码路径：`common/arg.cpp` - `common_params_parse_ex()`（470-640行，CLI 解析部分）
 
@@ -856,7 +856,7 @@ flowchart TD
     AC -->|结束| AD[阶段完成]
 ```
 
-### 45.8.3 远程预设与模型下载阶段
+### 44.8.3 远程预设与模型下载阶段
 
 源码路径：`common/arg.cpp` - `common_params_parse_ex()`（470-640行，远程预设部分）
 
@@ -900,11 +900,11 @@ flowchart TD
     K --> L
 ```
 
-## 45.9 辅助工具函数 —— read_file 与 clean_file_name 的「幕后英雄」
+## 44.9 辅助工具函数 —— read_file 与 clean_file_name 的「幕后英雄」
 
 参数解析过程中，经常需要读取文件内容或清理文件名。`read_file` 和 `clean_file_name` 是两个常用的辅助函数。
 
-### 45.9.1 read_file：read_file 文件读取
+### 44.9.1 read_file：read_file 文件读取
 
 源码路径：`common/arg.cpp` - `read_file()`（134-143行）
 
@@ -938,7 +938,7 @@ flowchart TD
     F --> G[返回文件内容]
 ```
 
-### 45.9.2 clean_file_name：clean_file_name 文件名清理
+### 44.9.2 clean_file_name：clean_file_name 文件名清理
 
 源码路径：`common/arg.cpp` - `clean_file_name()`（345-349行）
 
@@ -965,11 +965,11 @@ flowchart TD
     D --> E[返回清理后的文件名]
 ```
 
-## 45.10 远程预设加载 —— handle_remote_preset 的「云端配置」
+## 44.10 远程预设加载 —— handle_remote_preset 的「云端配置」
 
 Hugging Face 上的模型通常附带推荐配置，用户执行 `-hf user/repo:tag` 时自动下载并应用。`common_params_handle_remote_preset` 实现了这一功能。
 
-### 45.10.1 common_params_handle_remote_preset：远程预设下载与应用
+### 44.10.1 common_params_handle_remote_preset：远程预设下载与应用
 
 源码路径：`common/arg.cpp` - `common_params_handle_remote_preset()`（351-381行）
 
@@ -1038,11 +1038,11 @@ flowchart TD
     P --> Q[返回 false]
 ```
 
-## 45.11 模型下载处理 —— handle_model 的「搬运工」
+## 44.11 模型下载处理 —— handle_model 的「搬运工」
 
 `common_params_handle_model` 处理三种模型来源：Docker 仓库、Hugging Face 仓库和远程 URL。
 
-### 45.11.1 common_params_handle_model：三种模型来源处理
+### 44.11.1 common_params_handle_model：三种模型来源处理
 
 源码路径：`common/arg.cpp` - `common_params_handle_model()`（389-427行）
 
@@ -1123,11 +1123,11 @@ flowchart TD
     R --> S
 ```
 
-## 45.12 KV 缓存类型解析 —— kv_cache_type_from_str 的「类型翻译」
+## 44.12 KV 缓存类型解析 —— kv_cache_type_from_str 的「类型翻译」
 
 KV 缓存占据推理时的大部分内存，支持多种量化类型以节省内存。`kv_cache_type_from_str` 将字符串转换为 `ggml_type` 枚举。
 
-### 45.12.1 kv_cache_type_from_str：字符串到类型的转换
+### 44.12.1 kv_cache_type_from_str：字符串到类型的转换
 
 源码路径：`common/arg.cpp` - `kv_cache_type_from_str()`（443-450行）
 
@@ -1159,7 +1159,7 @@ flowchart TD
     E -->|否| F[抛出 runtime_error]
 ```
 
-### 45.12.2 get_all_kv_cache_types：缓存类型列表
+### 44.12.2 get_all_kv_cache_types：缓存类型列表
 
 源码路径：`common/arg.cpp` - `get_all_kv_cache_types()`（453-458行）
 
@@ -1192,11 +1192,11 @@ flowchart TD
     H -->|否| I[返回字符串]
 ```
 
-## 45.13 特殊参数处理 —— 布尔、CSV、设备列表的「小技巧」
+## 44.13 特殊参数处理 —— 布尔、CSV、设备列表的「小技巧」
 
 参数解析中，有些特殊格式需要额外处理，如布尔值的多种表达、带引号的 CSV 行、设备列表等。
 
-### 45.13.1 parse_bool_value：布尔值解析
+### 44.13.1 parse_bool_value：布尔值解析
 
 源码路径：`common/arg.cpp` - `parse_bool_value()`（462-468行）
 
@@ -1224,7 +1224,7 @@ flowchart TD
     D -->|否| F[抛出 invalid_argument]
 ```
 
-### 45.13.2 parse_csv_row：CSV 行解析
+### 44.13.2 parse_csv_row：CSV 行解析
 
 源码路径：`common/arg.cpp` - `parse_csv_row()`（877-908行）
 
@@ -1302,7 +1302,7 @@ flowchart TD
     R --> S[返回 fields]
 ```
 
-### 45.13.3 parse_device_list：设备列表解析
+### 44.13.3 parse_device_list：设备列表解析
 
 源码路径：`common/arg.cpp` - `parse_device_list()`（748-764行）
 
@@ -1355,11 +1355,11 @@ flowchart TD
     M --> N
 ```
 
-## 45.14 RPC 设备注册 —— add_rpc_devices 的「远程算力」
+## 44.14 RPC 设备注册 —— add_rpc_devices 的「远程算力」
 
 RPC 后端允许 llama.cpp 调用远程服务器上的模型推理。`add_rpc_devices` 动态加载 RPC 后端并注册远程服务器。
 
-### 45.14.1 add_rpc_devices：RPC 设备注册实现
+### 44.14.1 add_rpc_devices：RPC 设备注册实现
 
 源码路径：`common/arg.cpp` - `add_rpc_devices()`（766-782行）
 
@@ -1411,11 +1411,11 @@ flowchart TD
     M -->|否| N[结束]
 ```
 
-## 45.15 参数映射生成 —— common_params_to_map 的「文档输出」
+## 44.15 参数映射生成 —— common_params_to_map 的「文档输出」
 
 `common_params_to_map` 将命令行参数转换为 `std::map<common_arg, std::string>`，用于文档生成和调试。
 
-### 45.15.1 common_params_to_map：参数映射生成
+### 44.15.1 common_params_to_map：参数映射生成
 
 源码路径：`common/arg.cpp` - `common_params_to_map()`（784-826行）
 
@@ -1505,11 +1505,11 @@ flowchart TD
     U -->|否| V[返回 true]
 ```
 
-## 45.16 帮助信息生成 —— print_usage 的「三栏展示」
+## 44.16 帮助信息生成 —— print_usage 的「三栏展示」
 
 `common_params_print_usage` 将参数按通用、采样、特定示例分类，三栏展示，提升帮助信息的可读性。
 
-### 45.16.1 common_params_print_usage：三栏分类展示
+### 44.16.1 common_params_print_usage：三栏分类展示
 
 源码路径：`common/arg.cpp` - `common_params_print_usage()`（642-668行）
 
@@ -1566,11 +1566,11 @@ flowchart TD
     K --> L[结束]
 ```
 
-## 45.17 自动补全脚本 —— print_completion 的「shell 魔法」
+## 44.17 自动补全脚本 —— print_completion 的「shell 魔法」
 
 `common_params_print_completion` 生成 Bash 自动补全脚本，支持参数名补全和文件类型过滤。
 
-### 45.17.1 common_params_print_completion：Bash 补全脚本生成
+### 44.17.1 common_params_print_completion：Bash 补全脚本生成
 
 源码路径：`common/arg.cpp` - `common_params_print_completion()`（670-746行）
 
@@ -1677,11 +1677,11 @@ flowchart TD
     N --> O[结束]
 ```
 
-## 45.18 内置聊天模板列表 —— list_builtin_chat_templates 的「模板目录」
+## 44.18 内置聊天模板列表 —— list_builtin_chat_templates 的「模板目录」
 
 `list_builtin_chat_templates` 获取 llama.cpp 内置的聊天模板列表，用于 `--chat-template` 参数的帮助文本。
 
-### 45.18.1 list_builtin_chat_templates：内置模板列表获取
+### 44.18.1 list_builtin_chat_templates：内置模板列表获取
 
 源码路径：`common/arg.cpp` - `list_builtin_chat_templates()`（852-863行）
 
@@ -1720,11 +1720,11 @@ flowchart TD
     I -->|否| J[返回拼接字符串]
 ```
 
-## 45.19 参数工具函数 —— is_truthy / is_falsey / is_autoy 的「语义判断」
+## 44.19 参数工具函数 —— is_truthy / is_falsey / is_autoy 的「语义判断」
 
 `is_truthy`、`is_falsey` 和 `is_autoy` 是三个语义判断工具，统一处理字符串到布尔/自动值的转换。
 
-### 45.19.1 common_arg_utils::is_truthy / is_falsey / is_autoy：语义判断实现
+### 44.19.1 common_arg_utils::is_truthy / is_falsey / is_autoy：语义判断实现
 
 源码路径：`common/arg.cpp` - `is_truthy()`、`is_falsey()`、`is_autoy()`（865-875行）
 
@@ -1757,11 +1757,11 @@ flowchart TD
     D --> E[返回判断结果]
 ```
 
-## 45.20 顶层入口 —— common_params_parse 的「总开关」
+## 44.20 顶层入口 —— common_params_parse 的「总开关」
 
 `common_params_parse` 是参数解析的入口函数，负责初始化上下文、调用解析逻辑、处理帮助和补全请求。
 
-### 45.20.1 common_params_parse：顶层入口实现
+### 44.20.1 common_params_parse：顶层入口实现
 
 源码路径：`common/arg.cpp` - `common_params_parse()`（828-850行）
 
@@ -1823,11 +1823,11 @@ flowchart TD
     K --> L
 ```
 
-## 45.21 参数上下文与预设选项 —— common_params_context 的「解析状态」与「预设专属参数」
+## 44.21 参数上下文与预设选项 —— common_params_context 的「解析状态」与「预设专属参数」
 
 `common_params_context` 是解析上下文，携带参数引用、示例类型、选项列表和打印回调。`common_params_add_preset_options` 注册预设专属参数。
 
-### 45.21.1 common_params_context：解析上下文结构
+### 44.21.1 common_params_context：解析上下文结构
 
 源码路径：`common/arg.h` - `common_params_context`（117行）
 
@@ -1859,7 +1859,7 @@ classDiagram
     }
 ```
 
-### 45.21.2 common_params_add_preset_options：预设专属参数注册
+### 44.21.2 common_params_add_preset_options：预设专属参数注册
 
 源码路径：`common/arg.cpp` - `common_params_add_preset_options()`（3872-3900行）
 
@@ -1896,11 +1896,11 @@ flowchart TD
     E --> F[参数注册完成]
 ```
 
-## 45.22 设计中的取舍
+## 44.22 设计中的取舍
 
 在参数定义中，使用链式配置而不是传统 setter，是因为链式配置允许在一行内完成参数的定义和配置，极大提升了代码可读性；传统 setter 需要多行调用，容易遗漏步骤，例如 `.set_env("LLAMA_ARG_MMAP").set_sparam()` 比单独调用两个 setter 更简洁。然而，这种设计的 trade-off 在于它要求方法返回引用，增加了类的接口复杂度，但对于参数定义这种一次性配置场景，链式配置的收益远大于成本。使用环境变量的原因在于，它允许用户在启动脚本中预设参数，避免在命令行中重复输入，比如 `export LLAMA_ARG_N_GPU_LAYERS=99` 可以在每次运行时自动应用，就像旅客在网上预约座位一样。当环境变量与 CLI 参数同时设置时，解析时会输出警告，并以 CLI 参数为准，这确保了用户显式指定的参数不会被环境变量覆盖，如同现场值机可以覆盖网上预约的选择。至于五种处理器的设计，它们对应不同的参数类型，可以在编译期和运行期提供类型安全：整数处理器使用 `std::stoi` 转换，避免了字符串处理器需要手动转换的麻烦，布尔处理器则统一解析多种真值表达式，减少了重复代码，而双字符串处理器则专门处理需要两个值的参数，每种处理器都像值机柜台不同类型的手续，各司其职又统一在同一个标准手册下。
 
-## 45.23 动手练习
+## 44.23 动手练习
 
 - 阅读 `common/arg.h` 第 36-92 行，理解 common_arg 的五种构造函数及其对应的处理器类型。
 - 重点关注：
@@ -1978,7 +1978,7 @@ flowchart TD
   - `get_common_arg_defs` 使用静态局部变量的目的是什么？有什么线程安全性考虑？
   - `ms_parser_init` 中的 `add_opt` lambda 使用按值捕获 `[=]` 还是引用捕获 `[&]`？为什么？
 
-## 45.24 本章小结
+## 44.24 本章小结
 
 这一章中我们深入剖析了 llama.cpp 的命令行参数解析系统，理解了它如何通过统一的抽象处理数百个参数的解析、验证和默认值处理。首先，我们学习了 common_arg 的五种构造函数和链式配置方法，掌握了参数定义的声明式注册。其次，我们分析了环境变量与 CLI 参数的优先级合并机制，理解了正反环境变量的设计。接着，我们解析了 common_params_parse_ex 的三阶段流水线，包括环境变量预处理、CLI 参数分派和远程预设与模型下载。然后，我们探讨了帮助信息生成系统、自动补全脚本、特殊参数处理技巧等辅助功能。最后，我们了解了 common_params_context 的作用和预设专属参数的注册机制。
 

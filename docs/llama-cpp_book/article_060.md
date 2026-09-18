@@ -1,6 +1,6 @@
 
 
-# 懒加载张量框架 —— 延迟计算的"算力调度师"
+# 第60章 懒加载张量框架 —— 延迟计算的"算力调度师"
 
 ## 学习目标
 
@@ -11,11 +11,11 @@
 - 掌握TQ、MXFP4、NVFP4等新型量化格式的硬件协同设计理念
 - 能够使用`quantize`/`dequantize`全局入口进行张量转换，并解析形状变换逻辑
 
-## 61.1 生活类比
+## 60.1 生活类比
 
 想象一下，你正在为一次长途旅行打包行李，但你的背包有一个严格的重量限制：你必须在不超过限重的前提下，尽可能多地装下你需要的物品。这就是GGUF量化系统的日常隐喻——它就像一个**精密行李压缩工坊**，专门帮旅行者在不超重的情况下尽可能多装物品。在这个工坊中，**__Quant基类**就是工坊的SOP手册，定义了所有压缩工艺的标准流程（注册、打包、拆包），确保每一件物品都按照统一的标准被处理；而**__init_subclass__**则像是工坊的自动登记处，每开发一种新压缩工艺就自动录入档案，方便调度，无需人工干预。当你使用**Q4_0/Q4_1**时，它们就像经典的压缩袋，抽真空后按比例折叠整齐（对称/非对称缩放），简单高效；**K-quant系列**则像俄罗斯套娃式压缩，先分成小盒子，再对盒子分级打包，极致利用空间；**IQ系列**则是定制模具压缩，用预制的非均匀形状模具（网格）贴合物品原有形状，减少空间浪费。更前沿的**MXFP4/NVFP4**就像新型真空袋，专为特定行李箱（NVIDIA Blackwell GPU）设计，实现硬件级压缩。而在这个工坊中，**LazyNumpyTensor**就像智能快递柜，只有当你真正需要取件时才从仓库调出（惰性计算），避免不必要的计算开销。就像工坊师傅必须精准计算每件物品的压缩率而不弄坏它，量化算法必须在精度和体积间找到完美平衡。
 
-## 61.2 源码地图
+## 60.2 源码地图
 
 gguf-py/gguf/lazy.py
 ├── 基础工具函数
@@ -96,7 +96,7 @@ gguf-py/gguf/lazy.py
 │   └── dequantize
 └── __main__  # grid_hex/grid_map/ksigns 等静态数据定义
 
-## 61.3 __Quant 基类 —— 量化框架的'万能模具'
+## 60.3 __Quant 基类 —— 量化框架的'万能模具'
 
 在GGUF量化系统中，`__Quant` 抽象基类扮演着"万能模具"的角色，它定义了所有量化类型的公共接口和通用逻辑，使得新的量化类型可以像插件一样被轻松添加。这个基类的设计哲学可以概括为以下几个核心要点：
 
@@ -114,7 +114,7 @@ gguf-py/gguf/lazy.py
 
 **生命周期控制**：`__init__` 阻止任何实例化操作，确保基类仅作为模板使用，而 `__quantize_array`/`__dequantize_array` 管理底层数组处理流程。
 
-### 61.3.1 `__Quant.__init_subclass__`：自动注册与惰性包装
+### 60.3.1 `__Quant.__init_subclass__`：自动注册与惰性包装
 
 源码路径：`gguf-py/gguf/quants.py` - `__Quant.__init_subclass__`（156-166行）
 
@@ -152,7 +152,7 @@ flowchart TD
     F --> G[子类可用]
 ```
 
-### 61.3.2 `__Quant.init_grid`：网格查找表初始化
+### 60.3.2 `__Quant.init_grid`：网格查找表初始化
 
 源码路径：`gguf-py/gguf/quants.py` - `__Quant.init_grid`（168-188行）
 
@@ -196,7 +196,7 @@ flowchart TD
     F --> G[存储为 cls.grid]
 ```
 
-### 61.3.3 `__Quant.quantize` / `__Quant.dequantize`：统一入口与自动路由
+### 60.3.3 `__Quant.quantize` / `__Quant.dequantize`：统一入口与自动路由
 
 源码路径：`gguf-py/gguf/quants.py` - `__Quant.quantize` / `__Quant.dequantize`（243-254行）
 
@@ -234,7 +234,7 @@ flowchart TD
     F --> G
 ```
 
-### 61.3.4 `_apply_over_grouped_rows`：批量行处理策略
+### 60.3.4 `_apply_over_grouped_rows`：批量行处理策略
 
 源码路径：`gguf-py/gguf/quants.py` - `_apply_over_grouped_rows`（30-39行）
 
@@ -268,7 +268,7 @@ flowchart TD
     F --> G[重塑为目标形状]
 ```
 
-### 61.3.5 `__Quant.__init__`：生命周期控制
+### 60.3.5 `__Quant.__init__`：生命周期控制
 
 源码路径：`gguf-py/gguf/quants.py` - `__Quant.__init__`（153-154行）
 
@@ -288,7 +288,7 @@ flowchart TD
     C --> D[实例化失败]
 ```
 
-### 61.3.6 `quantize_blocks` / `dequantize_blocks`：抽象块级方法
+### 60.3.6 `quantize_blocks` / `dequantize_blocks`：抽象块级方法
 
 源码路径：`gguf-py/gguf/quants.py` - `__Quant.quantize_blocks` / `__Quant.dequantize_blocks`（190-198行）
 
@@ -320,7 +320,7 @@ flowchart TD
     G --> H[输出浮点块]
 ```
 
-### 61.3.7 `quantize_rows` / `dequantize_rows`：行级批量处理
+### 60.3.7 `quantize_rows` / `dequantize_rows`：行级批量处理
 
 源码路径：`gguf-py/gguf/quants.py` - `__Quant.quantize_rows` / `__Quant.dequantize_rows`（200-217行）
 
@@ -380,7 +380,7 @@ flowchart TD
     M --> N[重塑为原始形状]
 ```
 
-### 61.3.8 `__shape_to_bytes` / `__shape_from_bytes`：形状转换
+### 60.3.8 `__shape_to_bytes` / `__shape_from_bytes`：形状转换
 
 源码路径：`gguf-py/gguf/quants.py` - `__Quant.__shape_to_bytes` / `__Quant.__shape_from_bytes`（219-225行）
 
@@ -412,7 +412,7 @@ flowchart TD
     I --> J[返回逻辑形状]
 ```
 
-### 61.3.9 `__quantize_array` / `__dequantize_array`：数组级入口
+### 60.3.9 `__quantize_array` / `__dequantize_array`：数组级入口
 
 源码路径：`gguf-py/gguf/quants.py` - `__Quant.__quantize_array` / `__Quant.__dequantize_array`（227-232行）
 
@@ -453,7 +453,7 @@ flowchart TD
     L --> M[输出浮点数组]
 ```
 
-### 61.3.10 `__quantize_lazy` / `__dequantize_lazy`：惰性包装
+### 60.3.10 `__quantize_lazy` / `__dequantize_lazy`：惰性包装
 
 源码路径：`gguf-py/gguf/quants.py` - `__Quant.__quantize_lazy` / `__Quant.__dequantize_lazy`（234-238行）
 
@@ -487,7 +487,7 @@ flowchart TD
     I --> J[按需计算反量化结果]
 ```
 
-### 61.3.11 `can_quantize`：量化可行性检查
+### 60.3.11 `can_quantize`：量化可行性检查
 
 源码路径：`gguf-py/gguf/quants.py` - `__Quant.can_quantize`（240-241行）
 
@@ -510,7 +510,7 @@ flowchart TD
     C -->|否| E[不可以量化]
 ```
 
-## 61.4 经典量化家族 —— 整数压缩的'经典四重奏'
+## 60.4 经典量化家族 —— 整数压缩的'经典四重奏'
 
 经典量化家族是GGUF量化系统中最基础、最广泛使用的四种格式：Q4_0、Q4_1、Q5_0、Q5_1，以及它们的"满血版"Q8_0。这些格式代表了整数压缩的四种基本策略，每种都有其独特的位级实现细节和适用场景。
 
@@ -526,7 +526,7 @@ flowchart TD
 
 **字节布局规范**：所有经典格式均遵循 `[d(float16), (m), qs]` 的内存布局，其中 `qs` 为 packed 4/5/8-bit 整数，这种统一的布局简化了反量化过程的实现。
 
-### 61.4.1 `BF16.quantize_blocks` / `BF16.dequantize_blocks`：脑浮点量化
+### 60.4.1 `BF16.quantize_blocks` / `BF16.dequantize_blocks`：脑浮点量化
 
 源码路径：`gguf-py/gguf/quants.py` - `BF16.quantize_blocks` / `BF16.dequantize_blocks`（277-286行）
 
@@ -565,7 +565,7 @@ flowchart TD
     I --> J[查看为 float32]
 ```
 
-### 61.4.2 `Q4_0.quantize_blocks` / `Q4_0.dequantize_blocks`：对称4-bit量化
+### 60.4.2 `Q4_0.quantize_blocks` / `Q4_0.dequantize_blocks`：对称4-bit量化
 
 源码路径：`gguf-py/gguf/quants.py` - `Q4_0.quantize_blocks` / `Q4_0.dequantize_blocks`（295-320行）
 
@@ -634,7 +634,7 @@ flowchart TD
     M --> N[乘以 d 反量化]
 ```
 
-### 61.4.3 `Q4_1.quantize_blocks` / `Q4_1.dequantize_blocks`：非对称4-bit量化
+### 60.4.3 `Q4_1.quantize_blocks` / `Q4_1.dequantize_blocks`：非对称4-bit量化
 
 源码路径：`gguf-py/gguf/quants.py` - `Q4_1.quantize_blocks` / `Q4_1.dequantize_blocks`（328-357行）
 
@@ -705,7 +705,7 @@ flowchart TD
     L --> M[反量化 d*qs + m]
 ```
 
-### 61.4.4 `Q5_0.quantize_blocks` / `Q5_0.dequantize_blocks`：对称5-bit量化
+### 60.4.4 `Q5_0.quantize_blocks` / `Q5_0.dequantize_blocks`：对称5-bit量化
 
 源码路径：`gguf-py/gguf/quants.py` - `Q5_0.quantize_blocks` / `Q5_0.dequantize_blocks`（364-395行）
 
@@ -786,7 +786,7 @@ flowchart TD
     M --> N[乘以 d 反量化]
 ```
 
-### 61.4.5 `Q5_1.quantize_blocks` / `Q5_1.dequantize_blocks`：非对称5-bit量化
+### 60.4.5 `Q5_1.quantize_blocks` / `Q5_1.dequantize_blocks`：非对称5-bit量化
 
 源码路径：`gguf-py/gguf/quants.py` - `Q5_1.quantize_blocks` / `Q5_1.dequantize_blocks`（402-438行）
 
@@ -871,7 +871,7 @@ flowchart TD
     M --> N[反量化 d*qs + m]
 ```
 
-### 61.4.6 `Q8_0.quantize_blocks` / `Q8_0.dequantize_blocks`：精确保留8-bit量化
+### 60.4.6 `Q8_0.quantize_blocks` / `Q8_0.dequantize_blocks`：精确保留8-bit量化
 
 源码路径：`gguf-py/gguf/quants.py` - `Q8_0.quantize_blocks` / `Q8_0.dequantize_blocks`（445-465行）
 
@@ -924,7 +924,7 @@ flowchart TD
     K --> L[反量化 x * d]
 ```
 
-## 61.5 K-quant 系列 —— 极致压缩的'俄罗斯套娃'
+## 60.5 K-quant 系列 —— 极致压缩的'俄罗斯套娃'
 
 K-quant 系列是 GGUF 量化系统中压缩率最高的一族，它们通过嵌套缩放、多级编码和位拼接技术，在极低的位宽下（2-6 bit）实现了惊人的精度保持。这一系列的设计哲学就像俄罗斯套娃：先将数据分成小块，再对每个小块进行分级打包，最终在有限的空间内实现最大的信息密度。
 
@@ -940,7 +940,7 @@ K-quant 系列是 GGUF 量化系统中压缩率最高的一族，它们通过嵌
 
 **反量化流水线**：所有 K-quant 的 `dequantize_blocks` 遵循 '字节拆分 → 缩放重建 → 整数解包 → 浮点合成' 的标准流程，确保了实现的一致性和可维护性。
 
-### 61.5.1 `Q2_K.dequantize_blocks`：极限2-bit压缩
+### 60.5.1 `Q2_K.dequantize_blocks`：极限2-bit压缩
 
 源码路径：`gguf-py/gguf/quants.py` - `Q2_K.dequantize_blocks`（472-494行）
 
@@ -992,7 +992,7 @@ flowchart TD
     H --> I[重塑输出]
 ```
 
-### 61.5.2 `Q3_K.dequantize_blocks`：6-bit缩放因子拼图
+### 60.5.2 `Q3_K.dequantize_blocks`：6-bit缩放因子拼图
 
 源码路径：`gguf-py/gguf/quants.py` - `Q3_K.dequantize_blocks`（501-536行）
 
@@ -1051,7 +1051,7 @@ flowchart TD
     H --> I[重塑输出]
 ```
 
-### 61.5.3 `Q4_K.dequantize_blocks`：4-bit K-quant反量化
+### 60.5.3 `Q4_K.dequantize_blocks`：4-bit K-quant反量化
 
 源码路径：`gguf-py/gguf/quants.py` - `Q4_K.dequantize_blocks`（565-580行）
 
@@ -1099,7 +1099,7 @@ flowchart TD
     H --> I[重塑输出]
 ```
 
-### 61.5.4 `Q5_K.dequantize_blocks`：5-bit K-quant反量化
+### 60.5.4 `Q5_K.dequantize_blocks`：5-bit K-quant反量化
 
 源码路径：`gguf-py/gguf/quants.py` - `Q5_K.dequantize_blocks`（587-608行）
 
@@ -1153,7 +1153,7 @@ flowchart TD
     I --> J[重塑输出]
 ```
 
-### 61.5.5 `Q4_K.get_scale_min`：解包压缩的缩放因子
+### 60.5.5 `Q4_K.get_scale_min`：解包压缩的缩放因子
 
 源码路径：`gguf-py/gguf/quants.py` - `Q4_K.get_scale_min`（544-563行）
 
@@ -1191,7 +1191,7 @@ flowchart TD
     F --> G
 ```
 
-### 61.5.6 `Q6_K.dequantize_blocks`：高低拼接的6-bit量化
+### 60.5.6 `Q6_K.dequantize_blocks`：高低拼接的6-bit量化
 
 源码路径：`gguf-py/gguf/quants.py` - `Q6_K.dequantize_blocks`（615-633行）
 
@@ -1244,7 +1244,7 @@ flowchart TD
     J --> K[重塑输出]
 ```
 
-## 61.6 IQ 系列 —— 非均匀量化的'查表艺术'
+## 60.6 IQ 系列 —— 非均匀量化的'查表艺术'
 
 IQ（Inexact Quantization）系列是 GGUF 量化系统中最具技术含量的一族，它们摒弃了传统的均匀整数量化，转而使用预定义的非均匀网格查找表（Grid LUT）来实现更高效的压缩。这一系列的设计哲学就像定制模具：用预制的非均匀形状模具贴合物品原有形状，减少空间浪费。
 
@@ -1262,7 +1262,7 @@ IQ（Inexact Quantization）系列是 GGUF 量化系统中最具技术含量的�
 
 **非线性量化优势**：相比传统均匀量化，IQ 系列在 2-3 bit 范围能更好保留原始分布的偏态特征，减少精度损失，特别适合处理具有长尾分布的权重张量。
 
-### 61.6.1 `IQ2_S.dequantize_blocks`：2-bit非均匀量化
+### 60.6.1 `IQ2_S.dequantize_blocks`：2-bit非均匀量化
 
 源码路径：`gguf-py/gguf/quants.py` - `IQ2_S.dequantize_blocks`（934-966行）
 
@@ -1324,7 +1324,7 @@ flowchart TD
     I --> J[重塑输出]
 ```
 
-### 61.6.2 `IQ3_XXS.dequantize_blocks`：3-bit非均匀量化
+### 60.6.2 `IQ3_XXS.dequantize_blocks`：3-bit非均匀量化
 
 源码路径：`gguf-py/gguf/quants.py` - `IQ3_XXS.dequantize_blocks`（999-1024行）
 
@@ -1383,7 +1383,7 @@ flowchart TD
     H --> I[重塑输出]
 ```
 
-### 61.6.3 `IQ3_S.dequantize_blocks`：3-bit非均匀量化（另一种网格）
+### 60.6.3 `IQ3_S.dequantize_blocks`：3-bit非均匀量化（另一种网格）
 
 源码路径：`gguf-py/gguf/quants.py` - `IQ3_S.dequantize_blocks`（1061-1093行）
 
@@ -1445,7 +1445,7 @@ flowchart TD
     I --> J[重塑输出]
 ```
 
-### 61.6.4 `IQ1_S.dequantize_blocks`：1-bit非均匀量化 with delta偏移
+### 60.6.4 `IQ1_S.dequantize_blocks`：1-bit非均匀量化 with delta偏移
 
 源码路径：`gguf-py/gguf/quants.py` - `IQ1_S.dequantize_blocks`（1128-1155行）
 
@@ -1498,7 +1498,7 @@ flowchart TD
     H --> I[重塑输出]
 ```
 
-### 61.6.5 `IQ1_M.dequantize_blocks`：1-bit非均匀量化（多部分存储）
+### 60.6.5 `IQ1_M.dequantize_blocks`：1-bit非均匀量化（多部分存储）
 
 源码路径：`gguf-py/gguf/quants.py` - `IQ1_M.dequantize_blocks`（1162-1191行）
 
@@ -1559,7 +1559,7 @@ flowchart TD
     I --> J[重塑输出]
 ```
 
-### 61.6.6 `IQ4_NL.dequantize_blocks`：4-bit非线性量化
+### 60.6.6 `IQ4_NL.dequantize_blocks`：4-bit非线性量化
 
 源码路径：`gguf-py/gguf/quants.py` - `IQ4_NL.dequantize_blocks`（1194-1204行）
 
@@ -1600,7 +1600,7 @@ flowchart TD
     G --> H[重塑输出]
 ```
 
-### 61.6.7 `IQ2_XXS.dequantize_blocks`：多层级联反量化
+### 60.6.7 `IQ2_XXS.dequantize_blocks`：多层级联反量化
 
 源码路径：`gguf-py/gguf/quants.py` - `IQ2_XXS.dequantize_blocks`（857-878行）
 
@@ -1658,7 +1658,7 @@ flowchart TD
     H --> I[重塑输出]
 ```
 
-### 61.6.8 `IQ4_XS.dequantize_blocks`：高低位尺度拆分
+### 60.6.8 `IQ4_XS.dequantize_blocks`：高低位尺度拆分
 
 源码路径：`gguf-py/gguf/quants.py` - `IQ4_XS.dequantize_blocks`（1208-1230行）
 
@@ -1715,7 +1715,7 @@ flowchart TD
     I --> J[重塑输出]
 ```
 
-## 61.7 前沿量化格式 —— 面向新硬件的'特种部队'
+## 60.7 前沿量化格式 —— 面向新硬件的'特种部队'
 
 前沿量化格式是 GGUF 量化系统中最具前瞻性的一族，它们直接针对新一代 GPU 的硬件特性进行协同设计，实现了计算与存储的双重加速。这一系列就像为特定行李箱（NVIDIA Blackwell GPU）专门设计的新型真空袋，需要特殊的打包和拆包工具。
 
@@ -1731,7 +1731,7 @@ flowchart TD
 
 **硬件协同设计**：这些新格式直接对应 NVIDIA Blackwell 等新一代 GPU 的 FP4 张量核心，实现计算与存储的双重加速，代表了量化技术向硬件原生支持演进的方向。
 
-### 61.7.1 `TQ1_0.quantize_blocks` / `TQ1_0.dequantize_blocks`：三元量化（5个三元组/字节）
+### 60.7.1 `TQ1_0.quantize_blocks` / `TQ1_0.dequantize_blocks`：三元量化（5个三元组/字节）
 
 源码路径：`gguf-py/gguf/quants.py` - `TQ1_0.quantize_blocks` / `TQ1_0.dequantize_blocks`（641-677行）
 
@@ -1817,7 +1817,7 @@ flowchart TD
     K --> L[计算 d * qs]
 ```
 
-### 61.7.2 `TQ2_0.quantize_blocks` / `TQ2_0.dequantize_blocks`：三元量化（4个三元组/字节）
+### 60.7.2 `TQ2_0.quantize_blocks` / `TQ2_0.dequantize_blocks`：三元量化（4个三元组/字节）
 
 源码路径：`gguf-py/gguf/quants.py` - `TQ2_0.quantize_blocks` / `TQ2_0.dequantize_blocks`（684-709行）
 
@@ -1882,7 +1882,7 @@ flowchart TD
     K --> L[计算 d * qs]
 ```
 
-### 61.7.3 `MXFP4.e8m0_to_fp32_half` / `MXFP4.quantize_blocks` / `MXFP4.dequantize_blocks`：微缩放浮点格式
+### 60.7.3 `MXFP4.e8m0_to_fp32_half` / `MXFP4.quantize_blocks` / `MXFP4.dequantize_blocks`：微缩放浮点格式
 
 源码路径：`gguf-py/gguf/quants.py` - `MXFP4.e8m0_to_fp32_half` / `MXFP4.quantize_blocks` / `MXFP4.dequantize_blocks`（720-756行）
 
@@ -1964,7 +1964,7 @@ flowchart TD
     L --> M[计算 d * qs]
 ```
 
-### 61.7.4 `NVFP4.ue4m3_to_fp32` / `NVFP4.fp32_to_ue4m3`：硬件级兼容转换
+### 60.7.4 `NVFP4.ue4m3_to_fp32` / `NVFP4.fp32_to_ue4m3`：硬件级兼容转换
 
 源码路径：`gguf-py/gguf/quants.py` - `NVFP4.ue4m3_to_fp32` / `NVFP4.fp32_to_ue4m3`（765-794行）
 
@@ -2043,7 +2043,7 @@ flowchart TD
     Q --> R
 ```
 
-### 61.7.5 `NVFP4.dequantize_blocks`：超块结构反量化
+### 60.7.5 `NVFP4.dequantize_blocks`：超块结构反量化
 
 源码路径：`gguf-py/gguf/quants.py` - `NVFP4.dequantize_blocks`（796-806行）
 
@@ -2090,7 +2090,7 @@ flowchart TD
     I --> J[重塑为 (n_super, 64)]
 ```
 
-## 61.8 全局入口与工具函数 —— 量化转换的'交通枢纽'
+## 60.8 全局入口与工具函数 —— 量化转换的'交通枢纽'
 
 全局入口与工具函数是 GGUF 量化系统的"交通枢纽"，它们负责将各种量化类型的实现串联起来，提供统一的调用接口和必要的辅助功能。这一系列就像工坊的调度中心，负责将货物（数据）分发到正确的压缩工艺（量化类型），并确保整个流程的高效运转。
 
@@ -2106,7 +2106,7 @@ flowchart TD
 
 **测试与验证钩子**：通过 `_type_traits` 字典暴露所有内部实现类，便于单元测试直接调用各类的 `quantize_blocks` / `dequantize_blocks` 方法，提高了系统的可测试性。
 
-### 61.8.1 `quant_shape_to_byte_shape` / `quant_shape_from_byte_shape`：形状转换
+### 60.8.1 `quant_shape_to_byte_shape` / `quant_shape_from_byte_shape`：形状转换
 
 源码路径：`gguf-py/gguf/quants.py` - `quant_shape_to_byte_shape` / `quant_shape_from_byte_shape`（17-27行）
 
@@ -2146,7 +2146,7 @@ flowchart TD
     K --> L[返回逻辑形状]
 ```
 
-### 61.8.2 `quantize` / `dequantize`：全局入口与自动路由
+### 60.8.2 `quantize` / `dequantize`：全局入口与自动路由
 
 源码路径：`gguf-py/gguf/quants.py` - `quantize` / `dequantize`（113-129行）
 
@@ -2206,7 +2206,7 @@ flowchart TD
     P --> R
 ```
 
-### 61.8.3 `np_roundf`：远离零舍入
+### 60.8.3 `np_roundf`：远离零舍入
 
 源码路径：`gguf-py/gguf/quants.py` - `np_roundf`（42-47行）
 
@@ -2233,7 +2233,7 @@ flowchart TD
     E --> F[返回舍入结果]
 ```
 
-### 61.8.4 `__main__` 静态数据定义：网格与符号表的"记忆库"
+### 60.8.4 `__main__` 静态数据定义：网格与符号表的"记忆库"
 
 源码路径：`gguf-py/gguf/quants.py` - `__main__`（模块级静态数据定义，约859行起）
 
@@ -2284,7 +2284,7 @@ flowchart TD
     H --> I[dequantize_blocks 查表还原]
 ```
 
-## 61.9 设计中的取舍
+## 60.9 设计中的取舍
 
 **为什么使用 `__init_subclass__` 而不是手动注册？**
 
@@ -2302,14 +2302,14 @@ Q4_0 使用对称量化（`d = max / -8`），适合分布对称的张量，因�
 
 K-quant 系列使用嵌套缩放（全局 `d` 和 `dmin` + 子块 `scales`）是为了在极低的位宽下实现更高的精度。通过将数据分成多个子块，并为每个子块分配独立的缩放因子，嵌套缩放能够更好地适应局部数据分布的变化，避免全局缩放因子导致的精度损失。这种设计虽然增加了解包的复杂性，但显著提高了压缩率和精度保持能力。
 
-## 61.10 动手练习
+## 60.10 动手练习
 
 - 量化往返精度测试：编写Python脚本，生成一个包含10000个随机浮点数（标准正态分布）的张量。使用Q4_0、Q8_0、TQ2_0分别进行量化（quantize）后再反量化（dequantize），计算并比较三种格式的均方误差（MSE）和最大绝对误差，绘制原始数据分布与反量化后数据的直方图对比。思考问题：为什么Q4_0的误差比Q8_0大？从字节布局角度解释其原因；TQ2_0在哪些数值区域会出现较大失真？这与它的三元量化特性有何关系？
 - 追踪 _type_traits 注册机制：在Python交互式环境中导入gguf.quants，打印_type_traits.keys()列出所有已注册的量化类型，检查Q4_K.__dict__确认block_size和type_size属性的来源，定义一个继承自__Quant且qtype为自定义值的临时类，观察_type_traits的变化。思考问题：__init_subclass__在何时被调用？（是在import时还是第一次使用时？）；如果忘记在类定义中指定qtype参数会发生什么？为什么assert qtype not in _type_traits是必要的？
 - 手工构造Q4_K块数据：根据Q4_K源码反推其字节布局，手工构造一个合法的Q4_K块（256字节），构造缩放因子部分（2字节d + 2字节dmin + 12字节scales），构造量化数据部分（128字节qs），填入特定模式（如全0x11），调用Q4_K.dequantize_blocks验证你的数据能否正确解码，修改scales中的某一位，观察输出值的变化规律。思考问题：d和dmin为什么是float16存储？这限制了它们的动态范围，如何影响量化精度？；scales的打包格式（前8字节低4位+后4字节高2位）如何对应get_scale_min的解码逻辑？
 - IQ2_XXS网格解码分析：深入研究IQ2_XXS的dequantize_blocks实现，提取IQ2_XXS.grid_hex（如果可见）或调用init_grid()后打印grid.shape和grid的部分值，理解qs[...,0]和qs[...,1]如何分别作为grid索引和scales/符号信息，手动计算一个简单块的解码过程：给定d=1.0，qs=[0x12,0x34,...]，追踪到最终浮点值，统计ksigns数组的理论大小（应为128字节）。思考问题：为什么IQ2_XXS使用db * grid * signs的三重乘法而不是简单的d * q？；如果grid_hex被损坏（假设全设为0），反量化结果会变成什么样？这揭示了查找表在IQ量化中的什么作用？
 
-## 61.11 本章小结
+## 60.11 本章小结
 
 这一章中我们深入探讨了GGUF量化系统的核心框架设计。首先，我们学习了 `__Quant` 抽象基类如何通过 `__init_subclass__` 实现插件化架构，以及惰性计算包装如何提升大型张量处理效率。接着，我们剖析了经典量化家族（Q4_0/Q4_1、Q5_0/Q5_1、Q8_0）的位级实现细节，理解了对称与非对称量化、位扩展艺术和精确保留策略。然后，我们深入 K-quant 系列（Q2_K~Q6_K）的嵌套缩放与多级反量化原理，掌握了俄罗斯套娃式的极致压缩技术。随后，我们探索了 IQ 系列基于网格查找表的非均匀量化方法，理解了查表艺术和符号位压缩技巧。最后，我们研究了 TQ、MXFP4、NVFP4 等前沿量化格式的硬件协同设计理念，以及全局入口与工具函数的自动路由机制。
 

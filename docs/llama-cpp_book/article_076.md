@@ -1,5 +1,5 @@
 
-# 第77章 多模态模型适配层 —— 百花齐放的"视觉投影家族"
+# 第76章 多模态模型适配层 —— 百花齐放的"视觉投影家族"
 
 ## 学习目标
 
@@ -9,11 +9,11 @@
 - 熟悉GGUF模型加载流程与张量命名规范，理解FFN权重交换等兼容性处理机制
 - 掌握CLIP公共C API的设计模式，包括图像数据结构、批次管理与模态检测接口
 
-## 77.1 生活类比
+## 76.1 生活类比
 
 CLIP视觉编码器就像一家**现代化的照片冲印工厂**：**clip_ctx** 是工厂的中控室，管理GPU/CPU设备、内存池与生产调度；**clip_hparams** 是工厂的生产规格书，记录贴片尺寸、层数、分辨率限制等工艺参数；**clip_layer** 是标准化生产车间，每个车间包含QKV加工机、FFN流水线、归一化质检站；**clip_graph** 是生产工艺图纸，定义从原材料到成品的完整加工流程；**build_inp/build_vit** 是具体的贴片切割与组装流水线，将像素转换为Embedding；**warmup机制** 是开机预热，先试跑空转确保设备就绪，避免正式生产时卡顿；**clip_image_f32_batch** 是标准化物料箱，统一规格的图像容器，支持快速克隆；**clip_get_*工具函数** 是质检仪表，随时读取尺寸、维度等关键参数。就像工厂需要根据不同订单（LLaVA/Qwen-VL）调整流水线配置，CLIP通过多态构建器支持20+种视觉架构的动态组装。
 
-## 77.2 源码地图
+## 76.2 源码地图
 
 tools/mtmd/clip.cpp
 ├── clip_ctx 运行时上下文 (120-169行)
@@ -193,11 +193,11 @@ tools/mtmd/clip-impl.h
 tools/mtmd/clip-impl.h
 └── clip_projector_type_from_string() # 投影器类型字符串转换 (171-177)
 
-## 77.3 CLIP 运行时上下文与后端初始化 —— 视觉引擎的「点火启动器」
+## 76.3 CLIP 运行时上下文与后端初始化 —— 视觉引擎的「点火启动器」
 
 `clip_ctx` 是整个 CLIP 视觉编码器的运行时核心，它就像一座工厂的中控室，集中管理着推理所需的全部资源：后端设备（CPU/GPU）、内存上下文、计算图调度器、模型权重容器等。理解它的初始化流程，是掌握 llama.cpp 多模态推理“冷启动”过程的关键。
 
-### 77.3.1 clip_ctx：上下文构造与三级后端选择策略
+### 76.3.1 clip_ctx：上下文构造与三级后端选择策略
 
 我们首先看 `clip_ctx` 的构造函数，它完成了从参数解析到后端初始化的完整链路。
 
@@ -253,7 +253,7 @@ clip_ctx::clip_ctx(clip_context_params & ctx_params) {
 
 这段代码实现了 CLIP 上下文的完整初始化：**三级火箭**式后端选择策略（环境变量指定 → 自动GPU探测 → CPU兜底），构建包含CPU与可选GPU的混合调度器，并预置了评估回调与调试开关。
 
-### 77.3.2 析构与投影器类型查询
+### 76.3.2 析构与投影器类型查询
 
 源码路径：`tools/mtmd/clip.cpp` - `clip_ctx::~clip_ctx()`（第165-169行）与 `clip_ctx::proj_type()`（第174-176行）
 
@@ -272,7 +272,7 @@ projector_type clip_ctx::proj_type() const {
 
 析构函数确保后端资源正确释放，`proj_type()` 则作为模态路由的关键标识，告诉上层调用者当前加载的是哪种视觉投影器（如 LLaVA、Qwen-VL 等）。
 
-### 77.3.3 预热机制：批量推理前的「预演彩排」
+### 76.3.3 预热机制：批量推理前的「预演彩排」
 
 `warmup()` 是 `clip_model_loader` 的静态方法，它在模型加载完成后、正式推理前运行，核心目的是**预分配计算图内存**，避免首次推理时的动态分配抖动。
 
@@ -300,11 +300,11 @@ static void warmup(clip_ctx & ctx_clip) {
 
 预热通过构造虚拟输入（448x448 图像或对应规格的音频频谱），驱动 `clip_image_batch_encode` 完成一次完整前向传播，配合调度器的 `ggml_backend_sched_alloc_graph` 锁定张量内存布局。这是工程上极其常见的“首次运行预热”模式，保证后续推理延迟稳定。
 
-## 77.4 模型超参数体系 —— 视觉架构的「基因测序报告」
+## 76.4 模型超参数体系 —— 视觉架构的「基因测序报告」
 
 `clip_hparams` 结构体是视觉模型的“基因图谱”，它不仅记录模型容量（维度、层数、头数），还封装了图像预处理流水线的全部参数，并提供动态分辨率支持的核心算法。
 
-### 77.4.1 clip_hparams：核心定义与动态分辨率三剑客
+### 76.4.1 clip_hparams：核心定义与动态分辨率三剑客
 
 源码路径：`tools/mtmd/clip-model.h` - `clip_hparams`（第118-153行）
 
@@ -355,7 +355,7 @@ struct clip_hparams {
 2. `set_warmup_n_tokens`：预热时反推图像边长，确保预热内存分配覆盖最大推理场景。
 3. `global_attn_indices` / `is_global_attn`：为 SAM 等混合注意力模型提供稀疏掩码构建依据。
 
-### 77.4.2 load_hparams：30+键值解析与模态路由
+### 76.4.2 load_hparams：30+键值解析与模态路由
 
 `clip_model_loader::load_hparams` 负责从 GGUF 元数据中提取超参数，它是模型“解释器”，将二进制键值对转结构化配置。
 
@@ -417,9 +417,9 @@ void clip_model_loader::load_hparams(clip_model & model, int modality) {
 
 这段代码展示了**类型安全读取家族**（`get_u32/get_i32/get_f32/get_string/get_bool/get_arr_int`）如何屏蔽 GGUF 底层细节，以及**模态前缀路由**如何复用同一套键名体系支持视觉/音频双模态。
 
-## 77.5 模型层结构与张量组织 —— 权重矩阵的「集装箱码头」
+## 76.5 模型层结构与张量组织 —— 权重矩阵的「集装箱码头」
 
-### 77.5.1 clip_layer：标准 Transformer 层的「俄罗斯套娃」
+### 76.5.1 clip_layer：标准 Transformer 层的「俄罗斯套娃」
 
 每个 Transformer 层的权重被封装在 `clip_layer` 中，它支持合并/分离 QKV、前/后归一化、层缩放、DeepStack 扩展等多种变体。
 
@@ -463,7 +463,7 @@ struct clip_layer {
 
 这种设计体现了**条件编译思想在运行时的体现**：所有可选权重默认 `nullptr`，构图时按需检查，实现零开销的架构兼容。
 
-### 77.5.2 clip_model：模型级张量的「中央仓库」
+### 76.5.2 clip_model：模型级张量的「中央仓库」
 
 源码路径：`tools/mtmd/clip-model.h` - `clip_model`（第300-770行，节选核心字段与方法）
 
@@ -502,11 +502,11 @@ struct clip_model {
 
 `clip_model` 按投影器类型分组存储权重，配合 `audio_has_avgpool()` 等接口，让上层无需关心具体张量名即可判断预处理需求。
 
-## 77.6 计算图构建基类 clip_graph —— 视觉推理的「图纸设计师」
+## 76.6 计算图构建基类 clip_graph —— 视觉推理的「图纸设计师」
 
 `clip_graph` 是所有具体模型构建器（如 `clip_graph_llava`、`clip_graph_qwen2vl` 等）的基类，采用**多态模板方法模式**：基类提供标准化构建积木（`build_norm`、`build_ffn`、`build_attn` 等），子类实现纯虚函数 `build()` 组装完整流水线。
 
-### 77.6.1 基类骨架与构造初始化
+### 76.6.1 基类骨架与构造初始化
 
 源码路径：`tools/mtmd/clip-graph.h` - `clip_graph` 定义（第20-50行）与 `tools/mtmd/clip.cpp` - `clip_graph::clip_graph()`（第216-241行）
 
@@ -560,7 +560,7 @@ clip_graph::clip_graph(clip_ctx * ctx, const clip_image_f32 & img) :
 
 构造函数完成了**参数预计算**（`n_patches`、`d_head`、`kq_scale` 等）、**独立 GGML 上下文创建**（使用预分配缓冲区 `buf_compute_meta`，`no_alloc=true` 避免重复分配）、**计算图初始化**。这种设计保证了每次构图互不干扰，且内存分配极其高效。
 
-### 77.6.2 张量命名回调 `cb()`：调试友好的图可视化
+### 76.6.2 张量命名回调 `cb()`：调试友好的图可视化
 
 源码路径：`tools/mtmd/clip.cpp` - `clip_graph::cb()`（第251-257行）
 
@@ -576,9 +576,9 @@ void clip_graph::cb(ggml_tensor * cur, const char * name, int il) const {
 
 每个构建积木方法在创建张量后都会调用 `cb()`，自动附加层索引，生成的计算图节点名极具可读性，极大便利了调试与性能分析。
 
-### 77.6.3 标准化构建积木族
+### 76.6.3 标准化构建积木族
 
-#### 归一化层 `build_norm`：统一 LayerNorm/RMSNorm 接口
+#### 76.6.3.1 归一化层 `build_norm`：统一 LayerNorm/RMSNorm 接口
 
 源码路径：`tools/mtmd/clip.cpp` - `clip_graph::build_norm()`（第498-519行）
 
@@ -604,7 +604,7 @@ ggml_tensor * clip_graph::build_norm(
 }
 ```
 
-#### FFN 构建器 `build_ffn`：门控机制与多激活函数支持
+#### 76.6.3.2 FFN 构建器 `build_ffn`：门控机制与多激活函数支持
 
 源码路径：`tools/mtmd/clip.cpp` - `clip_graph::build_ffn()`（第523-617行，节选核心逻辑）
 
@@ -647,7 +647,7 @@ ggml_tensor * clip_graph::build_ffn(
 
 `build_fff` 通过 `ffn_op_type` 参数统一支持 SiLU/SwiGLU、GeLU/GeGLU、ReLU² 等多种 FFN 变体，体现了**策略模式在算子层面的应用**。
 
-#### 音频帧堆叠 `build_stack`：通用特征重塑工具
+#### 76.6.3.3 音频帧堆叠 `build_stack`：通用特征重塑工具
 
 源码路径：`tools/mtmd/clip.cpp` - `clip_graph::build_stack()`（第762-781行）
 
@@ -670,9 +670,9 @@ ggml_tensor * clip_graph::build_stack(ggml_tensor * cur, int32_t stack_factor, i
 
 该函数抽象了 Ultravox 等音频模型的“帧堆叠”操作：将连续的音频帧按 `stack_factor` 分组拼接，配合填充对齐实现高效的批量处理。
 
-## 77.7 ViT 主干与补丁嵌入构建 —— 图像分块的「流水线工厂」
+## 76.7 ViT 主干与补丁嵌入构建 —— 图像分块的「流水线工厂」
 
-### 77.7.1 输入管道：从像素到补丁嵌入
+### 76.7.1 输入管道：从像素到补丁嵌入
 
 源码路径：`tools/mtmd/clip.cpp` - `clip_graph::build_inp_raw()`（第483-489行）与 `clip_graph::build_inp()`（第470-480行）
 
@@ -702,7 +702,7 @@ ggml_tensor * clip_graph::build_inp() {
 
 `build_inp_raw` 创建带 `GGML_TENSOR_FLAG_INPUT` 标志的原始张量；`build_inp` 通过步长等于 `patch_size` 的 2D 卷积实现**非重叠补丁切分**，随后展平、转置得到标准的 `[n_embd, n_patches]` 布局，完美契合后续 `build_mm` 的矩阵乘法约定。
 
-### 77.7.2 位置嵌入动态插值 `resize_position_embeddings`
+### 76.7.2 位置嵌入动态插值 `resize_position_embeddings`
 
 源码路径：`tools/mtmd/clip.cpp` - `clip_graph::resize_position_embeddings()`（第262-281行）
 
@@ -727,7 +727,7 @@ ggml_tensor * clip_graph::resize_position_embeddings(uint32_t interpolation_mode
 
 这是支持**任意分辨率输入**的关键：当输入图像尺寸与预训练位置嵌入不匹配时，通过 `ggml_interpolate` 进行双线性/双三次插值，`interpolation_mode` 参数允许选择算法（默认双线性+反锯齿）。整个过程零拷贝，仅通过视图操作完成维度变换。
 
-### 77.7.3 ViT 主干构建流水线 `build_vit`
+### 76.7.3 ViT 主干构建流水线 `build_vit`
 
 源码路径：`tools/mtmd/clip.cpp` - `clip_graph::build_vit()`（第285-464行，节选核心循环）
 
@@ -807,9 +807,9 @@ ggml_tensor * clip_graph::build_vit(
 
 `build_vit` 是整个视觉编码器的**主装配线**：它将输入补丁嵌入、位置编码、N 层 Transformer Block（Attention + FFN + 残差）、可选池化/后归一化串联成完整计算图。通过 `add_pos` 回调函数参数，优雅地解耦了不同模型的位置编码策略（RoPE、绝对位置、Sine 等）。
 
-## 77.8 注意力机制与 2D RoPE —— 空间关系的「编织工」
+## 76.8 注意力机制与 2D RoPE —— 空间关系的「编织工」
 
-### 77.8.1 Flash Attention 智能切换 `build_attn`
+### 76.8.1 Flash Attention 智能切换 `build_attn`
 
 源码路径：`tools/mtmd/clip.cpp` - `clip_graph::build_attn()`（第628-702行）
 
@@ -856,7 +856,7 @@ ggml_tensor * clip_graph::build_attn(
 - **精度保护**：Flash Attention 路径中 `ggml_flash_attn_ext_set_prec(cur, GGML_PREC_F32)` 强制 Softmax 在 FP32 下计算，避免半精度累积误差导致的数值溢出。
 - **布局统一**：两种路径最终都输出 `[n_embd, n_pos]` 标准布局，对上层透明。
 
-### 77.8.2 2D RoPE 的分两半处理策略 `build_rope_2d`
+### 76.8.2 2D RoPE 的分两半处理策略 `build_rope_2d`
 
 源码路径：`tools/mtmd/clip.cpp` - `clip_graph::build_rope_2d()`（第709-747行）
 
@@ -894,7 +894,7 @@ ggml_tensor * clip_graph::build_rope_2d(
 2. **零拷贝视图切片**：`ggml_view_3d` 创建张量视图，**不复制数据**，直接对内存子区域应用 RoPE，极大节省带宽。
 3. **交错/分块模式**：`interleave_freq` 控制频率分配方式——`true` 时维度交错配对（维度 0,2,4... 与 1,3,5...），`false` 时前后分块配对，适配不同模型的 RoPE 实现习惯。
 
-### 77.8.3 像素重排 `build_patch_merge_permute`：动态分辨率下采样
+### 76.8.3 像素重排 `build_patch_merge_permute`：动态分辨率下采样
 
 源码路径：`tools/mtmd/clip.cpp` - `clip_graph::build_patch_merge_permute()`（第788-809行）
 
@@ -927,11 +927,11 @@ ggml_tensor * clip_graph::build_patch_merge_permute(ggml_tensor * cur, int scale
 
 该函数实现了**空间合并下采样**：将 `scale_factor×scale_factor` 个相邻补丁合并为一个，通道数乘以 `scale_factor²`。三次 `reshape` + `permute` + `cont` 的组合拳，完成了从 `[C, H, W]` 到 `[C*s², H/s, W/s]` 的零拷贝重排，是 Qwen-VL、Pixtral 等动态分辨率模型的核心操作。
 
-## 77.9 GGUF 模型加载器 —— 权重文件的「拆箱流水线」
+## 76.9 GGUF 模型加载器 —— 权重文件的「拆箱流水线」
 
 `clip_model_loader` 负责将 GGUF 文件中的二进制权重“拆箱”到内存张量中，采用**三步走**策略：元数据预读 → 超参数解析 → 流式张量加载。
 
-### 77.9.1 构造函数：元数据预读与模型画像
+### 76.9.1 构造函数：元数据预读与模型画像
 
 源码路径：`tools/mtmd/clip.cpp` - `clip_model_loader::clip_model_loader()`（第854-912行）
 
@@ -962,7 +962,7 @@ clip_model_loader::clip_model_loader(const char * fname) : fname(fname) {
 
 `no_alloc=true` 是关键优化：首次打开文件**仅读取头部元数据**（键值对、张量元信息），不映射权重数据区，极快完成模型“体检”，为后续按需加载铺路。
 
-### 77.9.2 类型安全访问家族
+### 76.9.2 类型安全访问家族
 
 源码路径：`tools/mtmd/clip.cpp` - `get_bool/get_i32/get_u32/get_f32/get_string/get_arr_int`（第2210-2275行）
 
@@ -986,9 +986,9 @@ void clip_model_loader::get_arr_int(const std::string & key, std::vector<int> & 
 
 这组方法提供了**类型安全、可选必选、统一异常**的键值读取接口，彻底屏蔽了 GGUF C API 的底层细节（`gguf_find_key`、`gguf_get_val_*`、`gguf_get_arr_*`），让上层解析代码清晰可维护。
 
-### 77.9.3 动态分辨率候选生成
+### 76.9.3 动态分辨率候选生成
 
-#### LLaVA-UHD：全网格候选
+#### 76.9.3.1 LLaVA-UHD：全网格候选
 
 源码路径：`tools/mtmd/clip.cpp` - `set_llava_uhd_res_candidates()`（第2275-2290行）
 
@@ -1006,7 +1006,7 @@ static void set_llava_uhd_res_candidates(clip_model & model, const int max_patch
 
 生成 `max_patches_per_side × max_patches_per_side` 网格内所有分辨率组合（除 1x1），支持 LLaVA-UHD 的**任意比例图像输入**。
 
-#### InternVL-DHR：约束瓦片候选
+#### 76.9.3.2 InternVL-DHR：约束瓦片候选
 
 源码路径：`tools/mtmd/clip.cpp` - `set_internvl_dhr_res_candidates()`（第2290-2310行）
 
@@ -1030,7 +1030,7 @@ static void set_internvl_dhr_res_candidates(clip_model & model) {
 
 根据 `min_tiles/max_tiles` 约束，生成满足瓦片数量范围的所有分辨率候选，实现 InternVL 的**动态高分切片**策略。
 
-### 77.9.4 张量名称模板系统与 FFN 权重交换检测
+### 76.9.4 张量名称模板系统与 FFN 权重交换检测
 
 源码路径：`tools/mtmd/clip.cpp` - `load_tensors()`（第2310-2450行，节选核心逻辑）
 
@@ -1106,9 +1106,9 @@ void clip_model_loader::load_tensors(clip_ctx & ctx_clip, int modality) const {
 - **可选权重探测**：`required=false` 优雅处理缺失的可选权重（如 `qkv_b`、`q_norm`），自动检测模型能力边界。
 - **FFN 权重交换检测**：针对 LLaVA、Qwen2VL 等模型中 `ff_up_w` 与 `ff_down_w` 可能转置存储的问题，通过检查 `ff_down_w->ne[0] == n_embd`（预期应为 `n_ff`）自动识别并交换，这是**兼容性补丁**的典范。
 
-## 77.10 图像编码主循环 —— 从像素到向量的「翻译终端」
+## 76.10 图像编码主循环 —— 从像素到向量的「翻译终端」
 
-### 77.10.1 双模态编码入口设计
+### 76.10.1 双模态编码入口设计
 
 源码路径：`tools/mtmd/clip.cpp` - `clip_image_encode()`（第2650-2660行）与 `clip_image_batch_encode()`（第2660-2800行）
 
@@ -1158,7 +1158,7 @@ bool clip_image_batch_encode(clip_ctx * ctx, const int n_threads, const clip_ima
 
 `clip_image_batch_encode` 是**推理主入口**，它完成：自动预热 → 计算图构建/复用 → 输入张量装配（像素重排/位置索引生成） → 图执行 → 结果提取。`clip_image_build_graph` 根据 `proj_type` 分发到 20+ 具体构建器，实现“一个入口，多种架构”。
 
-### 77.10.2 核心执行逻辑 `__main__` 片段
+### 76.10.2 核心执行逻辑 `__main__` 片段
 
 源码路径：`tools/mtmd/clip.cpp` - 全局编码逻辑（第2977-3150行，概念展示）
 
@@ -1185,11 +1185,11 @@ GGML_ASSERT(embeddings->ne[0] == projection_dim); // 维度校验
 
 这段逻辑展示了**投影器特定的位置编码构建**（如 MiniCPM-V 的 `bucket_coords`）与**统一的图执行/结果提取**流程。
 
-## 77.11 公共 C API 与工具函数 —— 多模态能力的「门面接口」
+## 76.11 公共 C API 与工具函数 —— 多模态能力的「门面接口」
 
 `clip.h` 暴露的 C API 是上层应用（如 `llama-mtmd-cli`、Python 绑定）与 CLIP 核心交互的契约，设计遵循 **RAII 生命周期管理**、**不透明指针**、**错误码返回** 原则。
 
-### 77.11.1 图像内存管理家族
+### 76.11.1 图像内存管理家族
 
 源码路径：`tools/mtmd/clip.cpp` - `clip_image_*_init/free` 族（第2350-2384行）
 
@@ -1213,7 +1213,7 @@ void clip_image_f32_batch_free(struct clip_image_f32_batch * batch) { delete bat
 
 配合 `clip-impl.h` 中定义的**智能指针删除器**（`clip_image_f32_deleter` 等），上层可使用 `std::unique_ptr<clip_image_f32, clip_image_f32_deleter>` 实现自动内存管理，彻底杜绝泄漏。
 
-### 77.11.2 批次操作与深拷贝克隆
+### 76.11.2 批次操作与深拷贝克隆
 
 源码路径：`tools/mtmd/clip-impl.h` - `clip_image_f32_batch::clone()`（第306-319行）与 `tools/mtmd/clip.cpp` - 批次访问接口（第2384-2418行）
 
@@ -1239,7 +1239,7 @@ clip_image_f32 * clip_image_f32_get_img(const struct clip_image_f32_batch * batc
 
 `clone()` 实现**完全深拷贝**，确保多线程环境下批次数据隔离；批次访问接口提供边界检查，返回原始指针供上层直接操作。
 
-### 77.11.3 张量维度计算工具族
+### 76.11.3 张量维度计算工具族
 
 源码路径：`tools/mtmd/clip.cpp` - `clip_n_output_tokens`（第2500-2650行）、`clip_n_output_tokens_x/y`（第2467-2500行）、`clip_embd_nbytes`（第2436-2451行）
 
@@ -1328,7 +1328,7 @@ size_t clip_embd_nbytes_by_img(const struct clip_ctx * ctx, int img_w, int img_h
 
 `clip_n_output_tokens` 是**核心计算器**，它根据 20+ 种投影器类型，实现了差异化的序列长度计算：MLP 类保持原样、LDP 类 4x 压缩、Qwen-VL 类 `n_merge²` 压缩、MiniCPM-V 固定查询数、InternVL 无压缩（后续 Resampler 压缩）等。`clip_n_output_tokens_x/y` 专为 M-RoPE 模型提供二维坐标，`clip_embd_nbytes_by_img` 则用于推理前的内存预分配。
 
-### 77.11.4 模型信息查询与类型检测接口
+### 76.11.4 模型信息查询与类型检测接口
 
 源码路径：`tools/mtmd/clip.cpp` - 检测接口族（第3191-3222行）
 
@@ -1354,11 +1354,11 @@ bool clip_has_whisper_encoder(const struct clip_ctx * ctx) {
 
 这些**谓词函数**让上层应用能以统一、类型安全的方式查询模型能力，避免直接访问内部字段导致的耦合。
 
-## 77.12 内部实现基础设施 —— 调试与日志的「工具箱」
+## 76.12 内部实现基础设施 —— 调试与日志的「工具箱」
 
 `clip-impl.h` 定义了支撑整个 CLIP 模块运行的基础设施：图像数据结构、智能指针删除器、日志系统、字符串工具、GGUF 调试转储、张量打印工具。
 
-### 77.12.1 图像数据结构与智能指针
+### 76.12.1 图像数据结构与智能指针
 
 源码路径：`tools/mtmd/clip-impl.h`（第210-319行）
 
@@ -1383,7 +1383,7 @@ struct clip_image_f32_deleter { void operator()(clip_image_f32 * val) { clip_ima
 // clip_image_size_deleter, clip_image_u8_deleter 同理
 ```
 
-### 77.12.2 日志系统三级架构
+### 76.12.2 日志系统三级架构
 
 源码路径：`tools/mtmd/clip-impl.h`（第236-276行）
 
@@ -1411,7 +1411,7 @@ static void clip_log_internal(enum ggml_log_level level, const char * format, ..
 
 `LOG_INF/LOG_WRN/LOG_DBG` 宏最终展开为 `clip_log_internal` 调用，支持动态缓冲区分配，保证任意长度日志安全输出。
 
-### 77.12.3 GGUF 与张量调试转储工具
+### 76.12.3 GGUF 与张量调试转储工具
 
 源码路径：`tools/mtmd/clip-impl.h`（第378-472行）
 
@@ -1446,7 +1446,7 @@ static void print_tensor_data(ggml_tensor * t, uint8_t * data, int64_t n) {
 
 `gguf_kv_to_str` 让模型元数据人类可读，`print_tensor_data` 支持大张量的头尾省略显示，是调试量化权重、定位数值异常的利器。
 
-## 77.13 设计中的取舍
+## 76.13 设计中的取舍
 
 **为什么不用统一的 Transformer 实现，而要为每种投影器写单独的构建器子类？**
 
@@ -1460,51 +1460,51 @@ static void print_tensor_data(ggml_tensor * t, uint8_t * data, int64_t n) {
 
 GGUF 文件中张量存储顺序与模型内存布局顺序往往不一致（按层交织 vs 按类型分组）。`mmap` 虽省去显式读取，但随机访问大文件仍会触发页面错误与磁盘寻道。`ifstream` 配合 `seekg` + `read` 显式流式读取，**顺序访问张量数据**，配合操作系统预读缓存，在旋转硬盘与网络存储上往往性能更优，且内存占用可控（无需映射整个文件）。
 
-## 77.14 动手练习
+## 76.14 动手练习
 
-### 练习 1：CLIP上下文初始化与后端选择
+### 76.14.1 练习 1：CLIP上下文初始化与后端选择
 
 阅读 `tools/mtmd/clip.cpp` 第120-169行的 `clip_ctx` 构造函数：
 1. 后端选择的「三级火箭」策略具体指哪三级？各自的条件是什么？
 2. `MTMD_BACKEND_DEVICE` 环境变量如何影响后端初始化？如果初始化失败会发生什么？
 3. `buf_compute_meta` 在 `clip_graph` 构造时的作用是什么？为什么要传入 `ggml_init_params`？
 
-### 练习 2：动态分辨率支持机制分析
+### 76.14.2 练习 2：动态分辨率支持机制分析
 
 阅读 `tools/mtmd/clip.cpp` 第262-281行的 `resize_position_embeddings` 函数与第788-809行的 `build_patch_merge_permute` 函数：
 1. 当输入图像尺寸与预训练位置嵌入不匹配时，系统采用什么插值算法调整位置嵌入？支持哪些插值模式？
 2. `build_patch_merge_permute` 中的三次 `permute` 和 `reshape` 操作分别实现了什么张量维度变换？最终输出的形状如何计算？
 3. 结合 `clip_hparams::set_limit_image_tokens`（clip-model.h:118-126），说明系统如何根据token数量约束反推允许的最大像素数？
 
-### 练习 3：注意力机制与2D RoPE实现
+### 76.14.3 练习 3：注意力机制与2D RoPE实现
 
 阅读 `tools/mtmd/clip.cpp` 第628-702行的 `build_attn` 函数和第709-747行的 `build_rope_2d` 函数：
 1. 描述Flash Attention启用时的张量布局变化（permute → cast → reshape）以及为何强制使用FP32精度？
 2. `build_rope_2d` 如何通过 `ggml_view_3d` 实现零拷贝的频率分半处理？`interleave_freq` 参数控制什么？
 3. 标准注意力实现中，`kq_scale` 参数的作用是什么？它通常如何根据模型维度计算得出？
 
-### 练习 4：模型加载与权重兼容性处理
+### 76.14.4 练习 4：模型加载与权重兼容性处理
 
 阅读 `tools/mtmd/clip.cpp` 第2310-2450行的 `load_tensors` 函数：
 1. 张量命名模板系统如何工作？以 `TN_ATTN_QKV` 和 `TN_FFN_UP` 为例说明如何生成具体张量名称？
 2. 什么是「FFN权重交换检测」？为什么需要对LLaVA、Qwen2VL等模型进行特殊处理？
 3. `required=false` 参数在 `get_tensor` lambda中的作用是什么？它如何帮助处理可选权重（如`qkv_b`、`ls_1_w`）？
 
-### 练习 5：公共API与工具函数分析
+### 76.14.5 练习 5：公共API与工具函数分析
 
 阅读 `tools/mtmd/clip.h` 和 `tools/mtmd/clip.cpp` 中的公共接口函数：
 1. `clip_n_output_tokens` 函数如何根据投影器类型（如Qwen2-VL、Pixtral）差异化计算输出Token数量？
 2. `clip_image_f32_batch` 的 `clone()` 方法（clip-impl.h:306-319）如何实现深拷贝？为什么需要显式克隆而非默认拷贝构造？
 3. `clip_get_n_mmproj_embd` 函数（clip.cpp:3151-3190）如何根据不同投影器类型返回正确的嵌入维度？
 
-### 练习 6：音频帧堆叠与特征重塑
+### 76.14.6 练习 6：音频帧堆叠与特征重塑
 
 阅读 `tools/mtmd/clip.cpp` 第762-781行的 `build_stack` 函数：
 1. 当 `stack_factor <= 1` 时函数直接返回，这背后是什么设计考量？
 2. 解释 `GGML_PAD` 宏的作用，以及为什么需要对 `total_elements` 进行填充对齐？
 3. `ggml_view_2d` 将一维音频特征重塑为二维张量时，维度是如何根据 `stride` 和 `padded_len` 计算的？
 
-## 77.15 本章小结
+## 76.15 本章小结
 
 这一章中我们深入剖析了 llama.cpp 中 CLIP 视觉编码器的核心实现。首先我们学习了 `clip_ctx` 运行时上下文的初始化机制，理解了其三级后端选择策略（环境变量指定 → 自动 GPU 探测 → CPU 兜底）与预热机制如何保障推理的稳定启动。其次我们详细解读了 `clip_hparams` 超参数体系，掌握了动态分辨率支持的核心算法（token 像素换算、预热尺寸反推、全局注意力层索引）。接着我们剖析了 `clip_layer` 与 `clip_model` 的张量组织设计，理解了条件权重、DeepStack 扩展槽、投影器分组存储等兼容性设计。随后我们深入 `clip_graph` 计算图构建基类，掌握了多态模板方法模式下的标准化构建积木（归一化、FFN、Attention、2D RoPE、Patch Merging、音频堆叠）与调试命名回调。我们还详细拆解了 ViT 主干构建流水线（补丁化、位置嵌入插值、逐层 Attention+FFN）、Flash Attention 智能切换与精度保护、2D RoPE 分半频率零拷贝实现、像素重排下采样等核心算子。在模型加载层面，我们理解了 `clip_model_loader` 的三步拆箱法（元数据预读、超参数解析、流式张量加载）、类型安全访问家族、动态分辨率候选生成、张量命名模板与 FFN 权重交换检测等兼容性处理。最后我们梳理了图像编码主循环的双模态入口设计、输入张量智能装配、投影器特定位置编码构建，以及公共 C API 的 RAII 内存管理、批次深拷贝、张量维度计算工具族与模型能力检测接口。
 

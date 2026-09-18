@@ -2,7 +2,7 @@
 
 
 
-# 第22章 栈推进与触发状态机 —— 高速公路智能收费站视角下的 GBNF 运行时机制
+# 第21章 栈推进与触发状态机 —— 高速公路智能收费站视角下的 GBNF 运行时机制
 
 ## 学习目标
 
@@ -16,7 +16,7 @@
 
 ---
 
-## 22.1 生活类比
+## 21.1 生活类比
 
 把 GBNF 语法系统想象成一个**高速公路智能收费站系统**：
 
@@ -24,9 +24,9 @@ token（单词）如同一辆辆驶入的车辆，每辆车携带着乘客（字
 
 ---
 
-## 22.2 llama_gretype 与 llama_grammar_element —— 语法元素的统一抽象与最小积木
+## 21.2 llama_gretype 与 llama_grammar_element —— 语法元素的统一抽象与最小积木
 
-### 源码路径：`src/llama-grammar.h` - `llama_gretype` 与 `llama_grammar_element`（第 9-36 行）
+### 21.2.1 源码路径：`src/llama-grammar.h` - `llama_gretype` 与 `llama_grammar_element`（第 9-36 行）
 
 ```cpp
 // 语法元素类型枚举：定义了 GBNF 世界里所有可能出现的"通道类型"
@@ -55,9 +55,9 @@ struct llama_grammar_element {
 
 ---
 
-## 22.3 llama_grammar —— 运行时语法容器与触发状态机
+## 21.3 llama_grammar —— 运行时语法容器与触发状态机
 
-### 源码路径：`src/llama-grammar.h` - `llama_grammar` 运行时容器（第 112-165 行）
+### 21.3.1 源码路径：`src/llama-grammar.h` - `llama_grammar` 运行时容器（第 112-165 行）
 
 ```cpp
 // 运行时语法容器：收费站的"中央控制台"，聚合 vocab、rules、stacks 三大核心数据
@@ -78,7 +78,7 @@ struct llama_grammar {
 
 > **这段代码的作用**：`llama_grammar` 是运行时的"大管家"。它持有词表（`vocab`，用于 token 与文本互转）、规则表（`rules`，解析后的扁平化元素数组）、栈集合（`stacks`，所有可能的推进路径）。**关键设计**：栈中存储的是指向 `rules` 内部元素的**裸指针**，因此 `rules` 必须稳定不移动（构造时用 `std::move`）。此外，它完整封装了**延迟触发**状态机所需的字段：`lazy` 开关、触发前缓冲区 `trigger_buffer`、用于精准回放的 `trigger_buffer_positions`、精确 token 触发列表 `trigger_tokens` 和正则触发列表 `trigger_patterns`。
 
-### 架构图：llama_grammar 核心数据结构关系
+### 21.3.2 架构图：llama_grammar 核心数据结构关系
 
 ```mermaid
 classDiagram
@@ -118,9 +118,9 @@ classDiagram
 
 ---
 
-## 22.4 decode_utf8 —— 乘客身份核验站：UTF-8 解码基石
+## 21.4 decode_utf8 —— 乘客身份核验站：UTF-8 解码基石
 
-### 源码路径：`src/llama-grammar.cpp` - `decode_utf8` 单字符版（第 15-30 行）
+### 21.4.1 源码路径：`src/llama-grammar.cpp` - `decode_utf8` 单字符版（第 15-30 行）
 
 ```cpp
 // 单字符版：通过查表确定 UTF-8 字节长度并拼接码点
@@ -143,7 +143,7 @@ static std::pair<uint32_t, const char *> decode_utf8(const char * src) {
 
 > **这段代码的作用**：实现**单字符 UTF-8 解码**。通过首字节高 4 位查表得知总字节数 `len`，提取首字节有效位，随后循环合并后续字节的低 6 位。返回 `{码点, 下一字符起始指针}`。此版本用于**解析阶段**处理字面量（如 `"abc"`、`\uXXXX`），假设输入完整。
 
-### 源码路径：`src/llama-grammar.cpp` - `decode_utf8` 字符串版（第 32-73 行）
+### 21.4.2 源码路径：`src/llama-grammar.cpp` - `decode_utf8` 字符串版（第 32-73 行）
 
 ```cpp
 // 字符串版：支持从 partial_utf8 续接，返回码点向量 + 新的 partial_utf8 状态
@@ -202,7 +202,7 @@ static std::pair<std::vector<uint32_t>, llama_partial_utf8> decode_utf8(
 
 > **这段代码的作用**：这是**运行时匹配的主力解码器**。它接收上一次遗留的 `partial_utf8`（跨 token 未完成的码点），优先补全它，再解码新字节。`lookup` 表索引 8-11 设为 0，用于快速拒绝非法首字节（0xF0-0xFF 超出 Unicode 范围）。返回向量末尾的哨兵 `0` 至关重要——它让匹配器能区分"码点正好用完"与"还有码点待匹配"。新的 `partial_utf8` 记录最后未完成码点的高位与剩余字节数，供下一个 token 继续解码。
 
-### 架构图：UTF-8 解码与 partial_utf8 续接
+### 21.4.3 架构图：UTF-8 解码与 partial_utf8 续接
 
 ```mermaid
 flowchart TD
@@ -228,9 +228,9 @@ flowchart TD
 
 ---
 
-## 22.5 词法原语 —— parse_hex/parse_space/parse_name/parse_int/parse_char/parse_token
+## 21.5 词法原语 —— parse_hex/parse_space/parse_name/parse_int/parse_char/parse_token
 
-### 源码路径：`src/llama-grammar.cpp` - `parse_hex` / `parse_space` / `parse_name` / `parse_int` / `parse_char`（第 85-174 行）
+### 21.5.1 源码路径：`src/llama-grammar.cpp` - `parse_hex` / `parse_space` / `parse_name` / `parse_int` / `parse_char`（第 85-174 行）
 
 ```cpp
 // parse_hex：解析固定长度的十六进制转义 (\xXX, \uXXXX, \UXXXXXXXX)
@@ -302,7 +302,7 @@ static std::pair<uint32_t, const char *> parse_char(const char * src) {
 
 > **这段代码的作用**：构成了**词法分析器的基础原语**。`parse_space` 不仅跳过空白，还支持 `#` 行注释，这使得 GBNF 文件可以包含注释。`parse_char` 是字符级解析的核心，它统一处理了转义序列（`\x`、`\u`、`\U`、控制字符）和普通 UTF-8 字符，底层复用 `decode_utf8`。`parse_hex` 保证定长读取，不足抛异常。这些函数为上层 `parse_sequence` 提供了干净的 token 流。
 
-### 源码路径：`src/llama-grammar.cpp` - `parse_token` 精确车牌识别的双模式（第 176-224 行）
+### 21.5.2 源码路径：`src/llama-grammar.cpp` - `parse_token` 精确车牌识别的双模式（第 176-224 行）
 
 ```cpp
 // 类比：手册里写 <[123]> 直接给车牌号，或写 <piece> 让系统查词表
@@ -339,9 +339,9 @@ static std::pair<uint32_t, const char *> parse_token(const llama_vocab * vocab, 
 
 ---
 
-## 22.6 llama_grammar_parser —— 从手册到模板库：规则解析主干
+## 21.6 llama_grammar_parser —— 从手册到模板库：规则解析主干
 
-### 源码路径：`src/llama-grammar.h` - `llama_grammar_parser` 骨架与符号管理（第 82-103 行）
+### 21.6.1 源码路径：`src/llama-grammar.h` - `llama_grammar_parser` 骨架与符号管理（第 82-103 行）
 
 ```cpp
 struct llama_grammar_parser {
@@ -358,7 +358,7 @@ struct llama_grammar_parser {
 
 > **这段代码的作用**：解析器维护三大核心成员：`vocab` 用于 `<piece>` 解析，`symbol_ids` 完成**规则名到数字 ID 的双向映射**，`rules` 按 ID 索引存储规则体。`get_symbol_id` 用于显式命名规则（如 `root ::= ...`），`generate_symbol_id` 则为分组 `()`、重复量词展开自动生成 `name_N` 形式的匿名规则名。**设计精妙处**：`symbol_ids` 用 `std::map` 保证遍历顺序确定，便于调试与测试。
 
-### 源码路径：`src/llama-grammar.cpp` - `parse_rule` 单条规则录入入口（第 592-614 行）
+### 21.6.2 源码路径：`src/llama-grammar.cpp` - `parse_rule` 单条规则录入入口（第 592-614 行）
 
 ```cpp
 // 类比：录入一条完整规则 "speed_limit ::= '60' | '80' | '100'"
@@ -382,7 +382,7 @@ const char * llama_grammar_parser::parse_rule(const char * src) {
 
 > **这段代码的作用**：`parse_rule` 遵循标准的 **BNF 规则定义格式**：`name ::= alternates`。它先提取规则名并获取 ID，校验 `::=` 分隔符，然后委托 `parse_alternates` 处理规则体，最后规范化行尾。每条规则最终会被 `add_rule` 写入 `rules[rule_id]`。
 
-### 源码路径：`src/llama-grammar.cpp` - `parse_alternates` 与 `parse_sequence`（第 378-590 行，节选关键逻辑）
+### 21.6.3 源码路径：`src/llama-grammar.cpp` - `parse_alternates` 与 `parse_sequence`（第 378-590 行，节选关键逻辑）
 
 ```cpp
 // parse_alternates：处理 | 分隔的多个分支
@@ -476,7 +476,7 @@ const char * llama_grammar_parser::parse_sequence(
 
 > **这段代码的作用**：这两个函数共同实现了 **GBNF 语法的递归下降解析**。`parse_alternates` 处理顶层的 `|` 分支，每个分支调用 `parse_sequence`。`parse_sequence` 是一个巨大的状态机，依次识别：字符串字面量、`[...]` 字符集合、`<...>` token 引用、规则名引用、`(...)` 分组、`.` 任意字符、以及 `* + ? {m,n}` 重复量词。**关键设计**：每个"可重复单元"（字面量、字符集、token、规则引用、分组）解析完毕后，都会更新 `last_sym_start` 和 `n_prev_rules`，为后续可能出现的量词展开做准备。
 
-### 流程图：解析器主流水线
+### 21.6.4 流程图：解析器主流水线
 
 ```mermaid
 flowchart TD
@@ -509,9 +509,9 @@ flowchart TD
 
 ---
 
-## 22.7 handle_repetitions —— 批量印证机：字符范围与重复量词
+## 21.7 handle_repetitions —— 批量印证机：字符范围与重复量词
 
-### 字符集合与区间的内部表示
+### 21.7.1 字符集合与区间的内部表示
 
 在 `[abc]` 或 `[a-z]` 中，解析器生成特定的元素序列：
 - 第一个字符：`CHAR` 或 `CHAR_NOT`（取决于 `^`）
@@ -525,7 +525,7 @@ flowchart TD
 
 匹配器 `match_char` 会一次性遍历完整个 `CHAR_ALT`/`CHAR_RNG_UPPER` 链，返回整体匹配结果。
 
-### 源码路径：`src/llama-grammar.cpp` - `handle_repetitions` 量词展开算法（第 497-526 行，嵌入于 `parse_sequence`）
+### 21.7.2 源码路径：`src/llama-grammar.cpp` - `handle_repetitions` 量词展开算法（第 497-526 行，嵌入于 `parse_sequence`）
 
 ```cpp
 // 类比：把 "S{2,4}" 翻译成 "S S (S? (S?))" 的显式规则链
@@ -576,7 +576,7 @@ auto handle_repetitions = [&](uint64_t min_times, uint64_t max_times) {
 > - 可选链：`name_1 ::= S (name_2 | ε)`, `name_2 ::= S (name_3 | ε)`, `name_3 ::= S (ε)`
 > - 当前规则末尾追加 `RULE_REF(name_1)`
 
-### 架构图：量词展开示例 `S{2,4}`
+### 21.7.3 架构图：量词展开示例 `S{2,4}`
 
 ```mermaid
 graph TD
@@ -591,9 +591,9 @@ graph TD
 
 ---
 
-## 22.8 语法校验与导出 —— parse/print/c_rules/print_rule/print_rule_binary/print_grammar_char/is_char_element
+## 21.8 语法校验与导出 —— parse/print/c_rules/print_rule/print_rule_binary/print_grammar_char/is_char_element
 
-### 源码路径：`src/llama-grammar.cpp` - `parse` 顶层入口与全局校验（第 616-652 行）
+### 21.8.1 源码路径：`src/llama-grammar.cpp` - `parse` 顶层入口与全局校验（第 616-652 行）
 
 ```cpp
 // 类比：全厂巡检，确保每条规则都有内容、每个引用都能找到模板
@@ -625,7 +625,7 @@ bool llama_grammar_parser::parse(const char * src) {
 
 > **这段代码的作用**：实现了**防御性解析**。捕获所有异常并转为错误日志，清空规则表返回 `false`。校验逻辑确保无悬空引用：遍历所有规则元素，遇到 `RULE_REF` 必须指向已存在且非空的规则。这是运行时栈推进不崩溃的前提。
 
-### 源码路径：`src/llama-grammar.cpp` - `print` / `c_rules` / `print_rule` / `print_rule_binary` / `print_grammar_char` / `is_char_element`（第 226-316 行，第 654-678 行）
+### 21.8.2 源码路径：`src/llama-grammar.cpp` - `print` / `c_rules` / `print_rule` / `print_rule_binary` / `print_grammar_char` / `is_char_element`（第 226-316 行，第 654-678 行）
 
 ```cpp
 // print：反向建立 ID->名字映射，按 ID 顺序打印人类可读 GBNF
@@ -695,9 +695,9 @@ static void print_rule_binary(FILE * file, const llama_grammar_rule & rule) { /*
 
 ---
 
-## 22.9 匹配引擎 —— llama_grammar_match_char/match_partial_char/match_token/is_end_of_sequence
+## 21.9 匹配引擎 —— llama_grammar_match_char/match_partial_char/match_token/is_end_of_sequence
 
-### 源码路径：`src/llama-grammar.cpp` - `llama_grammar_is_end_of_sequence`（第 757-764 行）
+### 21.9.1 源码路径：`src/llama-grammar.cpp` - `llama_grammar_is_end_of_sequence`（第 757-764 行）
 
 ```cpp
 static bool llama_grammar_is_end_of_sequence(const llama_grammar_element * pos) {
@@ -711,7 +711,7 @@ static bool llama_grammar_is_end_of_sequence(const llama_grammar_element * pos) 
 
 > **这段代码的作用**：`END` 标记规则/序列结束，`ALT` 标记选项分支结束。栈推进、匹配器均依赖此函数识别边界。
 
-### 源码路径：`src/llama-grammar.cpp` - `llama_grammar_match_char`（第 766-797 行）
+### 21.9.2 源码路径：`src/llama-grammar.cpp` - `llama_grammar_match_char`（第 766-797 行）
 
 ```cpp
 // 类比：核验乘客身份证号是否在通行证允许的名单/区间内
@@ -737,7 +737,7 @@ static std::pair<bool, const llama_grammar_element *> llama_grammar_match_char(
 
 > **这段代码的作用**：匹配器**一次性消费完整个字符集合/区间链**，返回 `{是否匹配, 下一个待匹配元素指针}`。`CHAR_NOT` 逻辑取反：集合中无匹配则通过。`CHAR_ANY` 直接匹配任意字符。
 
-### 源码路径：`src/llama-grammar.cpp` - `llama_grammar_match_partial_char`（第 799-848 行）
+### 21.9.3 源码路径：`src/llama-grammar.cpp` - `llama_grammar_match_partial_char`（第 799-848 行）
 
 ```cpp
 // 类比：车辆只露了半个乘客，根据已露部分推断完整身份可能范围，预判是否合规
@@ -771,7 +771,7 @@ static bool llama_grammar_match_partial_char(
 
 > **这段代码的作用**：这是**跨 token 边界匹配的关键**。候选 token 的首字节可能只包含一个码点的高位，我们通过计算该部分字节能补全的码点范围 `[low, high]`，判断它**可能**落入允许的字符集合。若无交集，直接拒绝该 token，无需等待后续字节。同时处理了 UTF-8 overlong 编码攻击防护（如 2 字节编码 ASCII 字符）。
 
-### 源码路径：`src/llama-grammar.cpp` - `llama_grammar_match_token`（第 850-859 行）
+### 21.9.4 源码路径：`src/llama-grammar.cpp` - `llama_grammar_match_token`（第 850-859 行）
 
 ```cpp
 static bool llama_grammar_match_token(const llama_grammar_element * pos, const llama_token token) {
@@ -785,9 +785,9 @@ static bool llama_grammar_match_token(const llama_grammar_element * pos, const l
 
 ---
 
-## 22.10 llama_grammar_advance_stack —— 分流与展开：下推栈推进
+## 21.10 llama_grammar_advance_stack —— 分流与展开：下推栈推进
 
-### 源码路径：`src/llama-grammar.cpp` - `llama_grammar_advance_stack`（第 861-925 行）
+### 21.10.1 源码路径：`src/llama-grammar.cpp` - `llama_grammar_advance_stack`（第 861-925 行）
 
 ```cpp
 // 类比：把含有虚拟通道的通行证叠，展开成若干只含实体通道的通行证叠
@@ -846,7 +846,7 @@ static void llama_grammar_advance_stack(
 >
 > **去重的关键**：多条路径可能展开到同一个规则入口（指针地址相同），`seen` 集合按指针序列比较，确保同一栈状态只处理一次。
 
-### 流程图：advance_stack 栈展开过程
+### 21.10.2 流程图：advance_stack 栈展开过程
 
 ```mermaid
 flowchart TD
@@ -873,9 +873,9 @@ flowchart TD
 
 ---
 
-## 22.11 llama_grammar_detect_left_recursion —— 死循环拦截器：左递归检测
+## 21.11 llama_grammar_detect_left_recursion —— 死循环拦截器：左递归检测
 
-### 源码路径：`src/llama-grammar.cpp` - `llama_grammar_detect_left_recursion`（第 927-953 行）
+### 21.11.1 源码路径：`src/llama-grammar.cpp` - `llama_grammar_detect_left_recursion`（第 927-953 行）
 
 ```cpp
 // 类比：深度优先巡检每条规则，用三色标记发现"走 A 前必须先走 A"的环路
@@ -922,15 +922,15 @@ static bool llama_grammar_detect_left_recursion(
 >
 > **左递归定义**：规则的**最左侧**（或前面全是可空非终结符）出现对自身的直接/间接引用。算法通过 `recurse_into_nonterminal` 标志精确实现：仅当前面的非终结符都 `may_be_empty` 时，才继续向右探测下一个非终结符。同时顺便计算每条规则 `may_be_empty`，供展开时判断空分支使用。
 
-### 源码路径：`src/llama-grammar.cpp` - 构造时的强制校验（第 1131-1193 / 1196-1289 行，两个 `init_impl`）
+### 21.11.2 源码路径：`src/llama-grammar.cpp` - 构造时的强制校验（第 1131-1193 / 1196-1289 行，两个 `init_impl`）
 
 两个重载的 `init_impl` **均在构造初期调用 `llama_grammar_detect_left_recursion` 遍历所有规则**。一旦发现左递归，记录 `LLAMA_LOG_ERROR` 并返回 `nullptr`，不抛异常（C API 风格）。这保证了合法的 `llama_grammar` 实例**永不包含左递归**，运行时栈推进必然终止。
 
 ---
 
-## 22.12 llama_grammar_init_impl —— 从模板库到中控台：语法对象构造与克隆
+## 21.12 llama_grammar_init_impl —— 从模板库到中控台：语法对象构造与克隆
 
-### 源码路径：`src/llama-grammar.cpp` - `llama_grammar_init_impl` 数组版（第 1131-1193 行）
+### 21.12.1 源码路径：`src/llama-grammar.cpp` - `llama_grammar_init_impl` 数组版（第 1131-1193 行）
 
 ```cpp
 // 类比：把 C 风格的规则指针数组，拷贝进 C++ 容器，建立初始车队
@@ -960,7 +960,7 @@ struct llama_grammar * llama_grammar_init_impl(
 
 > **这段代码的作用**：从 C 风格规则数组构造运行时实例。**关键点**：`vec_rules` 必须 `std::move` 进 `llama_grammar`，因为 `stacks` 中存储的指针直接指向 `vec_rules` 内部元素。拷贝会导致指针失效（指向旧内存）。
 
-### 源码路径：`src/llama-grammar.cpp` - `llama_grammar_init_impl` 字符串版（第 1196-1289 行）
+### 21.12.2 源码路径：`src/llama-grammar.cpp` - `llama_grammar_init_impl` 字符串版（第 1196-1289 行）
 
 ```cpp
 // 类比：从文本手册完整构建收费站系统，含解析、校验、触发器配置
@@ -981,7 +981,7 @@ struct llama_grammar * llama_grammar_init_impl(
 
 > **这段代码的作用**：**用户最常用的构造入口**。集成了解析器、左递归检测、初始栈构建、触发器配置。`lazy=true` 时 `awaiting_trigger` 初始为 `true`，语法约束暂不生效。
 
-### 源码路径：`src/llama-grammar.cpp` - `llama_grammar_clone_impl`（第 1277-1310 行）
+### 21.12.3 源码路径：`src/llama-grammar.cpp` - `llama_grammar_clone_impl`（第 1277-1310 行）
 
 ```cpp
 // 类比：复制一套收费站系统，但所有通行证叠指向的模板都要指向新复印的模板库
@@ -1004,7 +1004,7 @@ struct llama_grammar * llama_grammar_clone_impl(const struct llama_grammar & gra
 
 > **这段代码的作用**：实现**深拷贝并修复裸指针**。因为 `stacks` 存的是指向 `rules` 中元素的**裸指针**。深拷贝 `rules` 后，指针地址全变了，必须逐个比对旧指针地址，重定向到新 `rules` 对应位置。这是典型的**指针修复模式**，复杂度 O(stacks × 栈深 × 规则数 × 规则长度)。用于 beam search 等需要分叉语法状态的场景。
 
-### 源码路径：`src/llama-grammar.cpp` - `llama_grammar_free_impl`（第 1291-1298 行）
+### 21.12.4 源码路径：`src/llama-grammar.cpp` - `llama_grammar_free_impl`（第 1291-1298 行）
 
 ```cpp
 void llama_grammar_free_impl(struct llama_grammar * grammar) {
@@ -1017,7 +1017,7 @@ void llama_grammar_free_impl(struct llama_grammar * grammar) {
 
 > **这段代码的作用**：释放语法对象占用的内存资源，所有数据成员均为 RAII 自管。
 
-### 源码路径：`src/llama-grammar.cpp` - `llama_grammar_get_rules` 与 `llama_grammar_get_stacks`（第 1024-1032 行）
+### 21.12.5 源码路径：`src/llama-grammar.cpp` - `llama_grammar_get_rules` 与 `llama_grammar_get_stacks`（第 1024-1032 行）
 
 ```cpp
 const llama_grammar_rules & llama_grammar_get_rules(const struct llama_grammar * grammar) {
@@ -1033,9 +1033,9 @@ llama_grammar_stacks & llama_grammar_get_stacks(struct llama_grammar * grammar) 
 
 ---
 
-## 22.13 栈推进原子操作 —— llama_grammar_accept_chr/accept/accept_str
+## 21.13 栈推进原子操作 —— llama_grammar_accept_chr/accept/accept_str
 
-### 源码路径：`src/llama-grammar.cpp` - `llama_grammar_accept_chr` 与 `llama_grammar_accept`（第 1034-1067 行）
+### 21.13.1 源码路径：`src/llama-grammar.cpp` - `llama_grammar_accept_chr` 与 `llama_grammar_accept`（第 1034-1067 行）
 
 ```cpp
 // 单栈单字符推进
@@ -1068,7 +1068,7 @@ void llama_grammar_accept(struct llama_grammar * grammar, uint32_t chr) {
 
 > **这段代码的作用**：`accept_chr` 是**单字符推进的原子操作**：匹配栈顶字符元素，弹出，压入后续元素，再次 `advance_stack` 展开新出现的非终结符。`accept` 并行处理所有当前栈，**栈集合单调不增**（失败的栈直接丢弃）。
 
-### 源码路径：`src/llama-grammar.cpp` - `llama_grammar_accept_str`（第 1388-1413 行）
+### 21.13.2 源码路径：`src/llama-grammar.cpp` - `llama_grammar_accept_str`（第 1388-1413 行）
 
 ```cpp
 // 类比：一车队车辆批量通过，逐车逐乘客核验
@@ -1086,9 +1086,9 @@ void llama_grammar_accept_str(struct llama_grammar & grammar, const std::string 
 
 ---
 
-## 22.14 红绿灯系统 —— 候选 Token 过滤
+## 21.14 红绿灯系统 —— 候选 Token 过滤
 
-### 源码路径：`src/llama-grammar.cpp` - `llama_grammar_reject_candidates_for_stack`（第 1069-1126 行）
+### 21.14.1 源码路径：`src/llama-grammar.cpp` - `llama_grammar_reject_candidates_for_stack`（第 1069-1126 行）
 
 ```cpp
 // 类比：对一条具体通行路径，检查每辆候选车是否能通过
@@ -1147,7 +1147,7 @@ llama_grammar_candidates llama_grammar_reject_candidates_for_stack(
 > - 递归调用 `reject_candidates` 处理后续栈，最终汇总拒绝列表。
 > - 栈为空时仅拒绝“未消费完的 token”，允许 EOG（生成结束）token 通过。
 
-### 源码路径：`src/llama-grammar.cpp` - `llama_grammar_reject_candidates`（第 949-967 行）
+### 21.14.2 源码路径：`src/llama-grammar.cpp` - `llama_grammar_reject_candidates`（第 949-967 行）
 
 ```cpp
 // 类比：只要有一条路能走通，这车就合法；只有所有路都拦截，才真拦截
@@ -1165,7 +1165,7 @@ static llama_grammar_candidates llama_grammar_reject_candidates(
 
 > **这段代码的作用**：**语义正确性**：当前语法状态由多个栈**或**表示（只要有一条路径能通，该前缀就是合法前缀）。因此 token 必须**在所有栈上都被拒绝**才真正非法。交集语义精准对应"存在一条接受路径"。
 
-### 源码路径：`src/llama-grammar.cpp` - `llama_grammar_apply_impl`（第 1327-1364 行）
+### 21.14.3 源码路径：`src/llama-grammar.cpp` - `llama_grammar_apply_impl`（第 1327-1364 行）
 
 ```cpp
 // 类比：把拦截名单贴到采样器的显示屏上，logit = -INFINITY 相当于概率归零
@@ -1201,9 +1201,9 @@ void llama_grammar_apply_impl(const struct llama_grammar & grammar, llama_token_
 
 ---
 
-## 22.15 推理循环齿轮 —— llama_grammar_accept_token 与 llama_grammar_accept_impl
+## 21.15 推理循环齿轮 —— llama_grammar_accept_token 与 llama_grammar_accept_impl
 
-### 源码路径：`src/llama-grammar.cpp` - `llama_grammar_accept_token`（第 1415-1467 行）
+### 21.15.1 源码路径：`src/llama-grammar.cpp` - `llama_grammar_accept_token`（第 1415-1467 行）
 
 ```cpp
 // 类比：处理一辆确定通过的车，更新所有可能路径的通行证叠
@@ -1250,7 +1250,7 @@ void llama_grammar_accept_token(struct llama_grammar & grammar, llama_token toke
 > - **字符规则栈顶**：将 token 拆解为码点流，逐码点并行推进所有字符栈。
 > 最后合并所有存活栈，更新 `partial_utf8`。若所有栈均消亡，抛异常（语法约束过严导致无合法延续）。
 
-### 源码路径：`src/llama-grammar.cpp` - `llama_grammar_accept_impl`（第 1366-1419 行）
+### 21.15.2 源码路径：`src/llama-grammar.cpp` - `llama_grammar_accept_impl`（第 1366-1419 行）
 
 ```cpp
 // 类比：收费站总控制器，决定杆子抬起还是落下
@@ -1308,7 +1308,7 @@ void llama_grammar_accept_impl(struct llama_grammar & grammar, llama_token token
 > 3. **触发瞬间**：`awaiting_trigger=false`，清空 buffer，**回放**所有与触发位置 `[start, end)` 重叠的 token（允许部分 token 片段），将它们喂入 `accept_token` 正式开始约束。
 > 4. **触发后**：直接走正常 `accept_token` 流程。
 
-### 状态机图：Lazy Grammar 触发流程
+### 21.15.3 状态机图：Lazy Grammar 触发流程
 
 ```mermaid
 stateDiagram-v2
@@ -1324,9 +1324,9 @@ stateDiagram-v2
 
 ---
 
-## 22.16 llama_grammar_trigger_pattern —— 智能摄像头：触发器模式匹配
+## 21.16 llama_grammar_trigger_pattern —— 智能摄像头：触发器模式匹配
 
-### 源码路径：`src/llama-grammar.cpp` - `llama_grammar_trigger_pattern::find`（第 318-352 行）
+### 21.16.1 源码路径：`src/llama-grammar.cpp` - `llama_grammar_trigger_pattern::find`（第 318-352 行）
 
 ```cpp
 // 类比：摄像头既支持"精确匹配完整车牌"也支持"模糊搜索车牌特征"
@@ -1352,7 +1352,7 @@ size_t llama_grammar_trigger_pattern::find(const std::string & input) const {
 
 ---
 
-## 22.17 设计中的取舍
+## 21.17 设计中的取舍
 
 为什么不用 ANTLR 等成熟的 Parser Generator，而自研递归下降 + 下推自动机？ANTLR 等工具生成的解析器通常构建 AST，再由解释器遍历。而 llama.cpp 需要极低延迟：每步推理都要过一遍语法约束，不能有虚函数调用、堆分配、AST 遍历开销；需要流式增量：token 逐个到达，需即时更新状态，无法批量解析；需要零依赖：不想引入运行时库。自研下推自动机直接操作扁平化的 element 数组和指针栈，内存局部性极佳，单步推进仅涉及指针移动和简单整数比较，完美契合推理循环的高性能要求。
 
@@ -1372,7 +1372,7 @@ advance_stack 中为何用 std::set 按指针地址去重，而不比较语义�
 
 ---
 
-## 22.18 核心概念速查表
+## 21.18 核心概念速查表
 
 本章核心概念速查表如下：
 
@@ -1418,13 +1418,13 @@ advance_stack 中为何用 std::set 按指针地址去重，而不比较语义�
 
 ---
 
-## 22.19 本章小结
+## 21.19 本章小结
 
 首先我们从核心数据结构入手，理解了 `llama_gretype` 枚举如何统一定义 10 种语法元素类型，`llama_grammar_element` 如何用 `{type, value}` 二元组作为最小积木，以及 `llama_grammar` 如何聚合运行时所需的词表、规则、栈集合与触发器状态。其次我们深入剖析了递归下降解析器 `llama_grammar_parser`，它通过 `parse_space`、`parse_char`、`parse_token` 等词法原语，将 GBNF 文本转化为内部规则数组，重点揭示了重复量词 `* + ? {m,n}` 如何通过 `handle_repetitions` lambda 翻译为显式规则展开，并由 `MAX_REPETITION_THRESHOLD` 防御规则爆炸。接着我们探讨了语法校验与符号表管理，确保无悬空引用。随后我们详细推演了运行时匹配引擎：`match_char` 处理字符集合与区间，`match_partial_char` 解决跨 token UTF-8 边界匹配，`match_token` 精确比对 token ID。核心算法 `advance_stack` 利用工作列表与指针去重集合，将含非终结符的符号栈展开为纯终结符栈集合，避免指数级爆炸。左递归检测采用三色 DFS 静态拦截无限递归风险。语法对象构造时通过 `std::move` 保证栈指针稳定，克隆时通过四重循环修复裸指针。候选过滤采用"多栈交集"语义，将不合法 token 的 logit 置为 `-INFINITY` 实现采样器零侵入集成。最后我们完整还原了延迟触发语法的状态机：`awaiting_trigger` 门控、双轨缓冲记录文本与 token 位置、正则/token 双触发检测、触发后按位置精准回放重叠 token，实现"先自由生成，再严格约束"的灵活模式。
 
 ---
 
-## 22.20 动手练习
+## 21.20 动手练习
 
 1. **最小化语法实验**：编写一个仅接受 JSON 对象键为 `"yes"` 或 `"no"` 的 GBNF 语法，用 `llama_grammar_init_impl` 加载并用 `llama_grammar_apply_impl` 配合采样器验证输出仅包含这两个键。
 2. **量词阈值触发**：构造一个 `S{2000}` 的语法规则，观察解析器在 `parse_sequence` 中如何抛出 `MAX_REPETITION_THRESHOLD` 超限异常。

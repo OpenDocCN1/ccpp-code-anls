@@ -1,5 +1,5 @@
 
-# 第 11 章 llama.cpp 转换器维护工具 —— 模型清单的「自动哨兵」
+# 第10章 llama.cpp 转换器维护工具 —— 模型清单的「自动哨兵」
 
 ## 学习目标
 
@@ -12,11 +12,11 @@
 - 熟悉 HF 鉴权机制：Bearer Token、环境变量 ~/.cache/huggingface/token 与命令行三种获取方式
 - 能根据新增模型扩展脚本，将自定义分词器识别码纳入 llama.cpp 转换流水线
 
-## 11.1 生活类比
+## 10.1 生活类比
 
 想象 `convert_hf_to_gguf_update.py` 是一个**尽职尽责的仓库管理员**：**模型清单** = 仓库里的货架编号与商品目录；**Hugging Face Token** = 进入仓库的钥匙；`download_file_with_auth` = 快递员取件流程（凭证检查、签收、入库）；**CHK_TXT** = 一套精心设计的「口味测试套餐」（甜、咸、辣、异域风味全覆盖）；**SHA-256 哈希** = 每种预分词器的「唯一 DNA 鉴定报告」；`get_existing_models` = 仓库盘点员，扫描现有库存避免重复进货；`re.sub + Marker` = 仓库改造工人，按图纸（标记）精准替换某一区段的货架标签；**tests 列表** = 质检部门的抽样检测表，确保每批货都能经受住刁钻场景考验。就像仓库管理员需要保证 SKU 编号与商品一一匹配，`convert_hf_to_gguf_update.py` 也需要保证每个模型的预分词器哈希与 `convert_hf_to_gguf.py` 中的分支表严格对应。
 
-## 11.2 源码地图
+## 10.2 源码地图
 
 ```text
 ./convert_hf_to_gguf_update.py
@@ -76,11 +76,11 @@
     └── 生成 convert_hf_to_gguf.py 调用命令（打印到日志）
 ```
 
-## 11.3 脚本入口与配置加载 —— 转换器家族的「自动哨兵」
+## 10.3 脚本入口与配置加载 —— 转换器家族的「自动哨兵」
 
 脚本的核心定位是**自动识别 Hugging Face 仓库中 BPE 预分词器的类型**，并据此生成 `convert_hf_to_gguf.py` 中 `get_vocab_base_pre` 函数的分支逻辑。这避免了人工维护庞大的模型分支表。启动时，脚本会读取 `convert_hf_to_gguf.py` 的完整源码以提取已存在模型列表；从 `~/.cache/huggingface/token` 或命令行参数读取 HF 鉴权 Token；通过 `argparse` 暴露 `--full`（下载全部）与 `--check-missing`（仅检测缺失哈希）两种运行模式；利用 `logging` 模块以 DEBUG 级别输出详细诊断信息；全局 `requests.Session()` 复用 HTTP 连接，提升下载效率。
 
-### 11.3.1 导入与全局状态初始化
+### 10.3.1 导入与全局状态初始化
 
 源码路径：`./convert_hf_to_gguf_update.py` - `*`（第 1-13 行）
 
@@ -111,7 +111,7 @@ convert_py = convert_py_pth.read_text(encoding="utf-8")         # 完整源码�
 
 这段代码完成了脚本运行所需的**基础设施搭建**：导入依赖、配置日志、读取鉴权凭证、加载目标文件内容到内存。`convert_py` 字符串将在后续作为正则替换的操作对象。
 
-### 11.3.2 命令行参数解析
+### 10.3.2 命令行参数解析
 
 源码路径：`./convert_hf_to_gguf_update.py` - `*`（第 46-65 行）
 
@@ -150,11 +150,11 @@ if hf_token is None and hf_token_pth.exists():
 
 这段代码实现了**三级 Token 获取策略**：命令行参数 → 环境变量 `HF_TOKEN` → `~/.cache/huggingface/token` 文件。`--full` 与 `--check-missing` 互为互斥的运行模式开关，分别对应「全量重建」与「只读巡检」两种维护场景。
 
-## 11.4 模型清单与「预分词器识别码」机制 —— 模型身份的「指纹字典」
+## 10.4 模型清单与「预分词器识别码」机制 —— 模型身份的「指纹字典」
 
 llama.cpp 需要在 GGUF 文件中写入 `tokenizer.ggml.pre` 字段，以指示运行时使用哪种预分词器。为此，脚本维护了一份「模型名 → 仓库 URL → 期望分词器类型」的三元组清单 `models`。`TOKENIZER_TYPE` 枚举区分四大分词器家族：SPM（SentencePiece）、BPE（Byte-Pair Encoding）、WPM（WordPiece）、UGM（Unigram）。`pre_computed_hashes` 用于记录已知上游仓库被破坏、无法自动下载的特殊模型（如 glm4、falcon-h1 系列等）。通过在精心设计的测试字符串 `CHK_TXT` 上运行分词器并计算 SHA-256 来生成「预分词器指纹」。`models` 列表涵盖了 llama-spm/llama-bpe/phi-3/qwen2/jina-v*/gemma/t5 等 60+ 模型。
 
-### 11.4.1 TOKENIZER_TYPE 枚举定义
+### 10.4.1 TOKENIZER_TYPE 枚举定义
 
 源码路径：`./convert_hf_to_gguf_update.py` - `TOKENIZER_TYPE`（第 16-22 行）
 
@@ -169,7 +169,7 @@ class TOKENIZER_TYPE(IntEnum):
 
 `IntEnum` 让枚举成员可直接参与整数比较，`auto()` 自动分配 1、2、3、4。这是整个识别逻辑的**类型坐标系**：后续下载策略、哈希计算跳过逻辑、GGUF 写入枚举值均依赖此分类。
 
-### 11.4.2 CHK_TXT 探测文本设计
+### 10.4.2 CHK_TXT 探测文本设计
 
 源码路径：`./convert_hf_to_gguf_update.py` - `*`（第 73-78 行）
 
@@ -191,7 +191,7 @@ CHK_TXT = (
 
 `CHK_TXT` 是**哈希计算的输入基准**。它覆盖了分词器最容易产生差异的边界场景：空白处理策略、Unicode 规范化、Emoji 拆分、CJK 字符切分、数字连写、标点附着。同一个分词器在不同版本下若预分词规则变更，对此串的编码结果必然不同，从而导致哈希值变化——这正是「指纹」的敏感性所在。
 
-### 11.4.3 models 主清单与 pre_computed_hashes 异常清单
+### 10.4.3 models 主清单与 pre_computed_hashes 异常清单
 
 源码路径：`./convert_hf_to_gguf_update.py` - `*`（第 80-180 行）
 
@@ -229,11 +229,11 @@ pre_computed_hashes = [
 | **典型场景** | llama-spm、qwen2、gemma 等标准模型 | chatglm-bpe、glm4、falcon-h1 等问题模型 |
 | **处理逻辑** | 下载 → 加载 → 编码 CHK_TXT → 计算 SHA-256 | 直接使用预置 chkhsh，跳过下载与计算 |
 
-## 11.5 下载器实现 —— 模型资产的「快递员」
+## 10.5 下载器实现 —— 模型资产的「快递员」
 
 脚本需要实际的分词器文件（`tokenizer.json` / `tokenizer.model` 等）才能本地计算哈希。`download_file_with_auth` 通过 `requests.Session` 携带 Bearer Token 下载单个文件；`download_model` 根据分词器类型选择性拉取所需文件清单；支持本地路径模式（直接 `shutil.copy2`）与远程 URL 模式（HTTP GET）；智能跳过已存在的目标文件，避免重复下载；SPM 类型额外下载 `tokenizer.model`，UGM 类型额外下载 `spiece.model`。
 
-### 11.5.1 单文件下载器
+### 10.5.1 单文件下载器
 
 源码路径：`./convert_hf_to_gguf_update.py` - `download_file_with_auth`（第 196-213 行）
 
@@ -256,7 +256,7 @@ def download_file_with_auth(url, token, save_path):
 
 这段代码是**下载原语**：`requests.Session` 复用 TCP 连接与 TLS 会话，显著提升批量下载吞吐；`raise_for_status()` 让 HTTP 错误（401/404/500）立即抛出异常，由上层捕获记录。
 
-### 11.5.2 模型级下载编排
+### 10.5.2 模型级下载编排
 
 源码路径：`./convert_hf_to_gguf_update.py` - `download_model`（第 215-236 行）
 
@@ -309,11 +309,11 @@ def download_model(model):
 
 这段代码实现了**按需下载策略**：基础三件套（config、tokenizer.json、tokenizer_config.json）全类型通用；SPM/UGM 追加二进制模型文件；本地路径走 `shutil.copy2`（保留修改时间等元数据），远程走 Bearer Token 认证下载；文件级幂等检查避免重复网络开销。
 
-## 11.6 现有模型识别 —— 「只处理新增」的增量思维
+## 10.6 现有模型识别 —— 「只处理新增」的增量思维
 
 转换脚本中的 `if chkhsh == "...": res = "..."` 分支是「模型清单的事实来源」。`get_existing_models` 通过正则匹配哈希 → 名称的映射，避免重复处理已知模型。默认情况下（非 `--full` 模式）只下载并处理 `convert_hf_to_gguf.py` 中尚未注册的条目。当 `args.check_missing` 为真时，仅检查是否有缺失的预分词器哈希而不执行下载。这是典型的「增量同步」模式，保持主转换脚本与上游 Hugging Face 仓库同步。
 
-### 11.6.1 正则解析已注册模型
+### 10.6.1 正则解析已注册模型
 
 源码路径：`./convert_hf_to_gguf_update.py` - `get_existing_models`（第 247-256 行）
 
@@ -331,7 +331,7 @@ def get_existing_models(convert_py):
 
 正则 `r'if chkhsh == "([a-f0-9]{64})":\s*\n\s*.*\s*res = "([^"]+)"'` 精准捕获**生成代码的固定模板结构**：哈希值固定 64 位十六进制，`res` 赋值在紧随其后的缩进块中。`re.findall` 返回所有匹配的元组列表，构建 `{name: chkhsh}` 字典供后续去重使用。
 
-### 11.6.2 增量过滤逻辑
+### 10.6.2 增量过滤逻辑
 
 源码路径：`./convert_hf_to_gguf_update.py` - `*`（第 258-275 行）
 
@@ -362,11 +362,11 @@ if not args.check_missing:
 2.  `--check-missing` 关闭 → 对 `models` 逐个下载，异常隔离不中断整体流程
 3.  两者结合：`--full --check-missing` 可用于「全量巡检，不修改」场景
 
-## 11.7 哈希计算与诊断输出 —— 「唯一指纹」的诞生
+## 10.7 哈希计算与诊断输出 —— 「唯一指纹」的诞生
 
 核心算法：用一段精心设计的「探测文本」喂给分词器，将产出的 token 列表序列化后取 SHA-256。SPM/UGM 类型分词器跳过哈希计算（这些有显式的 `tokenizer.ggml.pre` 枚举值）。`tokenizer.encode(CHK_TXT)` 生成 token ID 序列。`sha256(str(chktok).encode()).hexdigest()` 计算 64 位十六进制摘要。同步打印 `normalizer` / `pre_tokenizer` / `ignore_merges` 三个 JSON 字段，便于贡献者人工核对。`t5` 模型使用 `use_fast=False` 的特殊加载路径。
 
-### 11.7.1 哈希计算主循环
+### 10.7.1 哈希计算主循环
 
 源码路径：`./convert_hf_to_gguf_update.py` - `*`（第 278-318 行）
 
@@ -436,11 +436,11 @@ for model in [*pre_computed_hashes, *all_models]:
 - `pre_tokenizer`：预分词器核心配置（ByteLevel、BertPreTokenizer、Metaspace 等），直接决定分词边界
 - `ignore_merges`：BPE 合并规则中的例外列表，部分模型（如 GPT-2）用于保护特殊 token 不被合并
 
-## 11.8 代码生成与原地替换 —— 「外科手术式」的源码更新
+## 10.8 代码生成与原地替换 —— 「外科手术式」的源码更新
 
 这是脚本的终极目标：把识别出的哈希直接写回 `convert_hf_to_gguf.py` 的 `get_vocab_base_pre` 函数。通过 `# Marker: Start get_vocab_base_pre` / `# Marker: End get_vocab_base_pre` 标记定位插入点。用 `re.sub` + `re.DOTALL | re.MULTILINE` 进行多行匹配替换。生成的新代码块包含完整的 if-elif 链，附带 `# ref: <repo URL>` 注释便于溯源。使用 `lambda m: m.group(1) + src_func + m.group(3)` 保留头部与尾部结构。最终调用 `convert_py_pth.write_text()` 落盘更新。
 
-### 11.8.1 源码生成：构建 if-elif 链
+### 10.8.1 源码生成：构建 if-elif 链
 
 源码路径：`./convert_hf_to_gguf_update.py` - `*`（第 321-394 行，节选生成逻辑）
 
@@ -508,7 +508,7 @@ src_func = f"""
 
 `src_ifs` 累加生成**顺序 if-elif 链**，顺序即优先级。每个分支包含 `# ref:` 注释，指向 Hugging Face 仓库，便于溯源审计。`repr(CHK_TXT)` 确保测试文本中的转义字符（`\t\n\r`）在生成的源码中保持字面量正确。
 
-### 11.8.2 正则原地替换
+### 10.8.2 正则原地替换
 
 源码路径：`./convert_hf_to_gguf_update.py` - `*`（第 392-395 行）
 
@@ -538,11 +538,11 @@ convert_py_pth.write_text(convert_py, encoding="utf-8")
 
 **如果缺失 Marker 注释会发生什么？** `re.sub` 匹配失败，`convert_py` 保持原样，脚本静默结束且不报错——这是一种**故障安全**设计：宁可不更新，也不破坏源码结构。
 
-## 11.9 词表测试用例生成 —— 「质量门卫」的诞生
+## 10.9 词表测试用例生成 —— 「质量门卫」的诞生
 
 为什么需要测试用例？让 llama.cpp 的 C++ 端分词器与 HuggingFace Python 分词器逐条对比，发现实现偏差。`tests` 列表覆盖空白、Unicode、Emoji、CJK、连续数字、标点等棘手边界。包括一条「llama-bpe 已知名失败」的 `Cửa Việt` 案例作为负面回归测试。输入文件以 `__ggml_vocab_test__` 分隔每条测试用例。输出文件以空格分隔 token ID，与 llama.cpp 的 `test-tokenizer-*` 程序约定一致。自动打印生成 vocab 文件的命令行调用。
 
-### 11.9.1 tests 测试用例列表
+### 10.9.1 tests 测试用例列表
 
 源码路径：`./convert_hf_to_gguf_update.py` - `*`（第 399-438 行）
 
@@ -574,7 +574,7 @@ tests = [
 
 **负向回归测试的意义**：`Cửa Việt` 在 llama-bpe 下会产生错误分词（如将 `Cửa` 拆分为 `C` `ủ` `a`），记录该用例可确保后续优化不引入新的退化。`__ggml_vocab_test__` 分隔符是 llama.cpp C++ 测试程序约定的**记录分界符**，解析时按此分隔逐条对比。
 
-### 11.9.2 测试文件写入与命令生成
+### 10.9.2 测试文件写入与命令生成
 
 源码路径：`./convert_hf_to_gguf_update.py` - `*`（第 440-466 行）
 
@@ -639,7 +639,7 @@ __ggml_vocab_test__
 
 llama.cpp 的 `test-tokenizer-*` 程序会读取 `.inp` 逐段分词，与 `.out` 逐行对比 token ID 序列，**任何不匹配即判定为回归**。这种「黄金样本」机制保证了 Python 参考实现与 C++ 生产实现的一致性。
 
-## 11.10 设计中的取舍
+## 10.10 设计中的取舍
 
 **为什么不用简单的字符串替换，而要用 `re.sub + Marker + lambda`？**
 
@@ -653,7 +653,7 @@ SPM（SentencePiece）与 UGM（Unigram）在 GGML 中有**显式的枚举值**�
 
 部分上游仓库（如 glm4、falcon-h1 系列）存在**文件缺失、损坏、鉴权变更**等问题，导致自动下载失败。预置哈希允许维护者在本地手工验证后「钦定」哈希值，保证转换流水线不阻塞。这是对上游不可控因素的**工程容错**。
 
-## 11.11 动手练习
+## 10.11 动手练习
 
 1.  **阅读脚本主流程**  
     阅读 `./convert_hf_to_gguf_update.py` 全文（1-466 行），理解脚本的工作流程：
@@ -707,7 +707,7 @@ SPM（SentencePiece）与 UGM（Unigram）在 GGML 中有**显式的枚举值**�
     - 脚本运行后，convert_hf_to_gguf.py 中会生成怎样的 if-elif 分支？
     - 如何为该模型补充 `.gguf.inp` / `.gguf.out` 测试文件？
 
-## 11.12 本章小结
+## 10.12 本章小结
 
 这一章中我们学习了 llama.cpp 转换器家族的维护哨兵——`convert_hf_to_gguf_update.py`。首先，我们了解了脚本的核心定位：自动从 Hugging Face 同步预分词器哈希，生成 `get_vocab_base_pre` 分支表，避免人工维护。其次，剖析了 `TOKENIZER_TYPE` 四大分词器家族枚举与 `CHK_TXT` 探测文本的边界覆盖设计。接着，详细解读了 `models` 主清单与 `pre_computed_hashes` 异常清单的协作机制。然后，深入下载器实现，理解 Bearer Token 认证、本地/远程双模式、按类型选择性拉取文件的策略。之后，揭示了增量同步的核心——正则解析已注册模型、过滤新增模型的去重逻辑。随后，见证了「唯一指纹」的诞生：`tokenizer.encode(CHK_TXT)` → `str(list)` → SHA-256，以及三段诊断日志的溯源价值。紧接着，体验了「外科手术式」源码更新：Marker 定位 + `re.sub(DOTALL|MULTILINE)` + lambda 保留结构的精准替换。最后，理解了词表测试用例生成的黄金样本机制，确保 Python 与 C++ 分词实现的一致性。
 

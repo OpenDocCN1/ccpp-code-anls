@@ -1,7 +1,7 @@
 
 
 
-# 第12章 llama.cpp 概览 —— 认识这座"大模型推理引擎"
+# 第11章 llama.cpp 概览 —— 认识这座"大模型推理引擎"
 
 ## 学习目标
 
@@ -14,11 +14,11 @@
 - 掌握模型加载的四个公开入口（file / ptr / splits / user）与 DEPRECATED 兼容层
 - 理解 llama_chat_apply_template、llama_split_path/prefix、llama_print_system_info 的实现机制
 
-## 12.1 生活类比
+## 11.1 生活类比
 
 想象 llama.cpp 是一座「大模型推理工厂」的总控制室，每个文件都是不同的「设施部门」：README.md = 工厂的「产品说明书与能力清单」，告诉你这座工厂能造什么、运到哪些平台；include/llama.h = 工厂的「大门与接待处」，只有四个不透明指针（模型、上下文、词表、采样器）对外暴露，内部完全封装；include/llama-cpp.h = 工厂提供的「自动回收垃圾车」，用 unique_ptr + 自定义 deleter 确保资源不泄漏；llama_backend_init / supports_* = 工厂的「动力与基础设施检查」，启动前确认电力（后端）、网络（RPC）、门禁（mmap/mlock）是否就绪；llama_params_fit = 工厂的「智能排产调度器」，当显存放不下时自动缩减上下文、调整 GPU 层数、把 MoE 专家权重退回内存；llama_model_load 系列 = 工厂的「多入口装卸码头」，分别对应本地路径、文件指针、分片集合和用户自定义张量四种入库方式；llama_split_path / prefix = 工厂的「集装箱拆装工程师」，按 "%05d-of-%05d.gguf" 命名规则把巨型模型拆成标准集装箱；src/llama.cpp 全局作用域（__main__）= 工厂的「门牌与操作手册」，头文件是原材料清单，constexpr/enum/异常类是车间规约。就像工厂经理需要在开工前检查设备、分配任务、预留产能，llama.cpp 也在每次推理前精细规划内存与计算资源。
 
-## 12.2 源码地图
+## 11.2 源码地图
 
 README.md
 ├── 项目定位与设计哲学（Description）
@@ -87,11 +87,11 @@ src/llama.cpp
 ├── 模型分割工具（split_path = "%s-%05d-of-%05d.gguf" / split_prefix 反向提取）
 └── llama_print_system_info()（遍历 ggml_backend_reg_count + ggml_backend_get_features 拼接特性字符串）
 
-## 12.3 概览：llama.cpp —— 认识这座"大模型推理引擎"
+## 11.3 概览：llama.cpp —— 认识这座"大模型推理引擎"
 
 llama.cpp 是一个用纯 C/C++ 实现的大语言模型推理引擎，主打「零依赖、单文件即可运行」的极简哲学，目标是「最小化设置、最广泛的硬件支持、业界领先的性能」。它不依赖任何第三方库（除单文件库外），可在 macOS、Linux、Windows 上从源码编译；同时支持 Apple Silicon（Metal/Accelerate）、x86（AVX/AVX2/AVX512/AMX）、RISC-V（RVV/ZVFH/ZFH）、CUDA、HIP、Vulkan、SYCL 等多种架构。在量化与推理优化方面，支持 1.5-bit 到 8-bit 等多种整数量化（Q4_K、Q5_K、Q6_K、IQ 系列），并支持 CPU+GPU 混合推理，可在显存不足时部分卸载模型。此外，llama.cpp 是 ggml 库新功能的「主试验场」，二者在 GitHub 上分属 `ggml-org/llama.cpp` 与 `ggml-org/ggml` 两个仓库，但深度联动。通过 mtmd 模块支持 LLaVA、Qwen2-VL、GLM-EDGE 等多模态模型；通过 `llama-server` 提供 OpenAI 兼容的 HTTP API，并自带 WebUI 前端。
 
-### 12.3.1 项目定位与设计哲学
+### 11.3.1 项目定位与设计哲学
 
 源码路径：`README.md` - 全局概览（1-100行）
 
@@ -117,7 +117,7 @@ llama.cpp is an LLM inference engine written in C/C++. Its main advantages are:
 
 这段文档定义了 llama.cpp 的核心定位：纯 C/C++ 零依赖 LLM 推理引擎，支持 17 种后端与 1.5~8bit 量化，是 ggml 库的主试验场。
 
-### 12.3.2 支持的后端矩阵
+### 11.3.2 支持的后端矩阵
 
 源码路径：`README.md` - Supported backends 表格（200-300行）
 
@@ -147,7 +147,7 @@ llama.cpp is an LLM inference engine written in C/C++. Its main advantages are:
 
 这张表格展示了 llama.cpp 支持的 17 种后端，覆盖了从 Apple Silicon 到 NVIDIA/AMD/Intel/Qualcomm/IBM 等主流硬件平台。
 
-### 12.3.3 支持的模型矩阵
+### 11.3.3 支持的模型矩阵
 
 源码路径：`README.md` - Models 清单（200-300行）
 
@@ -205,11 +205,11 @@ graph TD
     G --> G2[新量化首发]
 ```
 
-## 12.4 公共 C 接口总览：llama_vocab/llama_model/llama_context/llama_sampler —— 四大核心不透明指针
+## 11.4 公共 C 接口总览：llama_vocab/llama_model/llama_context/llama_sampler —— 四大核心不透明指针
 
 `include/llama.h` 是 llama.cpp 对外暴露的唯一 C 语言 API 入口，所有功能都通过四个不透明指针封装：`llama_vocab`（词表）、`llama_model`（模型）、`llama_context`（推理上下文）、`llama_sampler`（采样器）。这种设计体现了「封装即自由」——内部实现可以随意重构，外部接口保持稳定。
 
-### 12.4.1 llama_vocab/llama_model/llama_context/llama_sampler：四大核心不透明指针
+### 11.4.1 llama_vocab/llama_model/llama_context/llama_sampler：四大核心不透明指针
 
 源码路径：`include/llama.h` - 核心类型定义（100-150行）
 
@@ -231,7 +231,7 @@ typedef int32_t llama_seq_id;  // 序列标识
 
 这三个类型（`llama_token`/`llama_pos`/`llama_seq_id`）均为 `int32_t`，分别代表 token id、序列位置、序列标识，构成了推理过程中的最小数据单元。
 
-### 12.4.2 llama_token/pos/seq_id：三大基础整数类型
+### 11.4.2 llama_token/pos/seq_id：三大基础整数类型
 
 源码路径：`include/llama.h` - 基础类型定义（150-160行）
 
@@ -245,7 +245,7 @@ typedef int32_t llama_token;   // token id
 typedef int32_t llama_seq_id;  // 序列标识
 ```
 
-### 12.4.3 llama_vocab_type/llama_rope_type/llama_ftype：关键枚举体系
+### 11.4.3 llama_vocab_type/llama_rope_type/llama_ftype：关键枚举体系
 
 源码路径：`include/llama.h` - 枚举定义（160-400行）
 
@@ -308,7 +308,7 @@ graph LR
     A --> G[GUESSED=1024 自动推断]
 ```
 
-### 12.4.4 llama_batch/llama_sampler_i：核心数据结构
+### 11.4.4 llama_batch/llama_sampler_i：核心数据结构
 
 源码路径：`include/llama.h` - 结构体定义（400-600行）
 
@@ -345,7 +345,7 @@ struct llama_sampler_i {
 - `llama_batch` 是推理的基本输入单元，`n_tokens` 决定批次大小，`logits` 数组控制哪些 token 产出 logits
 - `llama_sampler_i` 采用 C 风格虚函数表，`backend_*` 系列函数指针为 GPU 直接参与 token 选择提供了扩展点（标记为 EXPERIMENTAL）
 
-### 12.4.5 llama_model_params/llama_context_params：模型/上下文参数结构
+### 11.4.5 llama_model_params/llama_context_params：模型/上下文参数结构
 
 源码路径：`include/llama.h` - 参数结构体（600-900行）
 
@@ -413,7 +413,7 @@ struct llama_context_params {
 - `no_alloc=true` 是参数适配（`llama_params_fit`）的关键：仅模拟分配、不真正占内存
 - `samplers` 字段让上下文层感知后端采样器链，实现 GPU 侧采样
 
-### 12.4.6 llama_cpp_deleters：C++ 智能指针封装
+### 11.4.6 llama_cpp_deleters：C++ 智能指针封装
 
 源码路径：`include/llama-cpp.h` - RAII 封装（1-30行）
 
@@ -447,11 +447,11 @@ typedef std::unique_ptr<llama_adapter_lora, llama_adapter_lora_deleter> llama_ad
 
 这段代码定义了四个自定义 deleter，配合 `std::unique_ptr` 实现 RAII，彻底消除手动 `free` 的心智负担。C++ 用户只需写 `llama_model_ptr model = llama_model_load_from_file(...);`，离开作用域自动释放。
 
-## 12.5 后端初始化与能力探测：llama_backend_init/llama_numa_init/llama_supports_* —— GGML 的"握手协议"
+## 11.5 后端初始化与能力探测：llama_backend_init/llama_numa_init/llama_supports_* —— GGML 的"握手协议"
 
 在任何 llama.cpp 程序启动时，首先要完成后端初始化与系统能力探测，这相当于工厂开工前的「水电气检查」。
 
-### 12.5.1 llama_backend_init()：全局初始化入口与 f16 表构建
+### 11.5.1 llama_backend_init()：全局初始化入口与 f16 表构建
 
 源码路径：`src/llama.cpp` - `llama_backend_init()`（843-852行）
 
@@ -475,7 +475,7 @@ void llama_backend_init(void) {
 
 > 为什么需要初始化 f16 表？ggml 的量化内核大量使用 `fp16` 与 `bf16`，首次转换时会构建查找表，提前初始化避免首次推理时的延迟抖动。
 
-### 12.5.2 llama_numa_init()：NUMA 策略动态加载
+### 11.5.2 llama_numa_init()：NUMA 策略动态加载
 
 源码路径：`src/llama.cpp` - `llama_numa_init()`（852-862行）
 
@@ -514,7 +514,7 @@ flowchart TD
     I -->|否| K[静默忽略]
 ```
 
-### 12.5.3 llama_supports_mmap/mlock/gpu_offload/rpc()：能力查询四件套
+### 11.5.3 llama_supports_mmap/mlock/gpu_offload/rpc()：能力查询四件套
 
 源码路径：`src/llama.cpp` - 能力查询函数（831-843行）
 
@@ -547,7 +547,7 @@ bool llama_supports_rpc(void) {
 | `llama_supports_gpu_offload` | 存在 GPU/IGPU 设备 **或** 支持 RPC | 覆盖离线 GPU 与远程算力 |
 | `llama_supports_rpc` | 后端注册表中存在 "RPC" | **唯一**通过后端注册表名称判断的函数 |
 
-### 12.5.4 llama_max_devices/llama_max_tensor_buft_overrides/llama_time_us/llama_sampler_chain_default_params：容量常量与默认参数工厂
+### 11.5.4 llama_max_devices/llama_max_tensor_buft_overrides/llama_time_us/llama_sampler_chain_default_params：容量常量与默认参数工厂
 
 源码路径：`src/llama.cpp` - 常量与工厂函数（820-830行）
 
@@ -567,7 +567,7 @@ int64_t llama_time_us(void) { return ggml_time_us(); }
 - `llama_max_tensor_buft_overrides=4096`：张量缓冲区覆盖规则上限，配合 `tensor_buft_overrides` 数组使用
 - `llama_sampler_chain_default_params()` 将 `no_perf=true`，默认关闭采样器性能统计以减少开销
 
-### 12.5.5 llama_print_system_info()：后端特性遍历打印
+### 11.5.5 llama_print_system_info()：后端特性遍历打印
 
 源码路径：`src/llama.cpp` - `llama_print_system_info()`（1250-1275行）
 
@@ -603,7 +603,7 @@ const char * llama_print_system_info(void) {
 
 > 典型输出示例：`CUDA : cc = 8.0 | name = NVIDIA RTX 3080 | ... | Metal : device = M2 Max | ...`
 
-### 12.5.6 llama_backend_free()：资源释放
+### 11.5.6 llama_backend_free()：资源释放
 
 源码路径：`src/llama.cpp` - `llama_backend_free()`（862-864行）
 
@@ -615,11 +615,11 @@ void llama_backend_free(void) {
 
 仅释放量化相关的全局资源（主要用于 MPI 多进程场景的清理），不释放后端设备本身。
 
-## 12.6 底层基础设施：__main__/llama_get_device_memory_data/llama_params_fit_exception —— 推理引擎的"硬件调度室"
+## 11.6 底层基础设施：__main__/llama_get_device_memory_data/llama_params_fit_exception —— 推理引擎的"硬件调度室"
 
 `src/llama.cpp` 的文件全局作用域（`__main__` 区域）定义了参数适配与设备调度的核心规约层，是整个推理引擎的「操作手册」。
 
-### 12.6.1 __main__ 文件全局作用域：规约层常量与异常定义
+### 11.6.1 __main__ 文件全局作用域：规约层常量与异常定义
 
 源码路径：`src/llama.cpp` - 文件头部（1-90行）
 
@@ -668,7 +668,7 @@ class llama_params_fit_exception : public std::runtime_error {
 - `layer_fraction_t` 四种取值直接对应 `get_overflow_pattern()` 的四种正则模式
 - `llama_params_fit_exception` 继承 `std::runtime_error`，用于「用户已显式设置参数、不应自动调整」等可预期失败场景
 
-### 12.6.2 llama_flash_attn_type_name()：Flash Attention 类型名称映射
+### 11.6.2 llama_flash_attn_type_name()：Flash Attention 类型名称映射
 
 源码路径：`src/llama.cpp` - `llama_flash_attn_type_name()`（22-30行）
 
@@ -685,7 +685,7 @@ const char * llama_flash_attn_type_name(enum llama_flash_attn_type flash_attn_ty
 
 简单的枚举到字符串映射，用于日志输出。
 
-### 12.6.3 llama_device_memory_data：设备内存数据采集结构
+### 11.6.3 llama_device_memory_data：设备内存数据采集结构
 
 源码路径：`src/llama.cpp` - `llama_device_memory_data` 结构（33-105行附近）
 
@@ -697,7 +697,7 @@ struct llama_device_memory_data {
 };
 ```
 
-### 12.6.4 llama_get_device_memory_data()：模拟加载采样设备内存
+### 11.6.4 llama_get_device_memory_data()：模拟加载采样设备内存
 
 源码路径：`src/llama.cpp` - `llama_get_device_memory_data()`（33-105行）
 
@@ -799,7 +799,7 @@ flowchart TD
     L --> M[恢复原始日志回调]
 ```
 
-## 12.7 参数自适应降级：llama_params_fit/llama_params_fit_impl —— 算法深度解析
+## 11.7 参数自适应降级：llama_params_fit/llama_params_fit_impl —— 算法深度解析
 
 当模型默认参数装不下设备内存时，`llama_params_fit` 是自动「瘦身」的核心算法。它分四阶段流水线工作：
 
@@ -808,7 +808,7 @@ flowchart TD
 3. **Step 3 稠密层回填**：从后向前用 **false position 法**（试位法）填充稠密层到 GPU
 4. **Step 4 MoE 前向填充**：将稠密-only 层转为全层（含专家权重），溢出部分溢出到下一设备/系统内存
 
-### 12.7.1 llama_params_fit()：入口计时与异常分档
+### 11.7.1 llama_params_fit()：入口计时与异常分档
 
 源码路径：`src/llama.cpp` - `llama_params_fit()`（800-820行）
 
@@ -841,7 +841,7 @@ enum llama_params_fit_status llama_params_fit(
 - `std::runtime_error` → `ERROR`：模型加载失败、设备查询失败等硬错误
 - 成功 → `SUCCESS`：找到可行参数组合
 
-### 12.7.2 llama_params_fit_impl() Step 2：n_ctx 线性外推与 256 对齐
+### 11.7.2 llama_params_fit_impl() Step 2：n_ctx 线性外推与 256 对齐
 
 源码路径：`src/llama.cpp` - `llama_params_fit_impl()` 片段（87-472行中 Step 2 部分）
 
@@ -887,7 +887,7 @@ n_ctx_new = n_ctx_min + (n_ctx_train - n_ctx_min) * (target_mem - min_ctx_mem) /
 ```
 然后 **向下对齐到 256 的倍数**（KV cache 通常按 256 对齐，避免碎片）。
 
-### 12.7.3 get_overflow_pattern()：四种层分数正则模式
+### 11.7.3 get_overflow_pattern()：四种层分数正则模式
 
 源码路径：`src/llama.cpp` - `llama_params_fit_impl()` 内部 lambda（200-250行）
 
@@ -943,7 +943,7 @@ auto get_overflow_pattern = [&](const size_t il, const layer_fraction_t lf) -> c
 
 > 当某层装不下时，算法按 **ATTN → UP → GATE → MOE** 优先级拆分该层：先把注意力留在 GPU，FFN up/gate/down 溢出到 CPU；MoE 专家权重整体溢出。
 
-### 12.7.4 llama_params_fit_impl() Step 3：稠密层 False Position 法回填
+### 11.7.4 llama_params_fit_impl() Step 3：稠密层 False Position 法回填
 
 源码路径：`src/llama.cpp` - `llama_params_fit_impl()` 片段（Step 3 核心循环）
 
@@ -1001,7 +1001,7 @@ step_size = delta * (target - current_mem) / (high_mem - current_mem)
 - 分子：还需腾出的内存；分母：全装时增加的内存
 - 结果 clamp 到 `[1, delta-1]`，保证每次迭代都收敛
 
-### 12.7.5 set_ngl_tensor_split_tbo()：配置应用与张量溢出规则生成
+### 11.7.5 set_ngl_tensor_split_tbo()：配置应用与张量溢出规则生成
 
 源码路径：`src/llama.cpp` - `set_ngl_tensor_split_tbo()` lambda（内部实现）
 
@@ -1043,7 +1043,7 @@ auto set_ngl_tensor_split_tbo = [&](
 2. `tensor_split`：每设备层数比例（按层数比例分配）
 3. `tensor_buft_overrides`：溢出张量的正则模式 → 目标缓冲区类型映射
 
-### 12.7.6 llama_params_fit_impl() Step 4：MoE 专家权重前向填充
+### 11.7.6 llama_params_fit_impl() Step 4：MoE 专家权重前向填充
 
 源码路径：`src/llama.cpp` - `llama_params_fit_impl()` 片段（Step 4 部分）
 
@@ -1097,11 +1097,11 @@ flowchart TD
     N --> M
 ```
 
-## 12.8 设备选择与模型加载入口：llama_model_load_from_file_impl/llama_model_load —— 多码头统一调度
+## 11.8 设备选择与模型加载入口：llama_model_load_from_file_impl/llama_model_load —— 多码头统一调度
 
 模型加载是推理的起点，llama.cpp 提供四个公开入口，内部统一委托给 `llama_model_load_from_file_impl`。
 
-### 12.8.1 llama_model_load_from_file_impl()：统一实现入口与设备选择策略
+### 11.8.1 llama_model_load_from_file_impl()：统一实现入口与设备选择策略
 
 源码路径：`src/llama.cpp` - `llama_model_load_from_file_impl()`（906-1100行）
 
@@ -1247,7 +1247,7 @@ flowchart TD
     S --> T[调用 llama_model_load 四阶段流水线]
 ```
 
-### 12.8.2 llama_model_load()：四阶段流水线与返回码语义
+### 11.8.2 llama_model_load()：四阶段流水线与返回码语义
 
 源码路径：`src/llama.cpp` - `llama_model_load()`（866-906行）
 
@@ -1335,7 +1335,7 @@ sequenceDiagram
     end
 ```
 
-### 12.8.3 模型加载函数家族：四个公开入口与 DEPRECATED 兼容层
+### 11.8.3 模型加载函数家族：四个公开入口与 DEPRECATED 兼容层
 
 源码路径：`src/llama.cpp` - 公开 API（1100-1150行）
 
@@ -1390,7 +1390,7 @@ struct llama_model * llama_load_model_from_file(const char * path_model, struct 
 
 > `init_from_user` 强制禁用 mmap 和 extra bufts，因为用户通过 `set_tensor_data` 回调直接提供张量数据指针，无需库管理内存映射或重排缓冲区。
 
-### 12.8.4 llama_model_save_to_file/llama_split_path/llama_split_prefix：模型保存与分割工具
+### 11.8.4 llama_model_save_to_file/llama_split_path/llama_split_prefix：模型保存与分割工具
 
 源码路径：`src/llama.cpp` - 保存与分割（1147-1250行）
 
@@ -1426,7 +1426,7 @@ int32_t llama_split_prefix(char * split_prefix, size_t maxlen, const char * spli
 
 **分片命名规范**：`<prefix>-00001-of-00004.gguf`，`split_no` 从 0 开始，输出时 `+1` 显示为 1-based。
 
-### 12.8.5 llama_chat_apply_template()：聊天模板应用
+### 11.8.5 llama_chat_apply_template()：聊天模板应用
 
 源码路径：`src/llama.cpp` - `llama_chat_apply_template()`（1158-1190行）
 
@@ -1452,7 +1452,7 @@ int32_t llama_chat_apply_template(const char * tmpl, const struct llama_chat_mes
 
 **流程**：字符串模板名 → `llm_chat_detect_template` 枚举化 → `llm_chat_apply_template` 渲染 → 回填用户缓冲区。
 
-## 12.9 设计中的取舍
+## 11.9 设计中的取舍
 
 **为什么不用统一的 `llama_model_load` 处理所有场景，而要四个入口？**
 入口分离体现了接口隔离原则：常用场景（路径）零配置；高级场景（流式、加密、合并）完全可控。`init_from_user` 强制 `no_alloc/no_mmap`，将内存管理权彻底交给用户，避免库与用户双重管理导致的双重释放或泄漏。
@@ -1466,7 +1466,7 @@ RPC 设备意味着网络传输延迟，靠前分配层可减少跨网络的张�
 **为什么单 GPU 模式下 `main_gpu < 0` 要清空设备列表？**
 `split_mode=NONE` 表示「不拆分模型，整模放单设备」；`main_gpu < 0` 表示「用户未指定哪张卡」 → 退回纯 CPU 推理（设备列表为空，后续张量分配自动落到 CPU 后端）。
 
-## 12.10 动手练习
+## 11.10 动手练习
 
 1. **分析后端初始化与能力探测流程**
    - 阅读 `src/llama.cpp` 中以下函数的实现，理解后端初始化与能力探测的完整链路：
@@ -1545,7 +1545,7 @@ RPC 设备意味着网络传输延迟，靠前分配层可减少跨网络的张�
      - `class llama_params_fit_exception` 与 `std::runtime_error` 在 `llama_params_fit()` 中是如何分档处理的？
      - 文件顶部的条件编译（`#if defined(_MSC_VER)`）解决了什么跨平台问题？
 
-## 12.11 本章小结
+## 11.11 本章小结
 
 这一章中我们学习了 llama.cpp 的整体架构与核心 C API 设计。首先从项目定位出发，理解了 llama.cpp 作为「零依赖、跨平台、极致性能」的大模型推理引擎的设计哲学；其次剖析了四大核心 C 对象（模型、上下文、词表、采样器）与基础类型体系；接着深入了后端初始化与能力探测的「握手协议」，包括全局初始化、NUMA 优化、四大能力查询、系统信息打印；然后重点解读了文件全局作用域中的规约层（MiB 常量、层分数枚举、异常类）以及核心参数自适应算法 `llama_params_fit` 的四阶段流水线（探测、缩 n_ctx、稠密层回填、MoE 前向填充）；最后追踪了模型加载的统一实现入口与四个公开加载门面，理解了设备选择策略（RPC 优先、GPU 去重、IGPU 兜底）、四阶段加载流水线（架构→超参数→词表→张量）与分片命名规范。
 

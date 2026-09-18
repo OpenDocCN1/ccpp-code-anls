@@ -1,5 +1,5 @@
 
-# 服务端任务参数与结果 —— 厨房里的点菜单与出餐包装
+# 第84章 服务端任务参数与结果 —— 厨房里的点菜单与出餐包装
 
 想象llama.cpp服务器是一座**现代化中央厨房**。当顾客（客户端）下单时，首先需要一份精确的**点菜单**（`task_params`）——它记录了食材（采样参数）、火候（温度）、调料（grammar约束）和摆盘要求（响应格式）。点菜单经过翻译后，被送到**厨师的工单系统**（`server_task`），工单不仅记录当前菜品，还支持主厨带学徒（父子任务）并行做菜，甚至能为每位学徒分配不同的"调味种子"（seed）以探索多样风味。当菜品完成后，流水线上的**增量装配员**（`task_result_state`）像制作寿司一样，将思考过程（reasoning）与正文（content）逐一贯口呈现，而**出餐口的传菜员**（`server_task_result_final`）则根据顾客类型（OpenAI/Anthropic/内部协议）用不同餐具摆盘。最后，**智能备餐柜**（`server_prompt_cache`）会将相同的前菜（提示前缀）直接复用，省却重复切配时间。
 
@@ -1833,7 +1833,7 @@ json result_prompt_progress::to_json() const {
 
 至于槽位管理结果与 LoRA 管理结果，它们的实现遵循同样的简洁模式，以下分别展开。
 
-#### `server_task_result_slot_save_load`：槽位保存/加载结果
+#### 84.8.3.1 `server_task_result_slot_save_load`：槽位保存/加载结果
 
 源码路径：`tools/server/server-task.cpp` - `server_task_result_slot_save_load::to_json()`（1816-1835行）
 
@@ -1855,7 +1855,7 @@ json server_task_result_slot_save_load::to_json() {
 }
 ```
 
-#### `server_task_result_slot_erase`：槽位擦除结果
+#### 84.8.3.2 `server_task_result_slot_erase`：槽位擦除结果
 
 源码路径：`tools/server/server-task.cpp` - `server_task_result_slot_erase::to_json()`（1837-1846行）
 
@@ -1876,7 +1876,7 @@ json server_task_result_slot_erase::to_json() {
 }
 ```
 
-#### `server_task_result_get_lora`：LoRA 查询结果
+#### 84.8.3.3 `server_task_result_get_lora`：LoRA 查询结果
 
 源码路径：`tools/server/server-task.cpp` - `server_task_result_get_lora::to_json()`（1848-1873行）
 
@@ -1905,7 +1905,7 @@ json server_task_result_get_lora::to_json() {
 }
 ```
 
-#### `server_task_result_apply_lora`：LoRA 应用结果
+#### 84.8.3.4 `server_task_result_apply_lora`：LoRA 应用结果
 
 源码路径：`tools/server/server-task.cpp` - `server_task_result_apply_lora::to_json()`（1875-1894行）
 

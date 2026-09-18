@@ -1,6 +1,6 @@
 
 
-# 第26章 基础设施与模型图构建基类 —— llama.cpp 的「后勤保障部」与「公共模具车间」
+# 第25章 基础设施与模型图构建基类 —— llama.cpp 的「后勤保障部」与「公共模具车间」
 
 ## 学习目标
 
@@ -13,13 +13,13 @@
 - 掌握线性注意力（DeltaNet/KDA）三种实现模式（chunking/autoregressive/fused）的适用场景
 - 能够阅读并修改基类方法以支持新模型架构
 
-## 26.1 生活类比
+## 25.1 生活类比
 
 想象 llama.cpp 的源码世界是一座庞大的推理工厂，那么 `src/llama-impl.*` 与 `src/llama-io.*` 就是这座工厂的「后勤保障部门」：**time_meas** = 工厂车间墙上的「计时秒表」，每道工序开始时按一下、结束时再按一下，自动算出耗时；**format / replace_all** = 工厂的「万能文本胶带」，把零散的零件名、张量名拼接成统一格式；**llama_format_tensor_shape** = 工厂的「零件铭牌打印机」，把 [1024, 4096] 这种干巴巴的数字变成「[1024, 4096] (f16)」这样人类可读的标签；**gguf_data_to_str / gguf_kv_to_str** = 工厂的「说明书翻译官」，把二进制 GGUF 元数据翻译成人类可读的字符串；**llama_io_write_i / llama_io_read_i** = 工厂的「集装箱装卸平台」，抽象出统一的读写接口，让内存、文件、虚拟缓冲区都能用同一种方式搬运。就像工厂可以没有后勤部门勉强开工，但有了它们才能高效协同、稳定运行；llama.cpp 缺了这些基础设施模块也能跑，但有了它们才能优雅地日志、可移植地序列化、准确地诊断性能。
 
 而 `src/models/models.h` 中的基类则是工厂的「公共模具车间」：**llm_build_mamba_base** = 状态空间模型的「标准冲压机」，把 Mamba/Mamba2 的卷积+扫描压成统一形状，供 Falcon-H1、Nemotron-H、Granite-Hybrid、Jamba、Plamo2 复用；**llm_build_delta_net_base** = 线性注意力的「三档变速器」（chunking / autoregressive / fused），根据 token 数自动换挡，支撑 Qwen3Next、Qwen3.5、Kimi-Linear；**llm_build_rwkv6_base / rwkv7_base** = RWKV 的「时间混合双引擎」（channel_mix + time_mix），RWKV7 额外增加 first_layer_value 参数处理首层值；**build_qkvz** = Qwen3 系列的「张量分拣机」，把 QKV 与 z 拆成对，配合 build_norm_gated 实现门控归一化；**llm_build_gemma3n_iswa** = AltUp 的「多通道调度台」，管理预测（altup_predict）、激活（gaussian_topk）、修正（altup_correct）三条流水线，外加 Laurel 残差与每层输入投影；**llm_build_granite(_hybrid)** = Granite 系列的「残差缩放器」，在注意力与 FFN 中统一注入缩放因子；**llm_build_plamo2** = Plamo2 的「混合架构演示器」，展示 Mamba+Attention 混合的另一种实现范式。就像工厂不会为每个产品重新设计螺丝刀，这些基类让数十种模型避免了「重复造轮子」——新模型只需继承基类、覆写特定方法，就能快速接入推理引擎。
 
-## 26.2 源码地图
+## 25.2 源码地图
 
 src/llama-impl.h
 ├── 日志基础设施
@@ -173,15 +173,15 @@ src/models/models.h
 │       └── build_attention_layer() —— 注意力层
 └── 具体模型类（数十个，继承自上述基类）
 
-## 26.3 基础设施全貌 —— 走进 llama.cpp 的「后勤保障部」
+## 25.3 基础设施全貌 —— 走进 llama.cpp 的「后勤保障部」
 
-### 26.3.1 基础设施的定位
+### 25.3.1 基础设施的定位
 
 **src/llama-impl.*** 与 **src/llama-io.*** 构成了 llama.cpp 的「无名英雄」模块——它们不直接参与推理计算，却为字符串处理、计时统计、I/O 序列化提供基础支撑。这就像一座精密仪器工厂里的「量具室」与「物流中转站」：不直接生产核心部件，但没有它们，生产线就无法校准精度、无法周转物料。
 
-### 26.3.2 日志基础设施
+### 25.3.2 日志基础设施
 
-#### 26.3.2.1 日志宏与回调体系
+#### 25.3.2.1 日志宏与回调体系
 
 **源码路径：** `src/llama-impl.h` 第 1-30 行
 
@@ -202,7 +202,7 @@ void llama_log_callback_default(ggml_log_level level, const char * text, void * 
 
 **代码作用：** 这段代码定义了 **六级日志宏**（NONE/INFO/WARN/ERROR/DEBUG/CONT），统一收敛到 `llama_log_internal`。`LLAMA_ATTRIBUTE_FORMAT(2, 3)` 是 GCC/Clang 的 format 属性声明，告诉编译器第 2 个参数是格式字符串、第 3 个是变参，从而在编译期检查格式化字符串的类型匹配。
 
-#### 26.3.2.2 日志内部实现：双缓冲 vsnprintf
+#### 25.3.2.2 日志内部实现：双缓冲 vsnprintf
 
 **源码路径：** `src/llama-impl.cpp` 第 48-63 行
 
@@ -283,9 +283,9 @@ void llama_log_callback_default(ggml_log_level level, const char * text, void * 
 
 **代码作用：** 这段代码实现了 **日志系统的「短消息快路径 + 长消息堆分配」双层策略**：绝大多数日志消息在 128 字节内完成，避免堆分配；超长消息（如张量形状 dump）才动态分配。`g_logger_state` 全局结构持有当前回调函数与用户数据，支持运行时替换。
 
-### 26.3.3 time_meas：RAII 风格的作用域计时器
+### 25.3.3 time_meas：RAII 风格的作用域计时器
 
-#### 26.3.3.1 time_meas 类定义
+#### 25.3.3.1 time_meas 类定义
 
 **源码路径：** `src/llama-impl.h` 第 55-60 行
 
@@ -316,7 +316,7 @@ public:
 
 **代码解析：** 这段代码定义了一个典型的 RAII（资源获取即初始化）计时器：**构造即开始，析构即停止并累加**，外部只需持有一个 `int64_t` 累加器即可收集多个作用域的总耗时。
 
-#### 26.3.3.2 time_meas 构造与析构实现
+#### 25.3.3.2 time_meas 构造与析构实现
 
 **源码路径：** `src/llama-impl.cpp` 第 27-34 行
 
@@ -349,7 +349,7 @@ time_meas::~time_meas() {
 
 **代码作用：** 这段代码实现了**零侵入式计时**：用户只需在作用域内定义 `time_meas tm(accumulator);`，离开作用域时自动完成计时累加，无需手动调用 start/stop。
 
-#### 26.3.3.3 time_meas::get() 与 to_string() 实现
+#### 25.3.3.3 time_meas::get() 与 to_string() 实现
 
 **源码路径：** `src/llama-impl.cpp` 第 36-50 行（推测位置，实际源码中未直接给出，但根据声明推断实现逻辑）
 
@@ -370,9 +370,9 @@ std::string time_meas::to_string() const {
 
 **代码作用：** 这段代码展示了 **get() 与 to_string() 的互补关系**：前者返回整型毫秒供程序逻辑判断（如超时控制），后者返回格式化字符串供日志输出。注意 `to_string()` 内部复用了 `format()`，体现了基础设施模块内部的复用设计。
 
-### 26.3.4 字符串处理工具集
+### 25.3.4 字符串处理工具集
 
-#### 26.3.4.1 format()：线程安全的 printf 风格格式化
+#### 25.3.4.1 format()：线程安全的 printf 风格格式化
 
 **源码路径：** `src/llama-impl.cpp` 第 101-115 行
 
@@ -423,7 +423,7 @@ std::string format(const char * fmt, ...) {
 
 **代码作用：** 这段代码实现了**高性能、线程安全的格式化**：无锁、无静态缓冲区竞争、精确分配内存。对比 `snprintf` 固定缓冲区方案，它杜绝了截断风险；对比 `std::stringstream`，它避免了流操作的开销。
 
-#### 26.3.4.2 replace_all()：全局字符串替换
+#### 25.3.4.2 replace_all()：全局字符串替换
 
 **源码路径：** `src/llama-impl.cpp` 第 82-99 行
 
@@ -472,7 +472,7 @@ void replace_all(std::string & s, const std::string & search, const std::string 
 
 **代码作用：** 这段代码实现了**高效的原地全局替换**，常用于张量名标准化（如将 `model.layers.0` 统一为 `blk.0`）、路径分隔符统一等场景。
 
-#### 26.3.4.3 llama_format_tensor_shape()：张量形状人类化
+#### 25.3.4.3 llama_format_tensor_shape()：张量形状人类化
 
 **源码路径：** `src/llama-impl.cpp` 第 117-133 行
 
@@ -527,9 +527,9 @@ std::string llama_format_tensor_shape(const struct ggml_tensor * t) {
 
 **代码作用：** 这段代码是 **print_info 与调试日志的核心格式化工具**，把 `[1024, 4096, 1, 1]` 这种原始形状变成对齐美观的字符串，配合数据类型标签（如 `(f16)`）构成完整的张量铭牌。
 
-### 26.3.5 GGUF 元数据字符串化
+### 25.3.5 GGUF 元数据字符串化
 
-#### 26.3.5.1 gguf_data_to_str()：标量值格式化
+#### 25.3.5.1 gguf_data_to_str()：标量值格式化
 
 **源码路径：** `src/llama-impl.cpp` 第 135-148 行
 
@@ -579,7 +579,7 @@ static std::string gguf_data_to_str(enum gguf_type type, const void * data, int 
 
 **代码作用：** 这段代码是 **GGUF 元数据打印的原子操作**，被 `gguf_kv_to_str` 调用处理数组元素与标量值。
 
-#### 26.3.5.2 gguf_kv_to_str()：KV 对完整格式化
+#### 25.3.5.2 gguf_kv_to_str()：KV 对完整格式化
 
 **源码路径：** `src/llama-impl.cpp` 第 150-182 行
 
@@ -665,9 +665,9 @@ std::string gguf_kv_to_str(const struct gguf_context * ctx_gguf, int i) {
 
 **代码作用：** 这段代码实现了 **GGUF KV 对的完整可视化**，输出格式如 `["a", "b"]` 或 `[1, 2, 3]`，直接可用于日志、调试、模型卡片生成。
 
-### 26.3.6 I/O 抽象：集装箱装卸平台
+### 25.3.6 I/O 抽象：集装箱装卸平台
 
-#### 26.3.6.1 llama_io_write_i / llama_io_read_i：抽象接口定义
+#### 25.3.6.1 llama_io_write_i / llama_io_read_i：抽象接口定义
 
 **源码路径：** `src/llama-io.h` 第 10-38 行
 
@@ -713,7 +713,7 @@ struct llama_io_read_i {
 - `n_bytes()` 双向统计进度
 - `write_string/read_string` 约定长度前缀编码（`uint32_t` 长度 + 内容）
 
-#### 26.3.6.2 基类便捷方法实现：write_string / read_string
+#### 25.3.6.2 基类便捷方法实现：write_string / read_string
 
 **源码路径：** `src/llama-io.cpp` 第 3-17 行
 
@@ -754,7 +754,7 @@ void llama_io_read_i::read_string(std::string & str) {
 
 **代码作用：** 这两个方法在基类中提供了**统一的字符串序列化协议**（长度前缀 + 原始字节），所有派生类自动继承，无需重复实现。
 
-#### 26.3.6.3 llama_io_write_buffer / llama_io_read_buffer：内存缓冲区实现
+#### 25.3.6.3 llama_io_write_buffer / llama_io_read_buffer：内存缓冲区实现
 
 **源码路径：** `src/llama-io.cpp` 第 1-60 行（推测，实际源码中未直接给出实现，但根据接口定义推断核心实现逻辑）
 
@@ -858,7 +858,7 @@ struct llama_io_read_buffer : llama_io_read_i {
 
 **代码作用：** 这段代码展示了 **内存缓冲区作为最高性能 I/O 后端** 的实现：零拷贝读、自动扩容写、原生随机访问。
 
-#### 26.3.6.4 llama_io_write_file / llama_io_read_file：文件实现
+#### 25.3.6.4 llama_io_write_file / llama_io_read_file：文件实现
 
 **源码路径：** `src/llama-io.cpp` 第 60-150 行（推测，根据接口定义推断核心实现逻辑）
 
@@ -1000,7 +1000,7 @@ struct llama_io_read_file : llama_io_read_i {
 
 **代码作用：** 这段代码是 **持久化存储的标准实现**，配合 `mmap`（见第 13 章）可实现零拷贝加载大模型权重。
 
-#### 26.3.6.5 llama_io_write_dummy / llama_io_read_dummy：虚拟实现
+#### 25.3.6.5 llama_io_write_dummy / llama_io_read_dummy：虚拟实现
 
 **源码路径：** `src/llama-io.cpp` 第 150-200 行（推测，根据接口定义推断核心实现逻辑）
 
@@ -1087,9 +1087,9 @@ struct llama_io_read_dummy : llama_io_read_i {
 
 ---
 
-## 26.4 模型图构建基类 —— 百模共用的「公共模具车间」
+## 25.4 模型图构建基类 —— 百模共用的「公共模具车间」
 
-### 26.4.1 基类的定位与设计哲学
+### 25.4.1 基类的定位与设计哲学
 
 `src/models/models.h` 定义了多个**模型图构建基类**（`llm_build_mamba_base`、`llm_build_delta_net_base`、`llm_build_rwkv6_base`、`llm_build_rwkv7_base` 等），它们为数十种具体模型提供可复用的图构建方法，是「一次实现、到处复用」的工程典范。
 
@@ -1101,9 +1101,9 @@ struct llama_io_read_dummy : llama_io_read_i {
 
 具体模型类（如 `llm_build_falcon_h1`、`llm_build_qwen3next`、`llm_build_granite_hybrid`）只需**继承基类、组合调用基类方法、覆写差异点**，即可快速接入推理引擎。
 
-### 26.4.2 Mamba 基类：状态空间的标准冲压机
+### 25.4.2 Mamba 基类：状态空间的标准冲压机
 
-#### 26.4.2.1 llm_build_mamba_base 类定义
+#### 25.4.2.1 llm_build_mamba_base 类定义
 
 **源码路径：** `src/models/models.h` 第 18-25 行
 
@@ -1160,9 +1160,9 @@ public:
 
 **代码作用：** 这段代码定义了 **Mamba 家族的统一层构建契约**：Falcon-H1、Nemotron-H、Granite-Hybrid、Jamba、Plamo2 均继承此基类，复用 `build_mamba_layer`/`build_mamba2_layer` 核心逻辑，仅在上层组装时差异化处理注意力分支。
 
-### 26.4.3 DeltaNet 基类：线性注意力的三档变速器
+### 25.4.3 DeltaNet 基类：线性注意力的三档变速器
 
-#### 26.4.3.1 llm_build_delta_net_base 类定义
+#### 25.4.3.1 llm_build_delta_net_base 类定义
 
 **源码路径：** `src/models/models.h` 第 28-66 行
 
@@ -1230,9 +1230,9 @@ public:
 
 **代码作用：** 这段代码实现了 **「一套数学、三种落地、自动换挡」**：数学原理相同（线性注意力 = 核函数近似 + 状态递推），但并行度、内存访问模式、硬件友好度不同，基类封装三种实现并提供自动选择，子类（Qwen3Next、Qwen3.5、Kimi-Linear）直接调用 `build_delta_net` 即可获得最优性能。
 
-### 26.4.4 RWKV 基类：时间混合双引擎
+### 25.4.4 RWKV 基类：时间混合双引擎
 
-#### 26.4.4.1 llm_build_rwkv6_base 类定义
+#### 25.4.4.1 llm_build_rwkv6_base 类定义
 
 **源码路径：** `src/models/models.h` 第 68-85 行
 
@@ -1286,7 +1286,7 @@ public:
 
 **代码作用：** RWKV6 基类将 **通道混合（类 FFN）** 与 **时间混合（线性注意力替代品）** 解耦为两个可复用方法，支撑 RWKV6 及其变体。
 
-#### 26.4.4.2 llm_build_rwkv7_base 类定义
+#### 25.4.4.2 llm_build_rwkv7_base 类定义
 
 **源码路径：** `src/models/models.h` 第 87-102 行
 
@@ -1341,9 +1341,9 @@ public:
 
 **代码作用：** 这种设计体现了 **RWKV7 对首层状态初始化的显式建模**，区别于 RWKV6 的隐式处理。`first_layer_value` 作为输出参数（引用传指针），首层计算出的特殊值需传递给后续层使用。
 
-### 26.4.5 Kimi-Linear：KDA 自回归与分块
+### 25.4.5 Kimi-Linear：KDA 自回归与分块
 
-#### 26.4.5.1 llm_build_kimi_linear 类定义
+#### 25.4.5.1 llm_build_kimi_linear 类定义
 
 **源码路径：** `src/models/models.h` 第 370-393 行
 
@@ -1397,9 +1397,9 @@ public:
 
 **代码作用：** 这种设计将 **掩码构建外推给调用者**，基类只关心核心数学。`causal_mask` 保证自回归性质，`identity` 作为分块并行时的状态初始化单位元，`diag_mask` 处理分块边界的因果约束。
 
-### 26.4.6 Qwen3Next / Qwen3.5 系列：线性注意力标准化流水线
+### 25.4.6 Qwen3Next / Qwen3.5 系列：线性注意力标准化流水线
 
-#### 26.4.6.1 llm_build_qwen3next 类定义
+#### 25.4.6.1 llm_build_qwen3next 类定义
 
 **源码路径：** `src/models/models.h` 第 555-588 行
 
@@ -1481,7 +1481,7 @@ public:
 
 **代码作用：** `build_qkvz` 将 HuggingFace 融合的 `qkvz` 权重拆分，`z` 用于门控归一化；`build_norm_gated` 接受 `norm_name`/`gate_name` 参数化权重名；`build_layer_attn` 与 `build_layer_attn_linear` 双轨并行：**短序列走标准注意力，长序列走线性注意力**。
 
-#### 26.4.6.2 llm_build_qwen35 / llm_build_qwen35moe 类定义
+#### 25.4.6.2 llm_build_qwen35 / llm_build_qwen35moe 类定义
 
 **源码路径：** `src/models/models.h` 第 591-661 行
 
@@ -1512,9 +1512,9 @@ class llm_build_qwen35moe : public llm_build_delta_net_base {
 
 **代码作用：** `sections` 参数实现 **「分段注意力」**：前 N 层用标准注意力，后 M 层用线性注意力，或交替使用。`llm_build_qwen35moe` 复用全部注意力逻辑，仅在 `build_layer_ffn` 中注入 MoE 路由逻辑。这种**模板化继承**让 Qwen3 系列从 3.0 到 3.5-MoE 仅需增量修改。
 
-### 26.4.7 Gemma3n AltUp：多通道调度台
+### 25.4.7 Gemma3n AltUp：多通道调度台
 
-#### 26.4.7.1 llm_build_gemma3n_iswa 类定义
+#### 25.4.7.1 llm_build_gemma3n_iswa 类定义
 
 **源码路径：** `src/models/models.h` 第 241-273 行
 
@@ -1597,9 +1597,9 @@ public:
 5. `laurel` 注入残差 → 6. `view_2d_slice`/`get_per_layer_inputs`/`project_per_layer_inputs` 处理每层输入投影
 `altup_compute_router_modalities` 返回 `vector<int>` 而非张量，**路由决策在宿主侧完成**，图构建时已确定。这种设计展示了 **复杂架构在基类层面的「显式流水线化」**：每个子步骤独立成方法，便于调试、Profile、替换单个环节。
 
-### 26.4.8 Gemma4：每层嵌入投影
+### 25.4.8 Gemma4：每层嵌入投影
 
-#### 26.4.8.1 llm_build_gemma4_iswa 类定义
+#### 25.4.8.1 llm_build_gemma4_iswa 类定义
 
 **源码路径：** `src/models/models.h` 第 275-285 行
 
@@ -1633,9 +1633,9 @@ public:
 
 **代码作用：** 仅保留 **每层嵌入投影三件套**：切片、获取、投影。移除了 AltUp 的预测-修正-稀疏化流水线。体现了 **Gemma4 对 Gemma3n 的简化**：保留每层嵌入特性，去掉稀疏激活复杂度。
 
-### 26.4.9 Granite 系列：残差缩放器
+### 25.4.9 Granite 系列：残差缩放器
 
-#### 26.4.9.1 llm_build_granite 类定义
+#### 25.4.9.1 llm_build_granite 类定义
 
 **源码路径：** `src/models/models.h` 第 311-327 行
 
@@ -1659,7 +1659,7 @@ class llm_build_granite : public llm_graph_context {
     ggml_tensor * build_layer_ffn(...);
 ```
 
-#### 26.4.9.2 llm_build_granite_hybrid 类定义
+#### 25.4.9.2 llm_build_granite_hybrid 类定义
 
 **源码路径：** `src/models/models.h` 第 329-336 行
 
@@ -1685,9 +1685,9 @@ class llm_build_granite_hybrid : public llm_build_mamba_base {
 
 **代码作用：** `llm_build_granite` 不继承基类，**私有方法**封装残差缩放逻辑（`cur = cur + scale * sublayer(cur)`）；`llm_build_granite_hybrid` **继承 `llm_build_mamba_base`**，获得 Mamba 层构建能力，同时保留 `build_attention_layer`/`build_layer_ffn`，**混合架构 = Mamba 层 + 标准注意力层 + MoE FFN**。这种**组合优于继承**的设计：Hybrid 复用 Mamba 基类，同时内嵌 Granite 稠密层逻辑。
 
-### 26.4.10 Plamo2 与 Nemotron-H：混合架构的另一种实现
+### 25.4.10 Plamo2 与 Nemotron-H：混合架构的另一种实现
 
-#### 26.4.10.1 llm_build_plamo2 类定义
+#### 25.4.10.1 llm_build_plamo2 类定义
 
 **源码路径：** `src/models/models.h` 第 505-512 行
 
@@ -1711,7 +1711,7 @@ class llm_build_plamo2 : public llm_build_mamba_base {
     ggml_tensor * build_plamo2_attn_layer(...);
 ```
 
-#### 26.4.10.2 llm_build_nemotron_h 类定义
+#### 25.4.10.2 llm_build_nemotron_h 类定义
 
 **源码路径：** `src/models/models.h` 第 453-459 行
 
@@ -1748,21 +1748,21 @@ class llm_build_nemotron_h : public llm_build_mamba_base {
 
 ---
 
-## 26.5 设计中的取舍
+## 25.5 设计中的取舍
 
-### 为什么不用统一的「通用层构建基类」？
+### 25.5.1 为什么不用统一的「通用层构建基类」？
 
 **问**：为什么不把 `build_attention`、`build_ffn`、`build_norm` 等通用方法放在一个 `llm_build_transformer_base` 里，让所有 Transformer 变体继承？
 
 **答**：因为**「Transformer 变体的差异性已超出单一基类的表达能力」**。LLaMA 用 RMSNorm+SwiGLU，Gemma 用 RMSNorm+GeGLU，Qwen 用 QKV 融合+门控归一化，DeepSeek 用 MLA+MoE，Granite 用残差缩放。强行统一会导致基类膨胀为「万能参数袋」，虚函数调用开销大、模板实例化爆炸、阅读者需在海量 `if (arch == XX)` 中寻找逻辑。llama.cpp 选择**按架构家族建立独立基类**（Mamba/DeltaNet/RWKV/AltUp），每个基类只封装该家族的**不变量**，变量留给子类。
 
-### I/O 抽象为什么不直接用 `std::iostream`？
+### 25.5.2 I/O 抽象为什么不直接用 `std::iostream`？
 
 **问**：`llama_io_write_i`/`read_i` 与 `std::ostream`/`istream` 有何本质区别？为什么不直接用标准库？
 
 **答**：**标准流面向「格式化文本/字节流」，不面向「张量/二进制块/随机访问/零拷贝」**。`llama_io_read_i::read()` 返回内部缓冲区指针实现零拷贝，`write_tensor` 理解张量偏移/量化块，`seek/tell/size` 支持分片加载的随机访问。`std::istream` 无法高效表达「读取张量第 3 个量化块的第 2 个字节」，且虚函数调用链更深。llama.cpp 的 I/O 抽象是**为 GGUF 二进制格式量身定制的领域特定接口**。
 
-### time_meas 为什么不用 `std::chrono` 直接测？
+### 25.5.3 time_meas 为什么不用 `std::chrono` 直接测？
 
 **问**：`time_meas` 封装 `ggml_time_us()`，为什么不直接用 `std::chrono::high_resolution_clock`？
 
@@ -1770,9 +1770,9 @@ class llm_build_nemotron_h : public llm_build_mamba_base {
 
 ---
 
-## 26.6 架构图与流程图
+## 25.6 架构图与流程图
 
-### 26.6.1 基础设施模块依赖关系图
+### 25.6.1 基础设施模块依赖关系图
 
 ```mermaid
 graph TD
@@ -1798,7 +1798,7 @@ graph TD
     O --> R
 ```
 
-### 26.6.2 模型图构建基类继承关系图
+### 25.6.2 模型图构建基类继承关系图
 
 ```mermaid
 graph TD
@@ -1837,7 +1837,7 @@ graph TD
     R --> Q
 ```
 
-### 26.6.3 DeltaNet 三种模式自动选择流程图
+### 25.6.3 DeltaNet 三种模式自动选择流程图
 
 ```mermaid
 flowchart TD
@@ -1853,7 +1853,7 @@ flowchart TD
     I --> G
 ```
 
-### 26.6.4 Gemma3n AltUp 流水线流程图
+### 25.6.4 Gemma3n AltUp 流水线流程图
 
 ```mermaid
 flowchart LR
@@ -1875,9 +1875,9 @@ flowchart LR
 
 ---
 
-## 26.7 动手练习
+## 25.7 动手练习
 
-### 练习 1：阅读 llama-impl 的字符串与计时基础设施
+### 25.7.1 练习 1：阅读 llama-impl 的字符串与计时基础设施
 
 1. 打开 `src/llama-impl.h` 与 `src/llama-impl.cpp`，通读字符串处理与 time_meas 相关代码，回答以下问题：
 2. `time_meas` 类的构造函数与析构函数分别做了什么？它是基于 RAII 的吗？
@@ -1889,7 +1889,7 @@ flowchart LR
 8. `fp16_to_fp32()` 与 `fp32_to_fp16()` 如何处理舍入误差？
 9. `swap_bytes()` 在跨平台字节序转换中扮演什么角色？它主要用于哪些场景？
 
-### 练习 2：剖析 GGUF 元数据字符串化与 I/O 抽象
+### 25.7.2 练习 2：剖析 GGUF 元数据字符串化与 I/O 抽象
 
 1. 结合 `src/llama-impl.cpp` 与 `src/llama-io.h/.cpp`，回答以下问题：
 2. `gguf_data_to_str` 支持哪些 GGUF 值类型？每种类型的字符串格式是什么？
@@ -1901,7 +1901,7 @@ flowchart LR
 8. 设计一个新的 I/O 后端（如网络 socket），需要继承哪个接口？需要实现哪些方法？
 9. `fmt_data_type` 与 `fmt_arr_data_type` 有什么区别？分别在什么场景被调用？
 
-### 练习 3：动手编写自定义作用域计时器与字符串工具
+### 25.7.3 练习 3：动手编写自定义作用域计时器与字符串工具
 
 1. 基于 `src/llama-impl.h` 暴露的 API，完成以下小练习：
 2. 封装一个简单的「作用域日志」RAII 辅助类，在进入作用域时打印「Begin stage X」，退出时自动打印耗时。
@@ -1913,7 +1913,7 @@ flowchart LR
 8. 思考：在多线程推理中，`time_meas` 是否会被并发调用？是否需要加锁？
 9. 写一个 `gguf_kv_to_str` 的简化实现，演示如何把 KV 对格式化为 `"key = value"` 形式。
 
-### 练习 4：跨章节阅读：基础设施如何服务上层模块
+### 25.7.4 练习 4：跨章节阅读：基础设施如何服务上层模块
 
 1. 结合第 13 章（GGUF 加载）与第 14 章（模型对象），理解基础设施模块如何支撑核心流程：
 2. `llama_model_loader` 在加载 GGUF 时，是否使用了 `gguf_kv_to_str`？它用于打印哪些信息？
@@ -1925,7 +1925,7 @@ flowchart LR
 8. 在多模型并行加载场景下，`llama_io_read_buffer` 与 `llama_io_read_file` 各有什么优劣？
 9. 思考：如果把 `format()` 换成 `std::stringstream`，会在哪些地方出现性能问题？
 
-### 练习 5：模型图构建基类的职责与复用模式
+### 25.7.5 练习 5：模型图构建基类的职责与复用模式
 
 1. 打开 `src/models/models.h`，通读所有基类的方法声明，回答以下问题：
 2. `llm_build_mamba_base` 的 `build_mamba_layer` 与 `build_mamba2_layer` 各自处理什么差异？它们被哪些具体模型类继承？
@@ -1937,7 +1937,7 @@ flowchart LR
 8. `llm_build_granite` 与 `llm_build_granite_hybrid` 的 `build_attention_layer` 签名相同，但实现差异在哪里？
 9. `llm_build_plamo2` 与 `llm_build_nemotron_h` 都继承自 `llm_build_mamba_base`，但它们的 `build_ffn_layer` / `build_layer_ffn` 方法的作用是什么？
 
-### 练习 6：动手扩展基类以支持新模型架构
+### 25.7.6 练习 6：动手扩展基类以支持新模型架构
 
 1. 基于 `src/models/models.h` 暴露的基类，完成以下扩展练习：
 2. 假设要支持一个新的 Mamba 变体（如 Mamba3），需要继承哪个基类？需要覆写哪些方法？写出类的声明骨架。
@@ -1951,7 +1951,7 @@ flowchart LR
 
 ---
 
-## 26.8 本章小结
+## 25.8 本章小结
 
 这一章中我们学习了 llama.cpp 的基础设施模块与模型图构建基类体系。首先，我们深入剖析了 `src/llama-impl.h/.cpp` 中的核心工具：RAII 风格的作用域计时器 `time_meas`、线程安全的字符串格式化 `format()`、高效的全局替换 `replace_all()`、张量形状人类化格式化 `llama_format_tensor_shape()`，以及 GGUF 元数据的字符串化工具 `gguf_data_to_str()` 与 `gguf_kv_to_str()`。其次，我们详细解读了 `src/llama-io.h/.cpp` 中的 I/O 抽象层：抽象写/读接口 `llama_io_write_i`/`llama_io_read_i`，及其三种具体实现——内存缓冲区（`buffer`）、本地文件（`file`）、虚拟空实现（`dummy`），理解了依赖倒置如何让序列化逻辑与存储介质解耦。接着，我们系统梳理了 `src/models/models.h` 中的模型图构建基类族：Mamba 基类封装状态空间层、DeltaNet 基类提供线性注意力三模式自动选择、RWKV6/7 基类实现通道/时间混合双引擎、Kimi-Linear 实现 KDA 两种模式、Qwen3Next/3.5 系列标准化线性注意力流水线、Gemma3n AltUp 九步流水线、Gemma4 每层嵌入投影、Granite 系列残差缩放、Plamo2/Nemotron-H 混合架构两种复用模式。最后，我们通过设计取舍分析，理解了为什么按架构家族分基类而非统一大基类、为什么自研 I/O 抽象而非用标准流、为什么 time_meas 封装 ggml_time_us。
 

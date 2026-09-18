@@ -1,5 +1,5 @@
 
-# 第56章 工具函数与辅助能力 —— common 模块的「瑞士军刀」
+# 第55章 工具函数与辅助能力 —— common 模块的「瑞士军刀」
 
 ## 学习目标
 
@@ -10,11 +10,11 @@
 - 理解正则过滤器在多模态调试中的应用，掌握回调数据结构的零拷贝或低开销数据获取策略
 - 能运用这些底层工具处理二进制数据、Unicode 文本、流式解析及模型调试场景
 
-## 56.1 生活类比
+## 55.1 生活类比
 
 想象这些工具是**国际机场的地面支持系统**：Base64 就像行李与货物标签系统，标准标签用于普通通道，URL 安全标签用于特殊货物通道（避免 `+/` 在传送带造成混乱），自动检测如同扫码枪智能识别标签类型；Unicode 处理如同多语言海关查验，UTF-8 序列长度判断是快速查看护照类型；码点解析是将签证页（多字节）翻译成统一语言；完整性检查像是确认旅客是否拿齐了所有登机牌碎片；正则部分匹配则是行李传送带监控系统，不仅识别完全匹配标签的行李，还能识别正在传送带尽头（字符串末尾）部分可见、即将完全符合标签规则的行李；张量调试则是货物 X 光检测仪，`common_debug_cb_eval` 是固定在流水线旁的扫描仪，当货物（张量）经过时自动拍照（打印）；`base_callback_data` 是安检员的 filtering 清单，只关注特定类型的货物。就像机场需要这些系统协同确保行李正确流转，llama.cpp 需要这些工具确保数据在预处理、解析和调试阶段准确无误。
 
-## 56.2 源码地图
+## 55.2 源码地图
 
 common/base64.hpp
 ├── base64_error                      # 异常类（继承 std::runtime_error）
@@ -84,11 +84,11 @@ common/debug.cpp
 ├── common_debug_cb_eval<>()          # 图执行调试回调（110-153行）
 └── __main__                          # 显式模板实例化 <true>/<false>（156-159行）
 
-## 56.3 Base64 编码解码 —— 二进制与文本的「翻译官」
+## 55.3 Base64 编码解码 —— 二进制与文本的「翻译官」
 
 Base64 是将二进制数据编码为可打印 ASCII 字符的通用方案。llama.cpp 实现了一个头文件级的 `base64` 类，支持标准字母表（`A-Z a-z 0-9 + /`）与 URL 安全字母表（`A-Z a-z 0-9 - _`），并提供自动检测、三级错误处理、就地解码等工程级特性。
 
-### 56.3.1 base64_error：异常安全的「红灯」
+### 55.3.1 base64_error：异常安全的「红灯」
 
 ```cpp
 // common/base64.hpp (第21-28行)
@@ -101,7 +101,7 @@ public:
 
 这段代码定义了一个轻量级异常类，直接继承 `std::runtime_error` 的构造函数，用于在解码遇到非法字符或格式错误时抛出。所有编解码失败最终都汇聚到此异常，便于上层统一捕获。
 
-### 56.3.2 编码核心：三字节到四字符的位魔术
+### 55.3.2 编码核心：三字节到四字符的位魔术
 
 ```cpp
 // common/base64.hpp (第64-127行)
@@ -155,7 +155,7 @@ static Output_iterator encode(Input_iterator in_begin, Input_iterator in_end, Ou
 
 这段代码实现了标准的 Base64 编码算法：每 3 字节（24 位）拆成 4 个 6 位组，通过 `& 0x3f` 取值并查字母表。模板化迭代器接口同时支持 `std::string`、原始指针等任意输入输出范围。字母表选择在编译期分支完成，零运行时开销。
 
-### 56.3.3 字符串重载与缓冲区预估
+### 55.3.3 字符串重载与缓冲区预估
 
 ```cpp
 // common/base64.hpp (第128-159行)
@@ -178,7 +178,7 @@ static std::string encode(const char* buffer, std::size_t size, alphabet alphabe
 
 这两个重载提供面向 `std::string` 和 C 风格数组的便捷入口。`required_encode_size` 精确计算所需空间（含填充），配合 `reserve` 实现一次分配、零拷贝追加。
 
-### 56.3.4 解码反向工程：6 位到 8 位的重组
+### 55.3.4 解码反向工程：6 位到 8 位的重组
 
 ```cpp
 // common/base64.hpp (第160-220行)
@@ -223,7 +223,7 @@ static Output_iterator decode(Input_iterator in_begin, Input_iterator in_end, Ou
 
 解码采用流式状态机：`last` 保存上一个 6 位值，`bits` 记录当前缓冲的有效位数。每次读入新的 6 位 `part`，若 `bits+6 >= 8` 则组合出一个字节输出，剩余 2 位留待下一轮。这种“跨边界位拼接”避免了中间缓冲区，极其节省内存。
 
-### 56.3.5 _base64_value：字符映射与字母表自动检测
+### 55.3.5 _base64_value：字符映射与字母表自动检测
 
 ```cpp
 // common/base64.hpp (第313-352行)
@@ -251,7 +251,7 @@ static std::uint8_t _base64_value(alphabet& alphabet, char c)
 
 这是自动检测的核心：当用户传入 `alphabet::auto_` 时，首次遇到 `+/` 或 `_-` 即锁定字母表类型，后续字符按该表严格校验。这种“延迟绑定”设计兼顾了灵活性与安全性。
 
-### 56.3.6 就地解码与缓冲区计算
+### 55.3.6 就地解码与缓冲区计算
 
 ```cpp
 // common/base64.hpp (第253-282行)
@@ -287,11 +287,11 @@ static std::size_t required_encode_size(std::size_t size) noexcept
 
 ---
 
-## 56.4 Unicode 处理 —— 字符编码的「通关文牒」
+## 55.4 Unicode 处理 —— 字符编码的「通关文牒」
 
 UTF-8 是变长编码（1~4 字节），llama.cpp 提供了一套流式感知、边界安全的解析与编码工具，覆盖序列长度判定、码点解析、完整性检查、反向编码全流程。
 
-### 56.4.1 utf8_parse_result：解析结果的「三态护照」
+### 55.4.1 utf8_parse_result：解析结果的「三态护照」
 
 ```cpp
 // common/unicode.h (第8-9行)
@@ -307,7 +307,7 @@ struct utf8_parse_result {
 
 解析结果封装了三种状态：`SUCCESS`（完整码点）、`INCOMPLETE`（输入截断，需更多数据）、`INVALID`（非法字节序列）。这种三态设计完美适配网络流、文件流等增量输入场景。
 
-### 56.4.2 序列长度快速判定：首字节的四位掩码
+### 55.4.2 序列长度快速判定：首字节的四位掩码
 
 ```cpp
 // common/unicode.cpp (第10-14行)
@@ -321,7 +321,7 @@ size_t common_utf8_sequence_length(unsigned char first_byte)
 
 利用首字节高 4 位作为索引，O(1) 查表返回序列长度：`0xxx`→1、`110x`→2、`1110`→3、`11110`→4。连续字节 `10xxxxxx` 高 4 位为 `8/9/A/B`，查表返回 0，隐式标记为非法起始字节。无分支、零内存分配，极致高效。
 
-### 56.4.3 流式感知的码点解析
+### 55.4.3 流式感知的码点解析
 
 ```cpp
 // common/unicode.cpp (第16-61行)
@@ -363,7 +363,7 @@ utf8_parse_result common_parse_utf8_codepoint(std::string_view input, size_t off
 
 解析器按位模式层层分支，优先处理 ASCII 快速路径。每种多字节序列先检查剩余长度（`INCOMPLETE`），再验证后续字节均为 `10xxxxxx` 格式（否则 `INVALID`），最后通过位掩码与移位拼接码点。这种“长度优先、格式次之”的顺序最小化了分支预测失败。
 
-### 56.4.4 完整性检查的边界处理
+### 55.4.4 完整性检查的边界处理
 
 ```cpp
 // common/unicode.cpp (第63-77行)
@@ -383,7 +383,7 @@ bool common_utf8_is_complete(const std::string& s)
 
 从字符串末尾向前扫描最多 4 字节，找到第一个非 `10xxxxxx` 字节（即序列起始字节），根据其高位确定预期长度，对比已扫描字节数。这完美解决了“流式输入末尾是否被截断”的问题。
 
-### 56.4.5 码点到 UTF-8 的编码转换
+### 55.4.5 码点到 UTF-8 的编码转换
 
 ```cpp
 // common/unicode.cpp (第87-114行)
@@ -420,11 +420,11 @@ std::string common_unicode_cpt_to_utf8(uint32_t cpt)
 
 ---
 
-## 56.5 正则部分匹配 —— 反向字符串的「镜中世界」
+## 55.5 正则部分匹配 —— 反向字符串的「镜中世界」
 
 流式场景（如逐 token 生成）需要判断“当前文本是否为某模式的前缀”。llama.cpp 通过将正则表达式转换为作用于**反转字符串**的特殊正则，巧妙实现了部分匹配检测。
 
-### 56.5.1 核心数据结构
+### 55.5.1 核心数据结构
 
 ```cpp
 // common/regex-partial.h (第13-25行)
@@ -458,7 +458,7 @@ struct common_regex_match {
 
 匹配结果区分 `FULL`（完整匹配）与 `PARTIAL`（前缀匹配），并记录所有捕获组的位置区间。
 
-### 56.5.2 核心转换算法：从左到右 → 从右到左
+### 55.5.2 核心转换算法：从左到右 → 从右到左
 
 ```cpp
 // common/regex-partial.cpp (第46-145行)
@@ -544,7 +544,7 @@ std::string regex_to_reversed_partial_regex(const std::string& pattern)
 
 最终生成的正则如 `^(?:(?:(?:d)?c)?b)?a`，在反转字符串上 `regex_search` 即可匹配 `a`、`ab`、`abc`、`abcd` 的反转形式。
 
-### 56.5.3 双重匹配搜索接口
+### 55.5.3 双重匹配搜索接口
 
 ```cpp
 // common/regex-partial.cpp (第12-44行)
@@ -593,11 +593,11 @@ common_regex_match common_regex::search(const std::string& input, size_t pos, bo
 
 ---
 
-## 56.6 张量调试工具 —— 计算图的「X光透视仪」
+## 55.6 张量调试工具 —— 计算图的「X光透视仪」
 
 调试 GGML 计算图需要在图执行期间检查张量数值、形状、NaN 等。llama.cpp 提供了 `common_debug_print_tensor`、`common_debug_cb_eval` 及配套数据结构，支持跨设备内存访问、正则过滤、智能截断打印。
 
-### 56.6.1 维度格式化与类型安全访问
+### 55.6.1 维度格式化与类型安全访问
 
 ```cpp
 // common/debug.cpp (第7-17行)
@@ -635,7 +635,7 @@ static float common_ggml_get_float_value(const uint8_t* data, ggml_type type,
 
 统一入口按类型分发，计算多维索引偏移（`nb` 为各维步长），统一转为 `float` 便于打印比较。量化类型不在此处理，由上层判断跳过。
 
-### 56.6.2 智能截断打印
+### 55.6.2 智能截断打印
 
 ```cpp
 // common/debug.cpp (第50-97行)
@@ -681,7 +681,7 @@ void common_debug_print_tensor(uint8_t* data, ggml_type type, const int64_t* ne,
 
 模板参数 `abort` 控制是否在检测到 NaN 总和时终止进程。打印采用四层嵌套循环对应 4 维张量，每层维度超过 `2*n` 时跳转到尾部 `n` 个元素，中间用 `...,` 省略。先求和后打印，保证 NaN 检测覆盖全张量。
 
-### 56.6.3 图执行调试回调
+### 55.6.3 图执行调试回调
 
 ```cpp
 // common/debug.cpp (第110-153行)
@@ -734,7 +734,7 @@ bool common_debug_cb_eval(struct ggml_tensor* t, bool ask, void* user_data)
 - 若张量在设备内存（GPU/NPU），通过 `ggml_backend_tensor_get` 拷贝到 `cb_data->data` 缓冲区（自动扩容）。
 - 最后调用 `common_debug_print_tensor` 打印数值，`abort_on_nan` 控制是否因 NaN 退出。
 
-### 56.6.4 回调数据结构与注册
+### 55.6.4 回调数据结构与注册
 
 ```cpp
 // common/debug.h (第27-41行)
@@ -773,7 +773,7 @@ template void common_debug_print_tensor<true>(uint8_t*, ggml_type, const int64_t
 
 ---
 
-## 56.7 设计中的取舍
+## 55.7 设计中的取舍
 
 **为什么 Base64 解码要用 `last` 和 `bits` 两个状态变量？**
 因为 Base64 是 6 位一组，字节是 8 位。解码时需要跨边界拼装：上一组剩余的 2~6 位与下一组的高位合成一个字节。`last` 保存上一组的 6 位值，`bits` 记录当前缓冲了多少有效位。这比“先拼成大整数再拆字节”更流式、更省内存。
@@ -792,9 +792,9 @@ GGML 调度器在图执行前先用 `ask=true` 询问回调是否支持该节点
 
 ---
 
-## 56.8 动手练习
+## 55.8 动手练习
 
-### 练习 1：Base64 边界条件测试
+### 55.8.1 练习 1：Base64 边界条件测试
 阅读 `common/base64.hpp` 的 `encode()` 和 `decode()` 实现，分析以下边界情况：
 1. 输入长度为 0、1、2、3、4、5 时的编码结果差异
 2. 使用 `alphabet::url_filename_safe` 编码包含 `+/` 的数据，再用 `alphabet::standard` 解码会发生什么
@@ -804,7 +804,7 @@ GGML 调度器在图执行前先用 `ask=true` 询问回调是否支持该节点
 - 为什么 `decode` 需要 `last` 和 `bits` 两个状态变量？
 - 如何实现一个 `encode_inplace` 函数（提示：需要原地扩展空间）？
 
-### 练习 2：UTF-8 流式解析器实现
+### 55.8.2 练习 2：UTF-8 流式解析器实现
 基于 `common/unicode.cpp` 中的 `common_parse_utf8_codepoint`：
 1. 构造测试用例：0x41（A）、0xC3 0xA9（é）、0xE4 0xB8 0xAD（中）、0xF0 0x9F 0x98 0x80（😀）
 2. 故意截断上述多字节序列的最后 1-2 字节，观察解析器返回的 INCOMPLETE 状态
@@ -813,7 +813,7 @@ GGML 调度器在图执行前先用 `ask=true` 询问回调是否支持该节点
 - `common_utf8_is_complete` 为什么要从后往前扫描最多 4 字节？
 - 如果要在网络流中实现「边收边解」，如何利用这些函数的返回值设计状态机？
 
-### 练习 3：正则部分匹配转换验证
+### 55.8.3 练习 3：正则部分匹配转换验证
 阅读 `common/regex-partial.cpp` 的 `regex_to_reversed_partial_regex`：
 1. 手动推导模式 `abc`、`a.c`、`[abc]{2,3}`、`(ab|cd)+` 的反向部分匹配形式
 2. 使用验证函数测试（构造包含前缀的字符串如 `a`、`ab`、`abc`、`abcd`）
@@ -823,7 +823,7 @@ GGML 调度器在图执行前先用 `ask=true` 询问回调是否支持该节点
 - 为什么最终反向正则需要 `^(?:(?:...` 这样的嵌套非捕获组结构？
 - 如果原始模式包含 `^` 或 `$` 锚点，转换算法需要如何调整？
 
-### 练习 4：张量调试工具实践
+### 55.8.4 练习 4：张量调试工具实践
 基于 `common/debug.cpp` 的调试工具：
 1. 创建一个包含 NaN 值的 F32 张量，使用 `common_debug_print_tensor<true>` 观察程序终止行为
 2. 构造一个 100x100 的 F16 张量，观察 `n=3` 时的截断打印格式
@@ -836,7 +836,7 @@ GGML 调度器在图执行前先用 `ask=true` 询问回调是否支持该节点
 
 ---
 
-## 56.9 本章小结
+## 55.9 本章小结
 
 这一章中我们学习了 llama.cpp common 模块中的四大核心工具集。首先，Base64 编解码器实现了双字母表设计与自动检测，通过位操作实现高效的三字节到四字符转换，并提供就地解码与三级错误处理策略。其次，Unicode 处理工具基于查表法实现 O(1) 序列长度判定，流式感知解析器区分 SUCCESS/INCOMPLETE/INVALID 三态，完整性检查通过反向扫描解决截断问题，编码函数严格遵循 UTF-8 位模板。接着，正则部分匹配通过将正向正则转换为作用于反转字符串的嵌套可选组正则，巧妙实现了流式前缀匹配检测，搜索接口采用双重模式区分完整与部分匹配。最后，张量调试工具提供类型安全的元素访问、智能截断打印、图执行回调钩子与跨设备内存拷贝，配合正则过滤器实现选择性调试，显式模板实例化控制代码膨胀。
 

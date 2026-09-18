@@ -1,7 +1,7 @@
 
 
 
-# 第34章 大模型博物馆长尾展厅巡礼 —— 解码器架构的进化化石与实验前沿
+# 第33章 大模型博物馆长尾展厅巡礼 —— 解码器架构的进化化石与实验前沿
 
 ## 学习目标
 
@@ -20,11 +20,11 @@
 - 理解 Plamo 三路累加并行残差、Seed-OSS 后置归一化、Minimax-M2 head_dim ≠ n_rot MoE 的特殊处理
 - 了解 Dots1 稠密/MoE 分层路由、AFMoE 注意力门控等 MoE 变体的差异化实现
 
-## 34.1 生活类比
+## 33.1 生活类比
 
 走进本章的**大模型博物馆长尾展厅**，你会看到策展人为每件展品挑选了最合适的展台与灯光。入口处停放着两辆**复古老爷车**——GPT-2 用绝对位置嵌入铺就的经典红毯，GPT-NeoX 换装了 NeoX RoPE 与并行残差的双涡轮引擎；靠墙立着苹果出品的**可调节层高书架**——OpenELM 每层 `n_head`/`n_head_kv` 可独立调节，Q/K Norm 做书挡；中厅是**双车道高速公路**——Falcon 的 `attn_norm_2` 与 StableLM 的 `ffn_norm` 缺失并行残差，让注意力与 FFN 双车道并行；旁边摆着**带安全阀的压力容器**——MPT 的 `f_clamp_kqv` 给 QKV 数值加上限，Refact 则是极简 post-norm 的单壳容器；化石区陈列着**博物馆标本**——Bloom 的 token 级 `tok_norm` 前置归一化，CodeShell 在 GPT-2 底盘上装上 RoPE；双层玻璃幕墙后是 **Cohere2-ISWA 与 Command-R**——ISWA 双缓存内外隔热，SWA 层透光不 RoPE，Command-R 标准 KV 始终 RoPE 且 Q/K Norm 前置；LG 的**三代折叠屏手机** EXAONE 系列依次展示基础款、MoE 双模式、模板化 ISWA 双 post-norm；精密仪器区放着 **Granite 与 Nemotron**——模块化拆分、残差缩放、ReLU² 激活是工程师对精度的极致追求；开源实验笔记本 **OLMo 三部曲** 翻开无显式权重、模板化 ISWA、Softmax gating 三页；微软的**精打细算小车** Phi 系列演示 Q 缩放防漂移、双激活分支；代码生成器 **StarCoder v1/v2** 见证位置嵌入到 RoPE 的演进，阿拉伯语翻译机 **JAIS/JAIS2** 专属定制；压缩行李箱 **PLM/MiniCPM3** 亮出 MLA 低秩 KV/Q、多层缩放；会跳绳的舞者 **SmolLM3** 隔层去 RoPE 展示节奏感；实验室原型机 **BitNet 1-bit 量化** 与 **Apertus xIELU** 是数学家的玩具；实验剧场上演 **AFMoE 门控注意力、Dream 扩散双向注意力、Deci 层级自由组合**；长尾展厅深处珍藏 **Orion 注释偏置、Xverse 简洁 LLaMA、MainCoder post-RoPE Norm、Plamo 三路残差、Seed-OSS attn_post_norm、Minimax-M2 head_dim≠n_rot** 等小众藏品。每一件展品背后，都是 llama.cpp 作者精心设计的专属图构建器。
 
-## 34.2 源码地图
+## 33.2 源码地图
 
 ```
 src/models/gpt2.cpp
@@ -116,11 +116,11 @@ src/models/models.h
 ├── struct llm_build_* 声明  # 所有图构建器的基类与成员声明
 ```
 
-## 34.3 复古老爷车：GPT-2/GPT-NeoX 的位置嵌入与并行残差演进
+## 33.3 复古老爷车：GPT-2/GPT-NeoX 的位置嵌入与并行残差演进
 
 GPT-2 与 GPT-NeoX 是 Transformer 解码器家族的「复古双打」。GPT-2 沿用了绝对位置嵌入，将 `pos_embd` 在嵌入层之后直接加到 token 嵌入上；而 GPT-NeoX 引入了 NeoX 风格的 RoPE，并通过 `use_par_res` 开关控制 Attention 与 FFN 是否并行计算。二者都使用 `wqkv` 共享矩阵，通过 `ggml_view_3d` 切片出 Q/K/V，且 FFN 均采用 `LLM_FFN_GELU + LLM_FFN_SEQ`（无门控的顺序结构）。
 
-### 34.3.1 llm_build_gpt2：构建位置嵌入与 QKV 共享投影图
+### 33.3.1 llm_build_gpt2：构建位置嵌入与 QKV 共享投影图
 
 源码路径：`src/models/gpt2.cpp` - `llm_build_gpt2` (行 5-68)
 
@@ -181,7 +181,7 @@ llm_build_gpt2::llm_build_gpt2(const llama_model & model, const llm_graph_params
 
 > **代码解析**：该函数实现了 GPT-2 的经典架构：绝对位置嵌入（第 ③ 步）、QKV 共享投影矩阵（第 ⑤ 步 `ggml_view_3d` 切片）、标准 LayerNorm、GELU 激活的顺序 FFN。它是早期大语言模型的标准范式，未使用 RoPE，位置信息仅通过可学习的 `pos_embd` 注入。
 
-#### GPT-2 计算流程时序图
+#### 33.3.1.1 GPT-2 计算流程时序图
 
 ```mermaid
 sequenceDiagram
@@ -217,7 +217,7 @@ sequenceDiagram
 
 ---
 
-### 34.3.2 llm_build_gptneox：实现 NeoX RoPE 与并行残差分支
+### 33.3.2 llm_build_gptneox：实现 NeoX RoPE 与并行残差分支
 
 源码路径：`src/models/gptneox.cpp` - `llm_build_gptneox` (行 1-132)
 
@@ -299,7 +299,7 @@ llm_build_gptneox::llm_build_gptneox(const llama_model & model, const llm_graph_
 
 > **代码解析**：此函数实现了 GPT-NeoX 两大创新：① NeoX 风格 RoPE 位置编码（替代绝对位置嵌入）；② `use_par_res` 控制的并行残差分支。当 `use_par_res=true` 时，Attention 与 FFN 并行从 `inpL` 计算，最后与 `inpL` 三路相加（`attn_out + ffn_out + inpL`），这是早期并行残差的经典实现，能减少关键路径深度。
 
-#### GPT-NeoX 并行/串行残差对比流程图
+#### 33.3.2.1 GPT-NeoX 并行/串行残差对比流程图
 
 ```mermaid
 flowchart TD
@@ -329,11 +329,11 @@ flowchart TD
 
 ---
 
-## 34.4 可调节层高书架：OpenELM 的层级缩放与 Q/K Norm
+## 33.4 可调节层高书架：OpenELM 的层级缩放与 Q/K Norm
 
 OpenELM 的核心创新是**层级缩放**：每层可以拥有不同的 `n_head` 与 `n_head_kv`，通过 `n_head_qkv = 2*n_head_kv + n_head` 显式声明 QKV 拼接尺寸。Q/K 在 RoPE 之前先经过 RMSNorm 归一化（`attn_q_norm`/`attn_k_norm`），FFN 使用 SwiGLU 并行门控，残差采用 post-norm 风格的直接相加。
 
-### 34.4.1 llm_build_openelm：构建层级 n_head 与 Q/K Norm 图
+### 33.4.1 llm_build_openelm：构建层级 n_head 与 Q/K Norm 图
 
 源码路径：`src/models/openelm.cpp` - `llm_build_openelm` (行 1-133)
 
@@ -387,7 +387,7 @@ llm_build_openelm(const llama_model & model, const llm_graph_params & params) : 
 
 > **代码解析**：该函数体现了 OpenELM 三大特色：① 每层可变的 `n_head`/`n_head_kv`（第 ①② 步）；② Q/K Norm 放在 RoPE 之前（第 ⑤ 步），稳定旋转后的数值分布；③ `n_head_qkv = 2*n_head_kv + n_head` 显式声明拼接维度（第 ③ 步），避免运行时歧义。切片使用 `cur->nb[1]` 作为步长，适配任意内存布局。
 
-#### OpenELM 层级缩放架构图
+#### 33.4.1.1 OpenELM 层级缩放架构图
 
 ```mermaid
 graph TB
@@ -410,13 +410,13 @@ graph TB
 
 ---
 
-## 34.5 双车道高速公路：Falcon 与 StableLM 的工程变体
+## 33.5 双车道高速公路：Falcon 与 StableLM 的工程变体
 
 Falcon-40B 引入了 `attn_norm_2` 双归一化分支：注意力路径使用第二份归一化结果。FFN 直接使用 `attn_norm` 作为输入而非残差后的张量，节省一次归一化。输出通过 `cur + ffn_inp + inpL` 三路累加。
 
 StableLM 在 `ffn_norm` 缺失时复用 `inpSA` 实现并行残差，支持可选的 `attn_q_norm`/`attn_k_norm`。
 
-### 34.5.1 llm_build_falcon：构建双归一化与三路累加图
+### 33.5.1 llm_build_falcon：构建双归一化与三路累加图
 
 源码路径：`src/models/falcon.cpp` - `llm_build_falcon` (行 1-100)
 
@@ -463,7 +463,7 @@ llm_build_falcon::llm_build_falcon(const llama_model & model, const llm_graph_pa
 
 > **代码解析**：Falcon 的设计精髓在于：① `attn_norm_2` 为大模型（如 40B）提供额外的归一化稳定性；② FFN 复用 `attn_norm` 节省一次归一化计算；③ 三路残差（`cur + ffn_inp + inpL`）保留多层信息流，增强梯度传播。
 
-### 34.5.2 llm_build_stablelm：实现并行残差的 inpSA 复用图
+### 33.5.2 llm_build_stablelm：实现并行残差的 inpSA 复用图
 
 源码路径：`src/models/stablelm.cpp` - `llm_build_stablelm` (行 7-81)
 
@@ -500,7 +500,7 @@ for (int il = 0; il < n_layer; ++il) {
 
 > **代码解析**：StableLM 的巧妙之处：当 `ffn_norm` 为空时，直接将 `inpSA`（即 attention 后的归一化结果）作为 FFN 输入，实现了并行残差的变体——Attention 与 FFN 共享同一归一化输入 `inpSA`，再与 `inpL` 汇聚。
 
-#### Falcon vs StableLM 残差拓扑对比
+#### 33.5.2.1 Falcon vs StableLM 残差拓扑对比
 
 ```mermaid
 graph LR
@@ -526,11 +526,11 @@ graph LR
 
 ---
 
-## 34.6 带安全阀的压力容器：MPT 与极简样本 Refact
+## 33.6 带安全阀的压力容器：MPT 与极简样本 Refact
 
 MPT 提供可配置的 KV 数值截断（`f_clamp_kqv`）、可选的绝对位置编码（`pos_embd`）、以及可选的 Q/K 归一化。Refact 则是极致精简的 post-norm 模板：无偏置、无 QKV 共享矩阵、无位置嵌入，直接使用 SwiGLU 并行门控。
 
-### 34.6.1 llm_build_mpt：构建 f_clamp_kqv 与可选 Q/K Norm 图
+### 33.6.1 llm_build_mpt：构建 f_clamp_kqv 与可选 Q/K Norm 图
 
 源码路径：`src/models/mpt.cpp` - `llm_build_mpt` (行 1-112)
 
@@ -571,7 +571,7 @@ llm_build_mpt::llm_build_mpt(const llama_model & model, const llm_graph_params &
 
 > **代码解析**：MPT 的工程细节：① 可选绝对位置编码兼容旧权重；② `f_clamp_kqv` 防止数值发散，训练大模型时的安全阀；③ Q/K Norm 需要先 reshape 为 2D 再归一化，再 reshape 回 3D，体现 ggml 张量操作的灵活性。
 
-### 34.6.2 llm_build_refact：构建极简 post-norm 模板图
+### 33.6.2 llm_build_refact：构建极简 post-norm 模板图
 
 源码路径：`src/models/refact.cpp` - `llm_build_refact` (行 1-70)
 
@@ -617,11 +617,11 @@ llm_build_refact::llm_build_refact(const llama_model & model, const llm_graph_pa
 
 ---
 
-## 34.7 化石标本：Bloom 与 CodeShell 的经典工程化实现
+## 33.7 化石标本：Bloom 与 CodeShell 的经典工程化实现
 
 Bloom 采用 token 级前置归一化（`tok_norm` 在嵌入后立即应用），使用 GELU+SEQ 的经典 FFN。CodeShell 基于 GPT-2 风格但加入 RoPE，断言 `n_embd_head == n_rot` 确保 head 维度等于 RoPE 维度。
 
-### 34.7.1 llm_build_bloom：构建 token 级前置归一化图
+### 33.7.1 llm_build_bloom：构建 token 级前置归一化图
 
 源码路径：`src/models/bloom.cpp` - `llm_build_bloom` (行 1-84)
 
@@ -650,7 +650,7 @@ llm_build_bloom::llm_build_bloom(const llama_model & model, const llm_graph_para
 
 > **代码解析**：Bloom 的 `tok_norm` 是在嵌入层之后、所有 Transformer 层之前应用的全局归一化（第 ① 步），统一了输入分布，这是 BLOOM 架构的标志性设计。
 
-### 34.7.2 llm_build_codeshell：构建代码特化 GPT-2+RoPE 图
+### 33.7.2 llm_build_codeshell：构建代码特化 GPT-2+RoPE 图
 
 源码路径：`src/models/codeshell.cpp` - `llm_build_codeshell` (行 1-94)
 
@@ -684,11 +684,11 @@ llm_build_codeshell::llm_build_codeshell(const llama_model & model, const llm_gr
 
 ---
 
-## 34.8 双层玻璃幕墙：Cohere2-ISWA 与 Command-R 的双子星架构
+## 33.8 双层玻璃幕墙：Cohere2-ISWA 与 Command-R 的双子星架构
 
 Cohere2-ISWA 使用 `build_attn_inp_kv_iswa()` 双缓存，SWA 层（`is_swa(il)`）跳过 RoPE。Command-R 使用标准 KV 缓存但始终应用 RoPE，并在 RoPE 前对 Q/K 做归一化。二者都采用并行残差（三路累加）。
 
-### 34.8.1 llm_build_cohere2_iswa：构建 ISWA 双缓存与 SWA 层无 RoPE 图
+### 33.8.1 llm_build_cohere2_iswa：构建 ISWA 双缓存与 SWA 层无 RoPE 图
 
 源码路径：`src/models/cohere2-iswa.cpp` - `llm_build_cohere2_iswa` (行 3-88)
 
@@ -728,7 +728,7 @@ llm_build_cohere2_iswa::llm_build_cohere2_iswa(const llama_model & model, const 
 
 > **代码解析**：Cohere2-ISWA 核心：① ISWA 双缓存输入（`build_attn_inp_kv_iswa`）；② `is_swa(il)` 判断 SWA 层；③ SWA 层才应用 RoPE，全局注意力层跳过 RoPE；④ logits 输出缩放 `f_logit_scale`。
 
-### 34.8.2 llm_build_command_r：构建标准 KV + 始终 RoPE + Q/K Norm 图
+### 33.8.2 llm_build_command_r：构建标准 KV + 始终 RoPE + Q/K Norm 图
 
 源码路径：`src/models/command-r.cpp` - `llm_build_command_r` (行 9-104)
 
@@ -766,7 +766,7 @@ llm_build_command_r::llm_build_command_r(const llama_model & model, const llm_gr
 
 > **代码解析**：Command-R 与 Cohere2-ISWA 差异：① 标准 KV 缓存；② 始终应用 RoPE；③ RoPE 前 Q/K Norm；④ 相同的并行残差模式（三路累加）。
 
-#### ISWA 双缓存 vs 标准 KV 缓存架构对比
+#### 33.8.2.1 ISWA 双缓存 vs 标准 KV 缓存架构对比
 
 ```mermaid
 graph LR
@@ -788,11 +788,11 @@ graph LR
 
 ---
 
-## 34.9 三代折叠屏手机：EXAONE 系列的模板化演进
+## 33.9 三代折叠屏手机：EXAONE 系列的模板化演进
 
 EXAONE 基础款是 post-norm + RoPE 因子 + SwiGLU。EXAONE-MOE 引入 ISWA 与稠密/MoE 双模式，支持共享专家。EXAONE4 使用模板 `<bool iswa>` 编译期决定 KV 输入，引入双 post-norm（`attn_post_norm` + `ffn_post_norm`）。
 
-### 34.9.1 llm_build_exaone_moe：构建稠密/MoE 双分支与共享专家图
+### 33.9.1 llm_build_exaone_moe：构建稠密/MoE 双分支与共享专家图
 
 源码路径：`src/models/exaone-moe.cpp` - `llm_build_exaone_moe` (行 1-124)
 
@@ -836,7 +836,7 @@ llm_build_exaone_moe::llm_build_exaone_moe(const llama_model & model, const llm_
 
 > **代码解析**：EXAONE-MOE 亮点：① ISWA 缓存输入；② `is_swa(il)` 判断 SWA 层（仅 SWA 层 RoPE）；③ 运行时分支选择稠密或 MoE FFN；④ 共享专家 `ffn_shexp` 与路由专家 `moe_out` 并行混合（`ggml_add`）。
 
-### 34.9.2 llm_build_exaone4：构建模板化 ISWA 与双 post-norm 图
+### 33.9.2 llm_build_exaone4：构建模板化 ISWA 与双 post-norm 图
 
 源码路径：`src/models/exaone4.cpp` - `llm_build_exaone4<iswa>` (行 5-90)
 
@@ -886,7 +886,7 @@ template struct llm_build_exaone4<true>;
 
 > **代码解析**：EXAONE4 模板技巧：`std::conditional_t<iswa, ...>` 编译期选择 KV 输入类型（第 ① 步），消除运行时分支；双 post-norm（`attn_post_norm` + `ffn_post_norm`，第 ②③ 步）是现代 post-norm 架构的典范；显式实例化（第 ④ 步）保证链接器生成两个版本代码。
 
-#### EXAONE 三代演进架构图
+#### 33.9.2.1 EXAONE 三代演进架构图
 
 ```mermaid
 graph TB
@@ -914,11 +914,11 @@ graph TB
 
 ---
 
-## 34.10 精密工业仪器：Granite 模块化拆分与 Nemotron ReLU² 激活
+## 33.10 精密工业仪器：Granite 模块化拆分与 Nemotron ReLU² 激活
 
 Granite 将注意力与 FFN 抽出为独立方法（`build_attention_layer`、`build_layer_ffn`），支持稠密+MoE 双模式，通过 `f_residual_scale` 控制残差缩放，输出端反向缩放 logits（`1/f_logit_scale`）。Nemotron 使用 ReLU² 激活（`LLM_FFN_RELU_SQR`）。
 
-### 34.10.1 llm_build_granite：构建模块化拆分与双重残差缩放图
+### 33.10.1 llm_build_granite：构建模块化拆分与双重残差缩放图
 
 源码路径：`src/models/granite.cpp` - `llm_build_granite` 及成员方法 (行 1-154)
 
@@ -981,7 +981,7 @@ ggml_tensor * llm_build_granite::build_layer_ffn(ggml_tensor * cur, ggml_tensor 
 
 > **代码解析**：Granite 工程化设计：① 模块化拆分 `build_attention_layer`/`build_layer_ffn` 便于维护与复用；② 双重残差缩放（FFN 前后各一次 `f_residual_scale`）；③ 可配置注意力缩放 `f_attention_scale` 覆盖默认 `1/sqrt(d)`；④ 输出端反向缩放 logits（`1/f_logit_scale`），与训练时 logits 缩放形成闭环。
 
-### 34.10.2 llm_build_nemotron：构建 ReLU² 激活图
+### 33.10.2 llm_build_nemotron：构建 ReLU² 激活图
 
 源码路径：`src/models/nemotron.cpp` - `llm_build_nemotron` (行 1-124)
 
@@ -1002,11 +1002,11 @@ llm_build_nemotron::llm_build_nemotron(const llama_model & model, const llm_grap
 
 ---
 
-## 34.11 开源科学的实验笔记本：OLMo 系列三连发
+## 33.11 开源科学的实验笔记本：OLMo 系列三连发
 
 OLMo 无显式权重归一化（`build_norm(..., NULL, NULL, ...)` 跳过权重加载），可选 `ggml_clamp` QKV。OLMo2 模板化 ISWA，SWA 层关闭 YaRN（`freq_scale=1.0, ext_factor=0.0`），双 post-norm。OLMoE 使用 Softmax gating（`LLAMA_EXPERT_GATING_FUNC_TYPE_SOFTMAX`）。
 
-### 34.11.1 llm_build_olmo：构建无显式权重归一化图
+### 33.11.1 llm_build_olmo：构建无显式权重归一化图
 
 源码路径：`src/models/olmo.cpp` - `llm_build_olmo` (行 3-88)
 
@@ -1038,7 +1038,7 @@ llm_build_olmo(const llama_model & model, const llm_graph_params & params) : llm
 
 > **代码解析**：OLMo 激进设计：完全跳过归一化层的权重加载（传 `NULL, NULL`），仅做均值方差归一化；可选 clamp 防止数值溢出，是对"归一化层是否必须有权重"的实验性探索。
 
-### 34.11.2 llm_build_olmo2：构建模板化 ISWA 与双 post-norm 图
+### 33.11.2 llm_build_olmo2：构建模板化 ISWA 与双 post-norm 图
 
 源码路径：`src/models/olmo2.cpp` - `llm_build_olmo2<iswa>` (行 4-127)
 
@@ -1073,7 +1073,7 @@ llm_build_olmo2<iswa>::llm_build_olmo2(const llama_model & model, const llm_grap
 
 > **代码解析**：OLMo2 与 EXAONE4 同源：模板化 ISWA、SWA 层关闭 YaRN（第 ② 步）、双 post-norm 结构（第 ③④ 步）。
 
-### 34.11.3 llm_build_olmoe：构建 MoE + Softmax gating 图
+### 33.11.3 llm_build_olmoe：构建 MoE + Softmax gating 图
 
 源码路径：`src/models/olmoe.cpp` - `llm_build_olmoe` (行 1-93)
 
@@ -1090,11 +1090,11 @@ llm_build_olmoe::llm_build_olmoe(const llama_model & model, const llm_graph_para
 
 ---
 
-## 34.12 精打细算小车：Phi 系列的 Q 缩放与激活分支
+## 33.12 精打细算小车：Phi 系列的 Q 缩放与激活分支
 
 Phi-2 自动兼容 `wqkv` 共享矩阵与分离 QKV，RoPE 后对 Q 做缩放（`1/sqrt(n_embd_head)`）。Phi-3 模板化 ISWA，MoE 分支用 SwiGLU（`LLM_FFN_SILU`），稠密分支用 SwiGLU+（`LLM_FFN_SWIGLU`），支持可选 `output_b` 偏置。
 
-### 34.12.1 llm_build_phi2：构建 Q 缩放与自动路径选择图
+### 33.12.1 llm_build_phi2：构建 Q 缩放与自动路径选择图
 
 源码路径：`src/models/phi2.cpp` - `llm_build_phi2` (行 1-100)
 
@@ -1139,7 +1139,7 @@ llm_build_phi2::llm_build_phi2(const llama_model & model, const llm_graph_params
 
 > **代码解析**：Phi-2 工程细节：① 兼容新旧权重格式（`wqkv` 或分离 QKV）；② RoPE 后 Q 缩放防精度漂移；③ FFN 复用 `attn_norm_output` 输入（类似 Falcon 节省归一化）；④ 可选输出偏置 `output_b`。
 
-### 34.12.2 llm_build_phi3：构建模板化 ISWA 与双激活分支图
+### 33.12.2 llm_build_phi3：构建模板化 ISWA 与双激活分支图
 
 源码路径：`src/models/phi3.cpp` - `llm_build_phi3<iswa>` (行 1-112)
 
@@ -1176,11 +1176,11 @@ llm_build_phi3<iswa>::llm_build_phi3(const llama_model & model, const llm_graph_
 
 ---
 
-## 34.13 演进双雄：StarCoder 系列的位置编码迁移
+## 33.13 演进双雄：StarCoder 系列的位置编码迁移
 
 StarCoder v1 使用绝对位置嵌入（`pos_embd`）且无 RoPE，GPT-2 风格 `wqkv` 共享矩阵。StarCoder2 切换到分离 QKV + RoPE，并断言 `n_embd_head == n_rot`。
 
-### 34.13.1 llm_build_starcoder：构建位置嵌入无 RoPE 图
+### 33.13.1 llm_build_starcoder：构建位置嵌入无 RoPE 图
 
 源码路径：`src/models/starcoder.cpp` - `llm_build_starcoder` (行 1-90)
 
@@ -1208,7 +1208,7 @@ llm_build_starcoder::llm_build_starcoder(const llama_model & model, const llm_gr
 
 > **代码解析**：StarCoder v1 保留了 GPT-2 的绝对位置嵌入（第 ① 步），无 RoPE，是早期代码模型的典型架构。
 
-### 34.13.2 llm_build_starcoder2：构建分离 QKV + RoPE + 断言图
+### 33.13.2 llm_build_starcoder2：构建分离 QKV + RoPE + 断言图
 
 源码路径：`src/models/starcoder2.cpp` - `llm_build_starcoder2` (行 1-75)
 
@@ -1240,11 +1240,11 @@ llm_build_starcoder2(const llama_model & model, const llm_graph_params & params)
 
 ---
 
-## 34.14 阿拉伯语翻译机：JAIS 与 JAIS2 的特化定制
+## 33.14 阿拉伯语翻译机：JAIS 与 JAIS2 的特化定制
 
 JAIS v1 使用 `cur->nb[0]` 而非 `sizeof(float)` 做视图偏移计算，兼容量化类型字节宽度。QK 缩放用 `1/float(n_embd_head)` 而非 `1/sqrt`。JAIS2 切换到分离 QKV + RoPE + ReLU² 激活。
 
-### 34.14.1 llm_build_jais：构建 nb[0] 偏移与 1/float 缩放图
+### 33.14.1 llm_build_jais：构建 nb[0] 偏移与 1/float 缩放图
 
 源码路径：`src/models/jais.cpp` - `llm_build_jais` (行 3-73)
 
@@ -1271,11 +1271,11 @@ llm_build_jais::llm_build_jais(const llama_model & model, const llm_graph_params
 
 ---
 
-## 34.15 压缩行李箱：PLM 与 MiniCPM3 的 MLA 低秩压缩
+## 33.15 压缩行李箱：PLM 与 MiniCPM3 的 MLA 低秩压缩
 
 PLM 实现 MLA（Multi-head Latent Attention）：`n_lora_kv` 决定 KV 低秩压缩维度，Q 拆分为 `q_nope`/`q_pe`，K/V 通过 `wkv_a_mqa` + `wkv_b` 两阶段投影压缩恢复，K 通过 `ggml_repeat` 复制到所有 head。MiniCPM3 引入多层缩放（`scale_embd`、`scale_depth`、`scale_lmhead`）与 Q 压缩（`q_lora_rank`）。
 
-### 34.15.1 llm_build_plm：构建 MLA 低秩 KV 压缩图
+### 33.15.1 llm_build_plm：构建 MLA 低秩 KV 压缩图
 
 源码路径：`src/models/plm.cpp` - `llm_build_plm` (行 3-100)
 
@@ -1322,7 +1322,7 @@ llm_build_plm(const llama_model & model, const llm_graph_params & params) : llm_
 
 > **代码解析**：PLM 完整实现了 MLA：Q 拆 nope/pe、KV 两阶段压缩、共享 K（`ggml_repeat`）、拼接恢复注意力输入。
 
-### 34.15.2 llm_build_minicpm3：构建多层缩放与 Q 压缩图
+### 33.15.2 llm_build_minicpm3：构建多层缩放与 Q 压缩图
 
 源码路径：`src/models/minicpm3.cpp` - `llm_build_minicpm3` (行 1-133)
 
@@ -1367,7 +1367,7 @@ llm_build_minicpm3(const llama_model & model, const llm_graph_params & params) :
 
 > **代码解析**：MiniCPM3 缩放体系：嵌入放大 12x、残差缩放 `scale_depth/sqrt(n_layer)`、lm_head 缩放 `n_embd_base/n_embd`、Q/KV 双重低秩压缩。
 
-#### MLA 低秩压缩数据流图
+#### 33.15.2.1 MLA 低秩压缩数据流图
 
 ```mermaid
 flowchart LR
@@ -1399,11 +1399,11 @@ flowchart LR
 
 ---
 
-## 34.16 紧凑模型的层间选择性 RoPE：SmolLM3
+## 33.16 紧凑模型的层间选择性 RoPE：SmolLM3
 
 SmolLM3 通过 `n_no_rope_layer_step` 控制隔层去 RoPE：`(il + 1) % n_no_rope_layer_step != 0` 的层启用 RoPE。默认启用 Q/K Norm，支持自定义 `kq_scale`。
 
-### 34.16.1 llm_build_smollm3：构建隔层去 RoPE 图
+### 33.16.1 llm_build_smollm3：构建隔层去 RoPE 图
 
 源码路径：`src/models/smollm3.cpp` - `llm_build_smollm3` (行 5-87)
 
@@ -1434,7 +1434,7 @@ llm_build_smollm3::llm_build_smollm3(const llama_model & model, const llm_graph_
 
 > **代码解析**：SmolLM3 创新：`n_no_rope_layer_step` 超参数控制 RoPE 稀疏应用（第 ① 步），节省计算同时保持性能；Q/K Norm 默认启用（第 ② 步）。
 
-#### SmolLM3 隔层 RoPE 示意图
+#### 33.16.1.1 SmolLM3 隔层 RoPE 示意图
 
 ```mermaid
 graph TD
@@ -1452,11 +1452,11 @@ graph TD
 
 ---
 
-## 34.17 实验室原型机：BitNet 1-bit 量化与 Apertus xIELU 激活
+## 33.17 实验室原型机：BitNet 1-bit 量化与 Apertus xIELU 激活
 
 BitNet 1.58-bit 量化：`build_lora_mm` 第三个参数 `*_s` 为缩放因子张量，注意力和 FFN 后都应用子归一化（`attn_sub_norm`/`ffn_sub_norm`），lm_head 复用 `tok_embd`。Apertus 使用 xIELU 激活（`alpha_n`/`alpha_p`/`beta`/`eps` 四超参），FFN 单 up 投影无门控。
 
-### 34.17.1 llm_build_bitnet：构建 1-bit 量化与子归一化图
+### 33.17.1 llm_build_bitnet：构建 1-bit 量化与子归一化图
 
 源码路径：`src/models/bitnet.cpp` - `llm_build_bitnet` (行 4-126)
 
@@ -1489,7 +1489,7 @@ llm_build_bitnet::llm_build_bitnet(const llama_model & model, const llm_graph_pa
 
 > **代码解析**：BitNet 1-bit 特有设计：① 每个权重矩阵配套 `*_s` 缩放张量；② 注意力/FFN 后的子归一化（`attn_sub_norm`/`ffn_sub_norm`）专门针对量化噪声；③ lm_head 权重共享 `tok_embd`。
 
-### 34.17.2 llm_build_apertus：构建 xIELU 激活与无门控 FFN 图
+### 33.17.2 llm_build_apertus：构建 xIELU 激活与无门控 FFN 图
 
 源码路径：`src/models/apertus.cpp` - `llm_build_apertus` (行 1-99)
 
@@ -1521,11 +1521,11 @@ llm_build_apertus::llm_build_apertus(const llama_model & model, const llm_graph_
 
 ---
 
-## 34.18 实验剧场：AFMoE、Dream、Deci、Dots1
+## 33.18 实验剧场：AFMoE、Dream、Deci、Dots1
 
 AFMoE：MuP `sqrt(n_embd)` 嵌入缩放、双归一化（pre/post）、`wqkv_gate` 注意力门控（sigmoid 门控 o_proj）。Dream：扩散 LLM，用 `build_attn_inp_no_cache()` 实现双向注意力。Deci：`n_head=0/ n_head_kv=0/ n_ff=0` 自由组合层结构。Dots1：`n_layer_dense_lead` 前稠密后 MoE + 共享专家。
 
-### 34.18.1 llm_build_afmoe：构建 MuP 缩放、双归一化、注意力门控图
+### 33.18.1 llm_build_afmoe：构建 MuP 缩放、双归一化、注意力门控图
 
 源码路径：`src/models/afmoe.cpp` - `llm_build_afmoe` (行 1-82)
 
@@ -1570,7 +1570,7 @@ llm_build_afmoe::llm_build_afmoe(const llama_model & model, const llm_graph_para
 
 > **代码解析**：AFMoE 独特机制：① MuP 嵌入缩放 `sqrt(n_embd)`；② 注意力前后双归一化（`attn_norm` + `attn_post_norm`）；③ `wqkv_gate` 基于 attention 输入的 sigmoid 门控（第 ③④ 步），动态调节注意力输出幅度。
 
-### 34.18.2 llm_build_dream：构建扩散双向注意力图
+### 33.18.2 llm_build_dream：构建扩散双向注意力图
 
 源码路径：`src/models/dream.cpp` - `llm_build_dream` (行 5-95)
 
@@ -1591,7 +1591,7 @@ llm_build_dream::llm_build_dream(const llama_model & model, const llm_graph_para
 
 > **代码解析**：Dream 使用 `build_attn_inp_no_cache()` 替代 KV 缓存输入（第 ① 步），实现扩散模型的双向注意力（全序列可见，第 ② 步）。
 
-### 34.18.3 llm_build_deci：构建层级自由组合图
+### 33.18.3 llm_build_deci：构建层级自由组合图
 
 源码路径：`src/models/deci.cpp` - `llm_build_deci` (行 1-100)
 
@@ -1631,7 +1631,7 @@ llm_build_deci::llm_build_deci(const llama_model & model, const llm_graph_params
 
 > **代码解析**：Deci 极致灵活：每层 `n_head`/`n_head_kv`/`n_ff` 独立配置（第 ①④ 步），支持纯 FFN、纯注意力、线性注意力（`n_head_kv=0` 直接 `wo` 投影，第 ② 步）等任意组合。
 
-### 34.18.4 llm_build_dots1：构建稠密+MoE 分层路由图
+### 33.18.4 llm_build_dots1：构建稠密+MoE 分层路由图
 
 源码路径：`src/models/dots1.cpp` - `llm_build_dots1` (行 1-119)
 
@@ -1656,11 +1656,11 @@ llm_build_dots1::llm_build_dots1(const llama_model & model, const llm_graph_para
 
 ---
 
-## 34.19 长尾展厅珍藏：Orion、Xverse、MainCoder、Plamo、Seed-OSS、Minimax-M2
+## 33.19 长尾展厅珍藏：Orion、Xverse、MainCoder、Plamo、Seed-OSS、Minimax-M2
 
 Orion 源码注释掉偏置加载（兼容旧权重）。Xverse 简洁 LLaMA 风。MainCoder post-RoPE Q/K Norm（RoPE 后再归一化）。Plamo 三路并行残差（`sa_out + cur + inpL`）。Seed-OSS `attn_post_norm` 在 FFN 前。Minimax-M2 `head_dim=128 ≠ n_rot=64` 注释断言。
 
-### 34.19.1 llm_build_orion：构建注释掉偏置兼容旧权重图
+### 33.19.1 llm_build_orion：构建注释掉偏置兼容旧权重图
 
 源码路径：`src/models/orion.cpp` - `llm_build_orion` (行 1-137)
 
@@ -1682,7 +1682,7 @@ llm_build_orion::llm_build_orion(const llama_model & model, const llm_graph_para
 
 > **代码解析**：Orion 通过注释保留偏置加载代码（第 ① 步），体现对旧检查点兼容性的考虑。
 
-### 34.19.2 llm_build_maincoder：构建 post-RoPE Q/K Norm 图
+### 33.19.2 llm_build_maincoder：构建 post-RoPE Q/K Norm 图
 
 源码路径：`src/models/maincoder.cpp` - `llm_build_maincoder` (行 5-95)
 
@@ -1702,7 +1702,7 @@ llm_build_maincoder::llm_build_maincoder(const llama_model & model, const llm_gr
 
 > **代码解析**：MainCoder 特殊顺序：RoPE 之后才对 Q/K 做 RMSNorm（第 ① 步），与主流 Pre-RoPE Norm 形成对比。
 
-### 34.19.3 llm_build_plamo：构建三路并行残差图
+### 33.19.3 llm_build_plamo：构建三路并行残差图
 
 源码路径：`src/models/plamo.cpp` - `llm_build_plamo` (行 5-73)
 
@@ -1728,7 +1728,7 @@ llm_build_plamo::llm_build_plamo(const llama_model & model, const llm_graph_para
 
 > **代码解析**：Plamo 并行残差：`sa_inp` 复用为 FFN 输入，最终 `sa_out + ffn_out + inpL` 三路累加（第 ③ 步），与 Falcon 的 `cur + ffn_inp + inpL` 异曲同工。
 
-### 34.19.4 llm_build_seed_oss：构建 attn_post_norm 后置归一化图
+### 33.19.4 llm_build_seed_oss：构建 attn_post_norm 后置归一化图
 
 源码路径：`src/models/seed-oss.cpp` - `llm_build_seed_oss` (行 1-101)
 
@@ -1748,7 +1748,7 @@ llm_build_seed_oss::llm_build_seed_oss(const llama_model & model, const llm_grap
 
 > **代码解析**：Seed-OSS 的 `attn_post_norm` 位置独特：在残差相加后、FFN 之前（第 ① 步），区别于 OLMo2/EXAONE4 的双 post-norm。
 
-### 34.19.5 llm_build_minimax_m2：构建 head_dim ≠ n_rot 的 MoE 图
+### 33.19.5 llm_build_minimax_m2：构建 head_dim ≠ n_rot 的 MoE 图
 
 源码路径：`src/models/minimax-m2.cpp` - `llm_build_minimax_m2` (行 1-82)
 
@@ -1773,7 +1773,7 @@ llm_build_minimax_m2::llm_build_minimax_m2(const llama_model & model, const llm_
 
 ---
 
-## 34.20 设计中的取舍
+## 33.20 设计中的取舍
 
 **为什么不用统一的基类强制所有模型共享同一套图构建逻辑？**
 
@@ -1795,37 +1795,37 @@ OLMo 的设计理念是"少即是多"：去除归一化层的可学习缩放/偏
 
 ---
 
-## 34.21 动手练习
+## 33.21 动手练习
 
-### 练习 1：对比 GPT-2 / GPT-NeoX 的残差分支
+### 33.21.1 练习 1：对比 GPT-2 / GPT-NeoX 的残差分支
 阅读 `src/models/gpt2.cpp` 和 `src/models/gptneox.cpp`，理解以下关键点：
 1. GPT-2 使用什么方式实现位置嵌入？是否使用 RoPE？
 2. GPT-NeoX 的 `use_par_res` 为 `true` 与 `false` 时，残差连接的代码路径有何不同？
 3. 两者都使用 `LLM_FFN_GELU + LLM_FFN_SEQ`，请画出 GELU/SEQ FFN 的数据流图。
 4. 两者在 QKV 切片时使用 `ggml_view_3d` 的偏移量分别是多少？为什么 K/V 共享同一偏移 `1*sizeof(float)*(n_embd + n_embd_gqa)`？
 
-### 练习 2：理解 OpenELM 的层级缩放与 Q/K Norm
+### 33.21.2 练习 2：理解 OpenELM 的层级缩放与 Q/K Norm
 阅读 `src/models/openelm.cpp`，回答以下问题：
 1. `n_head` / `n_head_kv` / `n_head_qkv = 2*n_head_kv + n_head` 三者的几何含义是什么？
 2. 为什么 `Qcur` 在 RoPE 之前要调用 `build_norm(Qcur, ..., LLM_NORM_RMS, il)`？
 3. OpenELM 的残差路径是 `residual = inpL`，最终 `ffn_inp = residual + cur`，这与 GPT-NeoX 的并行残差有何区别？
 4. 切片 Q/K/V 时使用 `cur->nb[1]` 作为步长，这与 `n_embd_head*sizeof(float)` 作为步长有何不同？
 
-### 练习 3：分析 Falcon 的双归一化分支
+### 33.21.3 练习 3：分析 Falcon 的双归一化分支
 阅读 `src/models/falcon.cpp`，理解以下机制：
 1. `model.layers[il].attn_norm_2` 存在时，`cur` 用哪一份归一化结果？
 2. Falcon 在 FFN 阶段将 `attn_norm` 作为 FFN 输入而非 `ffn_inp`，这样做的好处是什么？
 3. Falcon 的输出累加 `cur = ggml_add(ctx0, cur, ffn_inp); cur = ggml_add(ctx0, cur, inpL);` 是什么模式？
 4. `GGML_ASSERT(n_embd_head == n_rot)` 在 Falcon 中是否被注释？为什么？
 
-### 练习 4：对比 Cohere2-ISWA 与 Command-R 的 RoPE 策略
+### 33.21.4 练习 4：对比 Cohere2-ISWA 与 Command-R 的 RoPE 策略
 阅读 `src/models/cohere2-iswa.cpp` 和 `src/models/command-r.cpp`，回答以下问题：
 1. Cohere2-ISWA 中的 `is_swa(il)` 是什么？SWA 层为什么不应用 RoPE？
 2. Cohere2-ISWA 使用 `build_attn_inp_kv_iswa()`，Command-R 使用 `build_attn_inp_kv()`，两种 KV 输入的区别是什么？
 3. 两者的 `f_logit_scale` 是在哪里应用的？为什么需要在 logits 端做整体缩放？
 4. Command-R 在 RoPE 之前对 Q/K 做 `LLM_NORM` 归一化，这与 OpenELM 在 RoPE 之前归一化有何异同？
 
-### 练习 5：理解 EXAONE 三代演进的模板技巧
+### 33.21.5 练习 5：理解 EXAONE 三代演进的模板技巧
 阅读 `src/models/exaone.cpp`、`src/models/exaone-moe.cpp`、`src/models/exaone4.cpp`，回答以下问题：
 1. EXAONE-MOE 中 `ffn_gate_inp == nullptr` 时走稠密分支，否则调用 `build_moe_ffn`，这种分支判断的优势是什么？
 2. EXAONE-MOE 的 SWA 层（`is_local_layer`）不应用 RoPE，这与 Cohere2-ISWA 的设计有何异同？
@@ -1833,7 +1833,7 @@ OLMo 的设计理念是"少即是多"：去除归一化层的可学习缩放/偏
 4. EXAONE4 引入 `attn_post_norm` + `ffn_post_norm` 双 post-norm，这与 OLMo2 的 post-norm 设计有什么区别？
 5. 模板的显式实例化 `template struct llm_build_exaone4<false>;` 等代码有什么作用？
 
-### 练习 6：分析 Granite 模块化拆分与残差缩放
+### 33.21.6 练习 6：分析 Granite 模块化拆分与残差缩放
 阅读 `src/models/granite.cpp`，理解以下设计：
 1. `build_attention_layer` 与 `build_layer_ffn` 是如何将注意力与 FFN 拆分的？
 2. `hparams.f_residual_scale` 在 FFN 前后都出现，为什么要缩放两次？
@@ -1841,7 +1841,7 @@ OLMo 的设计理念是"少即是多"：去除归一化层的可学习缩放/偏
 4. 输出端 `ggml_scale(ctx0, cur, 1.0f / hparams.f_logit_scale)` 的反向缩放意义何在？
 5. Granite-MoE 分支如何选择 `build_moe_ffn` 或 `build_ffn`？
 
-### 练习 7：理解 OLMo / OLMo2 / OLMoE 的设计哲学差异
+### 33.21.7 练习 7：理解 OLMo / OLMo2 / OLMoE 的设计哲学差异
 阅读 `src/models/olmo.cpp`、`src/models/olmo2.cpp`、`src/models/olmoe.cpp`，回答以下问题：
 1. OLMo 通过 `build_norm(inpL, NULL, NULL, LLM_NORM, il)` 跳过权重加载，这意味着什么？
 2. OLMo 的可选 `ggml_clamp` Q/K/V 是 OLMo 训练稳定性的什么工程细节？
@@ -1849,7 +1849,7 @@ OLMo 的设计理念是"少即是多"：去除归一化层的可学习缩放/偏
 4. OLMo2 的 `attn_post_norm` + `ffn_post_norm` 与 OLMo 的设计有何演进？
 5. OLMoE 的 `LLAMA_EXPERT_GATING_FUNC_TYPE_SOFTMAX` 与 `expert_weights_norm=false` 意味着什么？
 
-### 练习 8：理解 Phi-2 / Phi-3 的 Q 缩放与激活分支
+### 33.21.8 练习 8：理解 Phi-2 / Phi-3 的 Q 缩放与激活分支
 阅读 `src/models/phi2.cpp` 和 `src/models/phi3.cpp`，回答以下问题：
 1. Phi-2 的 `if (model.layers[il].wqkv)` 分支如何自动选择共享矩阵或分离 QKV 路径？
 2. Phi-2 在 RoPE 之后调用 `ggml_scale(ctx0, Qcur, 1.0f/sqrtf(...))` 的目的是什么？
@@ -1857,7 +1857,7 @@ OLMo 的设计理念是"少即是多"：去除归一化层的可学习缩放/偏
 4. Phi-3 在 `ffn_gate_inp != nullptr` 时调用 `build_moe_ffn` 使用 `LLM_FFN_SILU`，稠密分支使用 `LLM_FFN_SWIGLU`，两者的激活差异是什么？
 5. Phi-3 的 `if (model.output_b != nullptr)` 如何处理输出偏置？
 
-### 练习 9：对比 PLM / MiniCPM3 的 MLA 与多层缩放
+### 33.21.9 练习 9：对比 PLM / MiniCPM3 的 MLA 与多层缩放
 阅读 `src/models/plm.cpp` 和 `src/models/minicpm3.cpp`，回答以下问题：
 1. PLM 的 `q_nope` 与 `q_pe` 是如何通过 `ggml_view_3d` 从单一 `q` 张量中切分出来的？
 2. PLM 的 `wkv_a_mqa` 与 `wkv_b` 两阶段投影如何实现 KV 的低秩压缩与恢复？
@@ -1865,7 +1865,7 @@ OLMo 的设计理念是"少即是多"：去除归一化层的可学习缩放/偏
 4. MiniCPM3 的 `scale_embd=12.0` 在嵌入层放大、`scale_depth=1.4` 在残差层缩放、`scale_lmhead = n_embd_base/n_embd` 在 lm_head 缩放，三者的设计哲学是什么？
 5. MiniCPM3 的 `q_lora_rank` 通过 `wq_a` + `wq_b` 两阶段压缩 Q，这与 PLM 的 KV 压缩有什么异奇同工？
 
-### 练习 10：探索实验前沿：BitNet / Apertus / AFMoE
+### 33.21.10 练习 10：探索实验前沿：BitNet / Apertus / AFMoE
 阅读 `src/models/bitnet.cpp`、`src/models/apertus.cpp`、`src/models/afmoe.cpp`，回答以下问题：
 1. BitNet 的 `build_lora_mm(model.layers[il].wq, cur, model.layers[il].wq_s)` 第三个参数 `wq_s` 是什么张量？为什么 1-bit 模型需要它？
 2. BitNet 的 `attn_sub_norm` 与 `ffn_sub_norm` 子归一化与传统 pre-norm/post-norm 有何不同？
@@ -1874,7 +1874,7 @@ OLMo 的设计理念是"少即是多"：去除归一化层的可学习缩放/偏
 5. AFMoE 的 MuP 缩放在嵌入层应用 `sqrt(n_embd)`，为什么 `mup_enabled=true` 时需要这个缩放？
 6. AFMoE 的 `wqkv_gate` 与 `ggml_sigmoid + ggml_mul` 在 o_proj 之前门控，与混合专家 MoE 的门控有何异同？
 
-### 练习 11：探索长尾架构：Dots1 / Deci / Dream / Orion
+### 33.21.11 练习 11：探索长尾架构：Dots1 / Deci / Dream / Orion
 阅读 `src/models/dots1.cpp`、`src/models/deci.cpp`、`src/models/dream.cpp`、`src/models/orion.cpp`，回答以下问题：
 1. Dots1 如何通过 `n_layer_dense_lead` 决定前 N 层稠密、之后切换为 MoE？
 2. Deci 中 `n_head=0` / `n_head_kv=0` / `n_ff=0` 各自触发什么变体？
@@ -1882,7 +1882,7 @@ OLMo 的设计理念是"少即是多"：去除归一化层的可学习缩放/偏
 4. Orion 源码中 `if (model.layers[il].bq)` 等偏置调用被注释掉，这意味着对旧权重的什么兼容策略？
 5. Deci 的 `n_head > 0 && n_head_kv == 0` 分支调用 `build_lora_mm(model.layers[il].wo, cur)` 直接走线性注意力，这与标准 MHA 相比节省哪些计算？
 
-### 练习 12：深入小众架构：Plamo / Seed-OSS / MainCoder / Minimax-M2
+### 33.21.12 练习 12：深入小众架构：Plamo / Seed-OSS / MainCoder / Minimax-M2
 阅读 `src/models/plamo.cpp`、`src/models/seed-oss.cpp`、`src/models/maincoder.cpp`、`src/models/minimax-m2.cpp`，回答以下问题：
 1. Plamo 的并行残差使用 `sa_out + cur + inpL` 三路累加，这与 Falcon 的 `cur + ffn_inp + inpL` 模式有何异同？
 2. Seed-OSS 的 `attn_post_norm` 是在 FFN 之前而非之后，这与 OLMo2 的 `attn_post_norm` 设计有什么本质区别？
@@ -1892,7 +1892,7 @@ OLMo 的设计理念是"少即是多"：去除归一化层的可学习缩放/偏
 
 ---
 
-## 34.22 本章小结
+## 33.22 本章小结
 
 本章带领读者完成了一次大模型博物馆长尾展厅的深度巡礼。我们从入口处的**复古老爷车** GPT-2/GPT-NeoX 出发，见证了位置嵌入从绝对到 RoPE、残差从串行到并行的早期演进；攀登**可调节层高书架** OpenELM，领略层级缩放与 Q/K Norm 的精妙；驰骋**双车道高速公路** Falcon/StableLM，体会双归一化分支与 inpSA 复用的工程智慧；检查**带安全阀的压力容器** MPT 与**极简容器** Refact，对比数值截断与极简模板的取舍；凝视**化石标本** Bloom 与 CodeShell，确认前置归一化与代码特化的历史地位；透过**双层玻璃幕墙** Cohere2-ISWA 与 Command-R，剖析 ISWA 双缓存与 RoPE 策略的差异化设计；把玩 LG 的**三代折叠屏** EXAONE 系列，从基础款到模板化 ISWA 双 post-norm 的现代化演进；校准**精密仪器** Granite 与 Nemotron，掌握模块化拆分、残差缩放与 ReLU² 的工程技巧；翻阅**开源实验笔记本** OLMo 三部曲，理解无显式归一化、模板化 ISWA、Softmax gating 的激进探索；试驾微软的**精打细算小车** Phi 系列，学会 Q 缩放防漂移与双激活分支的精细打磨；见证**代码生成器** StarCoder v1/v2 从位置嵌入到 RoPE 的架构迁移，体验**阿拉伯语翻译机** JAIS/JAIS2 的量化兼容与特化；打开**压缩行李箱** PLM/MiniCPM3，深入 MLA 低秩 KV/Q 压缩与多层缩放的内存优化艺术；观赏**会跳绳的舞者** SmolLM3 隔层去 RoPE 的节奏感；走进**实验室**触摸 BitNet 1-bit 量化的子归一化、Apertus xIELU 的四参数激活；在**实验剧场**围观 AFMoE 门控注意力、Dream 扩散双向注意力、Deci 层级自由组合、Dots1 分层路由的前沿探索；最后在**长尾展厅深处**珍藏 Orion 注释偏置、Xverse 简洁 LLaMA、MainCoder post-RoPE Norm、Plamo 三路残差、Seed-OSS attn_post_norm、Minimax-M2 head_dim≠n_rot 等小众藏品的独特工程取舍。
 

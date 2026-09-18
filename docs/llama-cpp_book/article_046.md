@@ -1,5 +1,5 @@
 
-# 47 模板适配与消息解析 —— 模型提示词的"灵魂雕刻师"
+# 第46章 47 模板适配与消息解析 —— 模型提示词的"灵魂雕刻师"
 
 ## 学习目标
 
@@ -15,7 +15,7 @@
 - 掌握消息验证与格式化接口：`common_chat_verify_template`、`common_chat_format_single`、`common_chat_format_example`、`common_chat_template_direct_apply` 等。
 - 理解 `common_chat_templates_deleter` 的 RAII 资源管理设计及其与 `common_chat_templates_free` 的协作。
 
-## 47.0 生活类比 —— 国际快递公司的「标准化物流系统」
+## 46.1 生活类比 —— 国际快递公司的「标准化物流系统」
 
 如果把 llama.cpp 的聊天模板系统比作一家**国际快递公司**，那么整个链路的运作方式就一目了然：**`common_chat_msg` 是标准集装箱**。无论货物是"文本"（`content`）、"多模态包裹"（`content_parts`）、"加急指令"（`tool_calls`）还是"内部批注"（`reasoning_content`），都必须装进这个统一规格的集装箱才能进入物流网络。集装箱的货格之间有严格的互斥规则——你不能同时用散装和托盘装同一批货。**`to_json_oaicompat` 是报关单**。集装箱出关时必须填一份 OpenAI 格式的报关单：`media_marker` 之间的不加换行规则，就像易碎品之间不能塞填充物——多模态标记必须紧贴相邻文本，否则"清关"（客户端解析）时就会出现格式错乱。**`common_chat_template` 是包装规格说明书**。每家快递公司（每个模型）有自己的包装规范：Ministral-3 要求把"内部批注"装进 `{type:-format 通道：<|constrain|> 约束
         // tool-call 通道：工具调用解析规则

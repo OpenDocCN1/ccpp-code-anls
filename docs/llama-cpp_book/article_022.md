@@ -1,6 +1,6 @@
 
 
-# 第23章 调音师与礼仪教材 —— 模型适配器与聊天模板的双重奏
+# 第22章 调音师与礼仪教材 —— 模型适配器与聊天模板的双重奏
 
 ## 学习目标
 
@@ -13,11 +13,11 @@
 - 掌握 `llm_chat_detect_template` 基于字符串指纹的启发式检测算法与降级策略
 - 能阅读并修改自定义聊天模板与适配器数据流
 
-## 23.1 生活类比
+## 22.1 生活类比
 
 想象你是一位 **乐师**，正在为不同 LLM「调音」：控制向量（cvec）相当于给每根琴弦（每层）单独贴一张「力度标签」，让音色整体偏移；这些标签存放在仓库（`ggml_context`）的某个货架（backend buffer）上，而第 0 层「不允许贴标签」（`tensors[0]=nullptr`）是协议约定的「保护层」；当你需要改变音色时，只需更换标签内容（`apply` 重新写入），无需重买琴弦（重新训练）。LoRA 适配器则像一对可拆卸的「效果器踏板」：A 踏板负责「升维」（`rank × in_dim`），B 踏板负责「降维」（`out_dim × rank`），`alpha/rank` 是效果器上的「强度旋钮」，决定信号放大倍数；多个踏板可以同时踩下（`loras map`），每个力度独立可调（float 缩放）。aLoRA 是「延迟触发踏板」，必须先听到特定乐句（invocation tokens）才激活。GGUF 加载流程就像「拆箱验货」流水线：先检查外箱标签（`general.type=adapter, adapter.type=lora`），再验证物品型号（`adapter.arch == model.arch`），然后把 A、B 两件物品成对摆上对应货架（按 buft 分配缓冲区），最后读出物品清单（metadata）贴到档案柜（`gguf_kv`）。至于聊天模板，则是不同餐厅的「点菜规矩」：通用 API 只接受「前菜/主菜/甜点」（system/user/assistant），而模板负责翻译成特定餐厅的暗语（ChatML / Llama-2 / Mistral 等），`llm_chat_detect_template` 像「侦探」看几眼菜单就猜出餐厅风格。模板自动检测的过程，就是看菜单里有没有「`<|im_start|>`」（ChatML 指纹）、「`【】`」（Mistral 指纹）等关键词。UNKNOWN 模板意味着「这家餐厅太奇怪了，菜单读不懂」，需要提醒上层兜底。
 
-## 23.2 源码地图
+## 22.2 源码地图
 
 ```
 src/llama-adapter.h
@@ -120,9 +120,9 @@ src/llama-chat.cpp
 └── llama_chat_builtin_templates()                  # 暴露模板名清单
 ```
 
-## 23.3 隐形调音台 —— 控制向量适配器
+## 22.3 隐形调音台 —— 控制向量适配器
 
-### 23.3.1 为什么需要 `llama_adapter_cvec`？
+### 22.3.1 为什么需要 `llama_adapter_cvec`？
 
 在推理阶段，我们想让模型表现得更「温和」、更「专业」或更「创造性」，但又不想重新训练。控制向量（Control Vector，cvec）正是为此设计：在每个 Transformer 层的残差流上加一个**固定方向向量**，相当于给神经网络的每一层施加一个微小的、可控的偏移。
 
@@ -130,7 +130,7 @@ src/llama-chat.cpp
 - **按需启用**：`tensor_for()` 通过层号边界检查决定是否激活，是「按需启用」的关键
 - **计算图注入**：在 `apply_to` 阶段通过 `ggml_add` 注入到计算图中
 
-### 23.3.2 `llama_adapter_cvec::init()` — 按缓冲区类型分配上下文
+### 22.3.2 `llama_adapter_cvec::init()` — 按缓冲区类型分配上下文
 
 源码路径：`src/llama-adapter.cpp` - `llama_adapter_cvec::init()`（第 39-92 行）
 
@@ -200,7 +200,7 @@ bool llama_adapter_cvec::init(const llama_model & model) {
 
 **这段代码实现了控制向量适配器的延迟初始化机制**。它首先按后端类型聚合上下文，避免重复创建；然后为每层（除第0层）创建 F32 向量张量；最后按后端类型批量分配缓冲区并清零，确保初始状态不改变模型行为。
 
-### 23.3.3 `llama_adapter_cvec::tensor_for()` — 按层号获取张量
+### 22.3.3 `llama_adapter_cvec::tensor_for()` — 按层号获取张量
 
 源码路径：`src/llama-adapter.cpp` - `llama_adapter_cvec::tensor_for()`（第 17-26 行）
 
@@ -216,7 +216,7 @@ ggml_tensor * llama_adapter_cvec::tensor_for(int il) const {
 
 **`tensor_for` 通过边界检查实现「按需启用」，越界或未启用时返回空指针。**
 
-### 23.3.4 `llama_adapter_cvec::apply_to()` — 在计算图上注入方向向量
+### 22.3.4 `llama_adapter_cvec::apply_to()` — 在计算图上注入方向向量
 
 源码路径：`src/llama-adapter.cpp` - `llama_adapter_cvec::apply_to()`（第 28-37 行）
 
@@ -233,7 +233,7 @@ ggml_tensor * llama_adapter_cvec::apply_to(ggml_context * ctx, ggml_tensor * cur
 
 **`apply_to` 仅在张量存在时调用 `ggml_add` 将方向向量加到残差流上，第 0 层因 `tensors[0]=nullptr` 自动跳过。**
 
-### 23.3.5 `llama_adapter_cvec::apply()` — 传入 nullptr 即禁用
+### 22.3.5 `llama_adapter_cvec::apply()` — 传入 nullptr 即禁用
 
 源码路径：`src/llama-adapter.cpp` - `llama_adapter_cvec::apply()`（第 94-132 行）
 
@@ -287,7 +287,7 @@ bool llama_adapter_cvec::apply(
 
 **这段代码实现了控制向量的动态启用/禁用与数据写入**。`data == nullptr` 即刻禁用；否则校验维度、惰性初始化、设置层范围，最后按 `n_embd*(il-1)` 偏移将扁平化数据写入各层张量。第 0 层无对应数据是协议层的不对称设计。
 
-### 23.3.6 智能指针封装：`llama_adapter_cvec_ptr`
+### 22.3.6 智能指针封装：`llama_adapter_cvec_ptr`
 
 ```cpp
 // src/llama-adapter.h（第 34 行）
@@ -296,7 +296,7 @@ using llama_adapter_cvec_ptr = std::shared_ptr<llama_adapter_cvec>;  // 使用 s
 
 这个类型别名将 `llama_adapter_cvec` 包装在 `std::shared_ptr` 之中，从而利用引用计数实现自动内存管理。与裸指针不同，`shared_ptr` 允许多个模块同时持有同一个控制向量适配器的共享所有权：每当有一个 `shared_ptr` 实例指向该适配器，其引用计数就加 1；当所有 `shared_ptr` 被销毁或重置时，引用计数归零，适配器的析构函数自动触发，释放其占用的 `ctxs`、`bufs` 与 `tensors` 等资源。这种设计带来了两大好处：一是避免了手动 `new/delete` 可能导致的内存泄漏或重复释放问题；二是支持控制向量在不同组件（如模型、推理引擎、外部 API）之间安全传递，而无需担心生命周期的协调。在实际使用中，上层只需通过 `std::make_shared<llama_adapter_cvec>()` 创建实例，并将其赋值给 `llama_adapter_cvec_ptr` 类型的变量，即可享受自动化的资源管理。
 
-### 23.3.7 控制向量适配器架构图
+### 22.3.7 控制向量适配器架构图
 
 ```mermaid
 graph TD
@@ -312,9 +312,9 @@ graph TD
     I --> J[apply_to() 注入残差流]
 ```
 
-## 23.4 双人舞 —— LoRA 适配器权重对
+## 22.4 双人舞 —— LoRA 适配器权重对
 
-### 23.4.1 `llama_adapter_lora_weight`：A 升维 + B 降维
+### 22.4.1 `llama_adapter_lora_weight`：A 升维 + B 降维
 
 源码路径：`src/llama-adapter.h` - `llama_adapter_lora_weight`（第 42-56 行）
 
@@ -338,7 +338,7 @@ struct llama_adapter_lora_weight {
 
 **这个结构体封装了 LoRA 的核心数学形式 `W' = W + (alpha/rank) * (B @ A)`**。`a` 张量形状 `(rank, in_dim)` 负责升维，`b` 张量形状 `(out_dim, rank)` 负责降维；`get_scale()` 自动推导缩放系数，兼容 `alpha=0` 的老式写法。
 
-### 23.4.2 `llama_adapter_lora`：适配器外壳与模型绑定
+### 22.4.2 `llama_adapter_lora`：适配器外壳与模型绑定
 
 源码路径：`src/llama-adapter.h` - `llama_adapter_lora`（第 58-89 行）
 
@@ -373,7 +373,7 @@ struct llama_adapter_lora {
 
 **这个类是 LoRA 适配器的「外壳」**，持有基础模型指针、`ab_map` 存储所有 A/B 对、多后端 `ctxs/bufs`、缩放 `alpha`、元数据 `gguf_kv` 与 aLoRA 触发序列。`get_weight()` 支持从基础模型张量反查，`get_n_nodes()` 为图预留做节点数估算。
 
-### 23.4.3 类型定义：`llama_adapter_loras` 是带缩放的集合
+### 22.4.3 类型定义：`llama_adapter_loras` 是带缩放的集合
 
 源码路径：`src/llama-adapter.h` - `using llama_adapter_loras`（第 82-84 行）
 
@@ -385,7 +385,7 @@ using llama_adapter_loras_ptr = std::unique_ptr<llama_adapter_loras>;          /
 
 这种设计支持同时叠加多个 LoRA 适配器，且每个适配器的缩放力度独立可调（float 值）。
 
-### 23.4.4 `llama_adapter_lora::get_weight()` — 按名查找 A/B 对
+### 22.4.4 `llama_adapter_lora::get_weight()` — 按名查找 A/B 对
 
 源码路径：`src/llama-adapter.cpp` - `llama_adapter_lora::get_weight()`（第 134-145 行）
 
@@ -403,7 +403,7 @@ llama_adapter_lora_weight * llama_adapter_lora::get_weight(ggml_tensor * w) {
 
 简单直接：用基础模型张量名在 `ab_map` 中查找，找到返回 A/B 对指针，否则返回 nullptr。
 
-### 23.4.5 LoRA 适配器权重对架构图
+### 22.4.5 LoRA 适配器权重对架构图
 
 ```mermaid
 graph LR
@@ -416,9 +416,9 @@ graph LR
     F --> G[W' = W + (alpha/rank) * (B @ A)]
 ```
 
-## 23.5 拆箱流水线 —— LoRA 加载流程
+## 22.5 拆箱流水线 —— LoRA 加载流程
 
-### 23.5.1 入口：`llama_adapter_lora_init_impl` 的七步流水线
+### 22.5.1 入口：`llama_adapter_lora_init_impl` 的七步流水线
 
 源码路径：`src/llama-adapter.cpp` - `llama_adapter_lora_init_impl()`（第 147-314 行）
 
@@ -668,7 +668,7 @@ static void llama_adapter_lora_init_impl(llama_model & model, const char * path_
 7. **数据回填**：`llama_file` + `gguf_get_data_offset` + `gguf_get_tensor_offset` 精确定位文件偏移，`ggml_backend_tensor_set` 写入后端缓冲区
 8. **注册**到 `model.loras`
 
-### 23.5.2 入口封装：异常安全的 `llama_adapter_lora_init`
+### 22.5.2 入口封装：异常安全的 `llama_adapter_lora_init`
 
 源码路径：`src/llama-adapter.cpp` - `llama_adapter_lora_init()`（第 316-329 行）
 
@@ -692,7 +692,7 @@ llama_adapter_lora * llama_adapter_lora_init(llama_model * model, const char * p
 
 上层只需判断返回值是否为 `nullptr`，异常安全由内部 `try-catch` 保证。
 
-### 23.5.3 LoRA 加载流水线架构图
+### 22.5.3 LoRA 加载流水线架构图
 
 ```mermaid
 flowchart TD
@@ -705,9 +705,9 @@ flowchart TD
     G --> H[注册到模型]
 ```
 
-## 23.6 档案柜 —— LoRA 元数据查询接口
+## 22.6 档案柜 —— LoRA 元数据查询接口
 
-### 23.6.1 单值查询：`llama_adapter_meta_val_str`
+### 22.6.1 单值查询：`llama_adapter_meta_val_str`
 
 源码路径：`src/llama-adapter.cpp` - `llama_adapter_meta_val_str()`（第 331-340 行）
 
@@ -725,7 +725,7 @@ int32_t llama_adapter_meta_val_str(const llama_adapter_lora * adapter, const cha
 
 找不到时 `buf[0]='\0'` 返回 `-1`；找到时 `snprintf` 写入用户缓冲区。
 
-### 23.6.2 索引式查询：与 `llama_model_meta_*` 对称设计
+### 22.6.2 索引式查询：与 `llama_model_meta_*` 对称设计
 
 源码路径：`src/llama-adapter.cpp` - `llama_adapter_meta_count/key_by_index/val_str_by_index()`（第 342-373 行）
 
@@ -758,7 +758,7 @@ int32_t llama_adapter_meta_val_str_by_index(const llama_adapter_lora * adapter, 
 
 这种 API 设计允许用户以「枚举」方式遍历未知元数据，与模型元数据查询接口保持对称。
 
-### 23.6.3 元数据查询接口架构图
+### 22.6.3 元数据查询接口架构图
 
 ```mermaid
 graph TD
@@ -769,9 +769,9 @@ graph TD
     B --> F[meta_val_str_by_index: 值查询]
 ```
 
-## 23.7 退出与启动信号 —— LoRA 释放与 aLoRA
+## 22.7 退出与启动信号 —— LoRA 释放与 aLoRA
 
-### 23.7.1 `llama_adapter_lora_free`：幂等释放
+### 22.7.1 `llama_adapter_lora_free`：幂等释放
 
 源码路径：`src/llama-adapter.cpp` - `llama_adapter_lora_free()`（第 375-387 行）
 
@@ -791,7 +791,7 @@ void llama_adapter_lora_free(llama_adapter_lora * adapter) {
 
 必须先从 `model->loras` 擦除，再 `delete`，避免模型持有悬空指针。
 
-### 23.7.2 `llama_adapter_get_alora_*_tokens()` — aLoRA 调用序列
+### 22.7.2 `llama_adapter_get_alora_*_tokens()` — aLoRA 调用序列
 
 源码路径：`src/llama-adapter.cpp` - `llama_adapter_get_alora_*_tokens()`（第 389-401 行）
 
@@ -811,7 +811,7 @@ const llama_token * llama_adapter_get_alora_invocation_tokens(const llama_adapte
 
 aLoRA 不是持续生效：只有在检测到这组特定 token 时才把 LoRA 投入推理图。客户端可据此实现「按需激活」。
 
-### 23.7.3 释放与 aLoRA 生命周期图
+### 22.7.3 释放与 aLoRA 生命周期图
 
 ```mermaid
 stateDiagram-v2
@@ -823,13 +823,13 @@ stateDiagram-v2
     Active --> Inactive: 推理完成
 ```
 
-## 23.8 对话礼仪教材 —— 聊天模板系统
+## 22.8 对话礼仪教材 —— 聊天模板系统
 
-### 23.8.1 为什么需要聊天模板？
+### 22.8.1 为什么需要聊天模板？
 
 每个 LLM 都期望特定格式的输入（特殊 token、角色标签、消息分隔符）。用户层只关心「system/user/assistant」三类消息，模板负责翻译成模型专属 prompt。
 
-### 23.8.2 `llm_chat_template` 枚举：50+ 模板的大家庭
+### 22.8.2 `llm_chat_template` 枚举：50+ 模板的大家庭
 
 源码路径：`src/llama-chat.h` - `llm_chat_template`（第 7-66 行）
 
@@ -896,7 +896,7 @@ enum llm_chat_template {
 };
 ```
 
-### 23.8.3 模板名 → 枚举：`llm_chat_template_from_str`
+### 22.8.3 模板名 → 枚举：`llm_chat_template_from_str`
 
 源码路径：`src/llama-chat.cpp` - `llm_chat_template_from_str()`（第 64-66 行）
 
@@ -917,7 +917,7 @@ llm_chat_template llm_chat_template_from_str(const std::string & name) {
 
 用 `std::map` 而非 `unordered_map`，因数据量小且有序遍历更友好。
 
-### 23.8.4 `llm_chat_apply_template`：手写 50+ 模板渲染器
+### 22.8.4 `llm_chat_apply_template`：手写 50+ 模板渲染器
 
 源码路径：`src/llama-chat.cpp` - `llm_chat_apply_template()`（第 171-640 行，续 784-890 行）
 
@@ -1047,7 +1047,7 @@ int32_t llm_chat_apply_template(
 
 **这个函数是一个巨大的 `if-else` 分支树**，每个分支手写一个模板的渲染逻辑。不使用 Jinja 解析，换取极高的执行效率，但维护成本也高。`add_ass` 决定是否追加 assistant 引导 token；对没有 system 角色的模型（Gemma），会把 system 合并到第一条 user；`UNKNOWN` 直接返回 `-1` 提示不支持。
 
-### 23.8.5 辅助工具：`trim()` 与 `LU8()`
+### 22.8.5 辅助工具：`trim()` 与 `LU8()`
 
 源码路径：`src/llama-chat.cpp` - `trim()`（第 16-24 行）、`src/llama-chat.h` - `LU8` 宏（第 70-72 行）
 
@@ -1075,7 +1075,7 @@ static std::string trim(const std::string & str) {
 
 `trim()` 被多个模板调用；`LU8()` 跨 C++ 标准保证 UTF-8 字符串字面量正确。
 
-### 23.8.6 聊天模板系统流程图
+### 22.8.6 聊天模板系统流程图
 
 ```mermaid
 flowchart TD
@@ -1095,9 +1095,9 @@ flowchart TD
     I --> J[输出 dest]
 ```
 
-## 23.9 指纹侦探 —— 模板自动检测
+## 22.9 指纹侦探 —— 模板自动检测
 
-### 23.9.1 `llm_chat_detect_template`：字符串指纹匹配
+### 22.9.1 `llm_chat_detect_template`：字符串指纹匹配
 
 源码路径：`src/llama-chat.cpp` - `llm_chat_detect_template()`（第 67-170 行）
 
@@ -1324,7 +1324,7 @@ llm_chat_template llm_chat_detect_template(const std::string & tmpl) {
 
 **这是一个典型的「软启发式」实践**：宁可错漏也别阻塞，由上层再做兜底。检测顺序体现了优先级：精确匹配 > 显式特征子串 > 隐式模式。误判（如把 Phi-3 识别成 Falcon-3）会导致渲染出错误 prompt，模型输出乱码或拒答。
 
-### 23.9.2 模板自动检测决策树
+### 22.9.2 模板自动检测决策树
 
 ```mermaid
 flowchart TD
@@ -1347,9 +1347,9 @@ flowchart TD
     L -->|否| M[UNKNOWN]
 ```
 
-## 23.10 目录清单 —— 内置模板清单
+## 22.10 目录清单 —— 内置模板清单
 
-### 23.10.1 `llama_chat_builtin_templates`：对外暴露模板名清单
+### 22.10.1 `llama_chat_builtin_templates`：对外暴露模板名清单
 
 源码路径：`src/llama-chat.cpp` - `llama_chat_builtin_templates()`（第 897-903 行）
 
@@ -1369,7 +1369,7 @@ int32_t llama_chat_builtin_templates(const char ** output, size_t len) {
 
 典型的客户端调用流程如下：首先，客户端调用 `llama_chat_builtin_templates` 获取所有可用模板名（可以先传入 `nullptr` 和 0 来查询总数，再分配缓冲区进行第二次调用）；接着，将模板名列表展示给用户或由用户配置文件指定；用户选定后，客户端通过 `llm_chat_template_from_str` 将名字字符串转换为内部的 `llm_chat_template` 枚举值；最后，调用 `llm_chat_apply_template` 依据该枚举将消息列表渲染成模型专属的 prompt 字符串。这一流程将「枚举清单」与「名字查找」分离，使得客户端可以缓存模板列表，避免每次推理都遍历映射表，同时也便于在模板集合发生变化时仅更新清单而无需修改调用方代码。
 
-### 23.10.2 内置模板清单映射图
+### 22.10.2 内置模板清单映射图
 
 ```mermaid
 graph TD
@@ -1378,7 +1378,7 @@ graph TD
     C --> D[返回总数]
 ```
 
-## 23.11 设计中的取舍
+## 22.11 设计中的取舍
 
 **为什么不用统一的 Jinja 模板引擎渲染所有模板？** Jinja 解析器复杂度高、启动慢、依赖运行时解释，适用于「模板频繁变动、用户自定义」的场景。而 llama.cpp 的内置模板固定且性能敏感，手写 50+ 分支渲染器虽维护成本高，但**零解析开销、零依赖、编译期类型安全**，完美契合「极简、高性能、零依赖」的工程哲学。这种设计的 trade-off 在于：新增模板需要手动添加分支并维护，但换来的是推理阶段无可匹敌的执行效率。
 
@@ -1390,7 +1390,7 @@ graph TD
 
 **为什么 `llama_adapter_lora_free` 要先从 `model->loras` 擦除再 `delete`？** 如果模型仍持有适配器指针，而适配器已被释放，将导致悬空指针访问。先擦除再释放确保了资源清理的有序性。其 trade-off 是多了一次哈希表查找操作，但换来了内存安全，避免了 use-after-free 的风险。
 
-## 23.12 动手练习
+## 22.12 动手练习
 
 - **练习 1：阅读控制向量适配器实现**。阅读 `src/llama-adapter.cpp` 第 1-120 行（`llama_adapter_cvec` 全部实现），理解 `init()` 中的 `ctx_for_buft` lambda 是如何实现「按后端类型懒分配」的，以及为什么 `tensors[0]` 必须是 `nullptr`。同时分析 `apply()` 中传入 `data == nullptr` 的语义，以及第 il 层的张量数据在输入缓冲区中的偏移量公式。请尝试回答以下问题：`ggml_backend_buffer_clear(buf, 0)` 的作用是什么？为什么 `init()` 使用 `no_alloc=true` 而在最后才 `alloc_ctx_tensors_from_buft`？如果模型有 32 层，`ctxs` 和 `bufs` 最多可能有多少个元素？
 
@@ -1400,7 +1400,7 @@ graph TD
 
 - **练习 4：逆向模板指纹检测**。阅读 `src/llama-chat.cpp` 中 `llm_chat_detect_template` 函数（第 127 行起），理解其检测策略：为什么要先尝试 `llm_chat_template_from_str` 精确匹配，失败后才进入启发式分支；ChatML 家族是如何通过 `<|im_sep|>` 和 `<end_of_utterance>` 区分 Phi-4 与 SmolVLM 的；Mistral 家族的四级分支（v7 / v1 / v3 / v3-tekken）的判定条件是什么；Llama-2 家族的四种变体（LLAMA_2 / SYS / SYS_BOS / SYS_STRIP）的判定顺序如何排列。请尝试回答：如果一个 GGUF 文件的模板字符串是空的，函数会返回什么？启发式检测「宁可错漏也别阻塞」的设计哲学是如何体现的？如果误判了模板（例如把 Phi-3 识别成 Falcon-3），会产生什么后果？
 
-## 23.13 本章小结
+## 22.13 本章小结
 
 这一章中，我们深入探讨了 llama.cpp 中的模型适配器与聊天模板两大核心子系统。首先，我们学习了控制向量适配器（`llama_adapter_cvec`）的设计与实现，理解了它如何通过按后端类型懒分配上下文、为每层注入方向向量来实现对模型行为的微调，以及如何通过 `apply()` 的双模式动态启用或禁用控制。其次，我们剖析了 LoRA 适配器的完整加载流水线，从 GGUF 文件的只读打开、元数据校验、A/B 张量配对，到设备感知的缓冲区分配与数据回填，掌握了 LoRA 适配器的生命周期管理与元数据查询接口。接着，我们研究了聊天模板系统，涵盖了 50+ 内置模板的枚举体系、手写分支渲染器的高效实现，以及基于字符串指纹的启发式模板自动检测算法。最后，我们通过架构图与设计取舍的讨论，理解了这些组件背后的设计哲学与工程权衡。通过本章的学习，我们能够阅读并修改自定义聊天模板与适配器数据流，为深入定制 llama.cpp 奠定了坚实基础。
 

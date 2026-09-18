@@ -1,6 +1,6 @@
 
 
-# 第60章 惰性张量框架 —— 操作图的"延迟执行引擎"
+# 第61章 惰性张量框架 —— 操作图的"延迟执行引擎"
 
 ## 学习目标
 
@@ -14,11 +14,11 @@
 - 理解抽象方法`meta_with_dtype_and_shape`在元张量创建中的分派机制
 - 能够阅读并扩展自定义的惰性张量后端实现
 
-## 60.1 生活类比
+## 61.1 生活类比
 
 想象惰性张量系统是一个**智能建筑工地的预制件管理系统**：**LazyMeta** = 工厂的自动化装配流水线，一旦接到新建材（类定义）就自动贴上所有标准化接口标签（包装所有魔术方法）；**LazyBase** = 施工图纸库，每张图纸（张量）只记录材料规格（meta）和施工步骤（func），不立即生产实体；**_wrap_fn** = 工程监理，先根据图纸（meta）模拟推演流程，确认形状尺寸（shape/dtype）无误后，才安排实际施工；**to_eager** = 最终验收，按图纸树状结构（args嵌套）自底向上逐个完成实际建造，并缓存成品避免重复施工；**LazyNumpyTensor** = NumPy预制件供应商，利用Visual Tricks（stride tricks）展示建材规格而不占用仓库空间；**__init_subclass__** = 入职强制培训，确保每个新加入的施工队（子类）都配备基本的工具箱（_tensor_type）；**meta_with_dtype_and_shape** = 建材规格生成器，根据设计图纸（dtype/shape）快速生成虚拟样品（元张量）用于预览。
 
-## 60.2 源码地图
+## 61.2 源码地图
 
 ```
 gguf-py/gguf/lazy.py
@@ -50,11 +50,11 @@ gguf-py/gguf/lazy.py
     └── tofile(*args, **kwargs)  # 强制Eager执行后写入
 ```
 
-## 60.3 LazyMeta 元类 —— 惰性张量的"自动包装工厂"
+## 61.3 LazyMeta 元类 —— 惰性张量的"自动包装工厂"
 
 元类是 Python 中控制类创建的"元工厂"。`LazyMeta` 通过重写 `__new__` 方法，在类定义阶段就完成了所有运算符魔术方法的自动包装。这就像一个自动化装配流水线：只要你定义了一个继承自 `LazyBase` 的新类，流水线就会自动为它安装好加减乘除、索引、比较等 40 多个标准接口，而无需你手写一行重复代码。
 
-### 60.3.1 `LazyMeta.__new__()`：动态注入 `__getattr__` 与批量包装运算符
+### 61.3.1 `LazyMeta.__new__()`：动态注入 `__getattr__` 与批量包装运算符
 
 源码路径：`gguf-py/gguf/lazy.py` - `LazyMeta`（第17-95行）
 
@@ -127,11 +127,11 @@ def __new__(cls, name: str, bases: tuple[type, ...], namespace: dict[str, Any], 
 - 一元运算（`neg`、`abs` 等）设为 `True`：不改变形状类型，直接复用输入元数据，避免无谓计算。
 - 索引/长度（`getitem`、`len`）设为 `False`：切片会改变形态，必须预演。
 
-## 60.4 LazyBase 基类 —— 构建"操作树"的延迟评估引擎与契约守护者
+## 61.4 LazyBase 基类 —— 构建"操作树"的延迟评估引擎与契约守护者
 
 `LazyBase` 是惰性张量的抽象基类，它定义了"操作树"的节点结构、递归求值引擎、以及子类必须遵守的契约。每一个惰性张量实例，要么持有现成的数据，要么持有一个待执行的函数和参数树。
 
-### 60.4.1 `LazyBase.__init__()`：惰性张量的"出生证明"
+### 61.4.1 `LazyBase.__init__()`：惰性张量的"出生证明"
 
 源码路径：`gguf-py/gguf/lazy.py` - `LazyBase.__init__()`（第112-120行）
 
@@ -149,7 +149,7 @@ def __init__(self, *, meta: Any, data: Any | None = None, args: tuple = (), kwar
 
 这段代码初始化了惰性张量的核心四元组。设计哲学是：**要么已有数据，要么有计算函数，二者必居其一**。`args` 支持嵌套结构（可包含其他 `LazyBase`），天然形成了计算依赖树。`_data` 为 `None` 表示未计算；计算后缓存于此，实现记忆化。
 
-### 60.4.2 `LazyBase.__init_subclass__()`：子类的强制入职检查
+### 61.4.2 `LazyBase.__init_subclass__()`：子类的强制入职检查
 
 源码路径：`gguf-py/gguf/lazy.py` - `LazyBase.__init_subclass__()`（第122-125行）
 
@@ -163,7 +163,7 @@ def __init_subclass__(cls) -> None:
 
 这段代码实现了**子类看门人**机制。在类定义阶段（import 时）而非实例化时，强制检查子类是否定义了 `_tensor_type` 类属性。这确保了每个具体的惰性张量实现（如 `LazyNumpyTensor`）都必须绑定到底层张量类型（如 `np.ndarray`），在类型系统层面堵住配置错误。
 
-### 60.4.3 `LazyBase._recurse_apply()`：结构保持的递归映射
+### 61.4.3 `LazyBase._recurse_apply()`：结构保持的递归映射
 
 源码路径：`gguf-py/gguf/lazy.py` - `LazyBase._recurse_apply()`（第127-137行）
 
@@ -186,7 +186,7 @@ def _recurse_apply(o: Any, fn: Callable[[Any], Any]) -> Any:
 
 这段代码实现了**结构保持的递归遍历**。它能穿透 `list`/`tuple` 容器，对内部的 `LazyBase` 叶子节点应用函数 `fn`，同时保持容器类型不变。这是提取嵌套参数中的元数据（`_meta`）或触发嵌套急切求值的基础工具。
 
-### 60.4.4 `LazyBase._wrap_fn()`：惰性求值的核心引擎
+### 61.4.4 `LazyBase._wrap_fn()`：惰性求值的核心引擎
 
 源码路径：`gguf-py/gguf/lazy.py` - `LazyBase._wrap_fn()`（第139-174行）
 
@@ -255,7 +255,7 @@ def _wrap_fn(cls, fn: Callable, *, use_self: LazyBase | None = None, meta_noop: 
    - **元组张量输出**（如 `split`/`chunk`）：引入 `shared_args` 机制，多个输出共享同一计算结果，首次求值时只执行一次 `fn`。
    - **标量/其他**（如 `len`、`sum`）：无法惰性化，强制 `to_eager` 后立即执行。
 
-### 60.4.5 `LazyBase.meta_with_dtype_and_shape()`：抽象工厂方法
+### 61.4.5 `LazyBase.meta_with_dtype_and_shape()`：抽象工厂方法
 
 源码路径：`gguf-py/gguf/lazy.py` - `LazyBase.meta_with_dtype_and_shape()`（第194-196行）
 
@@ -266,7 +266,7 @@ def meta_with_dtype_and_shape(cls, dtype: Any, shape: Any) -> Any: pass
 
 这段代码定义了**抽象工厂接口**。它是连接"逻辑形状推导"与"物理内存布局"的桥梁。基类仅声明契约，具体实现由子类（如 `LazyNumpyTensor`）提供。在 `_wrap_fn` 中，当 `meta_noop` 为元组指定新 dtype/shape 时，会调用此方法生成新的元数据张量。
 
-### 60.4.6 `LazyBase.to_eager()`：延迟计算的最终引爆
+### 61.4.6 `LazyBase.to_eager()`：延迟计算的最终引爆
 
 源码路径：`gguf-py/gguf/lazy.py` - `LazyBase.to_eager()`（第176-187行）
 
@@ -292,7 +292,7 @@ def to_eager(cls, t: Any) -> Any:
 3. **类型不变式校验**：断言结果 `dtype` 与 `shape` 与 `_meta` 完全一致，保证预演正确。
 4. 缓存至 `_data`，后续访问直接返回，实现**记忆化**。
 
-### 60.4.7 `LazyBase.eager_to_meta()` 与 `from_eager()`：双向转换桥梁
+### 61.4.7 `LazyBase.eager_to_meta()` 与 `from_eager()`：双向转换桥梁
 
 源码路径：`gguf-py/gguf/lazy.py` - `LazyBase.eager_to_meta()`（第189-191行）与 `from_eager()`（第198-204行）
 
@@ -315,11 +315,11 @@ def from_eager(cls, t: Any) -> Any:
 - `eager_to_meta`：剥离数据，仅保留 shape/dtype 元信息，构建轻量级元张量。
 - `from_eager`：将 `np.ndarray` 等实体张量包装为惰性张量，`data` 直接指向原数组（零拷贝），`meta` 由 `eager_to_meta` 生成。
 
-## 60.5 LazyNumpyTensor 实现 —— NumPy 后端的"内存伪装术"
+## 61.5 LazyNumpyTensor 实现 —— NumPy 后端的"内存伪装术"
 
 `LazyNumpyTensor` 是 `LazyBase` 的首个具体实现，它利用 NumPy 的 `stride_tricks` 实现了**零内存占用的元张量**，并针对 NumPy 特有的 `astype`、`tofile` 做了惰性化适配。
 
-### 60.5.1 `LazyNumpyTensor.meta_with_dtype_and_shape()`：零内存占用的形状模拟
+### 61.5.1 `LazyNumpyTensor.meta_with_dtype_and_shape()`：零内存占用的形状模拟
 
 源码路径：`gguf-py/gguf/lazy.py` - `LazyNumpyTensor.meta_with_dtype_and_shape()`（第214-219行）
 
@@ -341,7 +341,7 @@ def meta_with_dtype_and_shape(cls, dtype: DTypeLike, shape: tuple[int, ...]) -> 
 
 这使得 GGUF 转换时可构建包含数万张量的巨大操作图，而元数据预演阶段**零内存压力**。
 
-### 60.5.2 `LazyNumpyTensor.astype()`：惰性类型转换
+### 61.5.2 `LazyNumpyTensor.astype()`：惰性类型转换
 
 源码路径：`gguf-py/gguf/lazy.py` - `LazyNumpyTensor.astype()`（第221-224行）
 
@@ -355,7 +355,7 @@ def astype(self, dtype, *args, **kwargs):
 
 这段代码重写了 `astype` 使其**惰性化**：不立即转换数据，而是记录转换操作，生成新的元数据（原 shape + 新 dtype），构造新的惰性张量。实际转换推迟到 `to_eager()` 被调用时。
 
-### 60.5.3 `LazyNumpyTensor.tofile()`：Eager 强制转换落盘
+### 61.5.3 `LazyNumpyTensor.tofile()`：Eager 强制转换落盘
 
 源码路径：`gguf-py/gguf/lazy.py` - `LazyNumpyTensor.tofile()`（第226-228行）
 
@@ -368,7 +368,7 @@ def tofile(self, *args, **kwargs):
 
 这段代码处理**无法延迟的 IO 边界**。文件写入必须有真实数据，因此强制调用 `to_eager` 触发整个操作树的计算，再调用 NumPy 原生 `tofile` 写入。这是 GGUFWriter 写入权重前的必经步骤。
 
-### 60.5.4 模块依赖图
+### 61.5.4 模块依赖图
 
 ```mermaid
 graph TD
@@ -385,7 +385,7 @@ graph TD
     I --> F
 ```
 
-## 60.6 设计中的取舍：元类注入 vs 装饰器侵入，预演优化 vs 正确性守门
+## 61.6 设计中的取舍：元类注入 vs 装饰器侵入，预演优化 vs 正确性守门
 
 **为什么用元类而非装饰器或基类 mixin？**
 元类在**类创建时**一次性完成所有魔术方法的包装，对子类零侵入、零样板代码。装饰器需要逐方法标注，mixin 无法拦截实例属性访问（`__getattr__` 必须定义在类上）。元类是实现"透明代理"的最自然位置。
@@ -399,7 +399,7 @@ graph TD
 **`shared_args` 机制解决了什么问题？**
 多输出算子（`split`、`chunk`、`qr` 等）在惰性图中本应共享同一次计算。若每个输出独立持有 `args/func`，触发求值时会重复执行 `fn`。`shared_args = [args, cached_result]` 让多个输出节点指向同一缓存槽，首次求值计算，后续直接取缓存，**保证副作用只执行一次**。
 
-## 60.7 动手练习
+## 61.7 动手练习
 
 1. 元类机制分析
    - 阅读`LazyMeta.__new__`的源码实现（第17-95行），回答以下问题：
@@ -445,7 +445,7 @@ graph TD
    - 3. 如果要在`LazyBase`中支持`reshape(3, 4)`方法（而不仅仅是通过`__getattr__`转发），需要如何扩展代码？
    - 4. 考虑`LazyNumpyTensor`的场景，说明`shared_args`机制（用于多输出算子如`split`）如何避免重复计算。
 
-## 60.8 本章小结
+## 61.8 本章小结
 
 这一章中我们深入剖析了 `gguf-py/gguf/lazy.py` 实现的惰性张量框架。首先，我们理解了 `LazyMeta` 元类如何在类创建时自动注入 `__getattr__` 拦截器并批量包装 40 余个运算符魔术方法，实现了透明的惰性代理。其次，我们详细解读了 `LazyBase` 核心数据结构（`meta`/`data`/`args`/`func`）与延迟评估引擎 `_wrap_fn`，掌握了元数据预演、三路分发、多输出共享计算等关键机制。接着，我们探讨了 `__init_subclass__` 对子类契约的强制检查、抽象工厂方法 `meta_with_dtype_and_shape` 的分派作用，以及 `to_eager` 的自底向上递归求值与缓存策略。最后，我们分析了 `LazyNumpyTensor` 利用 `stride_tricks` 实现零内存元张量、惰性 `astype` 与强制 `tofile` 的具体实现。
 

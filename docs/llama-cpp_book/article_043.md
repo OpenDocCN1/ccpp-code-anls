@@ -1,5 +1,5 @@
 
-# 第44章 common 模块深度解析 —— 探索「随身工具箱」的内部构造
+# 第43章 common 模块深度解析 —— 探索「随身工具箱」的内部构造
 
 ## 学习目标
 
@@ -10,13 +10,13 @@
 - 掌握 common_batch_add、common_tokenize、common_detokenize 等高频推理接口的使用方法
 - 能够阅读并扩展 common 模块中的工具函数，为自定义推理应用提供支撑
 
-## 44.1 生活类比
+## 43.1 生活类比
 
 想象 llama.cpp 的 common 模块是一个随身携带的多功能工具箱。这个工具箱的控制面板由 cpu_params 和 common_params 组成，每个旋钮对应一种配置，让开发者可以精细调控推理行为。工具箱的总电源开关是 common_init_result，一旦启动就装配好模型、上下文和采样器，确保整个系统就绪。螺丝刀和钳子则是 string_format、string_strip 等字符串处理函数，帮助处理各种字符串小活儿。文件收纳格由 fs_create_directory_with_parents 和 fs_list 实现，让磁盘路径整理得井井有条。翻译官 common_tokenize 和 common_detokenize 负责文本与 token 之间的互转，流水线工人 common_batch_add 和 common_batch_clear 批量装货卸货。LoRA 适配器和控制向量则是插件槽，随时扩展新功能。Pimpl 模式像工具箱的外壳，把内部复杂结构藏起来，只暴露简洁接口。postprocess_cpu_params 和 set_process_priority 则是性能调优师，根据硬件自动调校。就像工匠出门干活必备一个工具箱，llama.cpp 的每个上层应用都依赖这个 common 工具箱，避免重复造轮子，也把杂活和核心业务分离开来。
 
-## 44.2 源码地图
+## 43.2 源码地图
 
-### 44.2.1 README.md 源码解析
+### 43.2.1 README.md 源码解析
 
 源码路径：`README.md`（第 1-40 行）
 
@@ -52,7 +52,7 @@ make
 - 第 12-15 行：快速入门指南，展示克隆和编译命令，体现易上手特性。
 - 第 18-21 行：支持的模型表格，展示模型、后端和备注，体现支持矩阵。
 
-### 44.2.2 模块文件结构
+### 43.2.2 模块文件结构
 
 ```text
 README.md
@@ -250,13 +250,13 @@ common/common.cpp
     └── common_prompt_batch_decode()        # 批量解码 + 状态保存
 ```
 
-## 44.3 common 模块的定位 —— llama.cpp 的「随身工具箱」
+## 43.3 common 模块的定位 —— llama.cpp 的「随身工具箱」
 
 大模型推理不只需要核心引擎，还需要参数管理、日志打印、字符串处理、终端交互、批处理、分词等大量周边能力。如果每个 CLI、server、工具程序都各自实现这些逻辑，整个项目会迅速失控。common 模块相当于把这些高频可复用能力集中收纳，成了 llama.cpp 的「随身工具箱」。README 里体现了这种工程诉求：项目强调零依赖、易上手、跨平台，这正是 common 模块存在的土壤。
 
 为什么把它看成「瑞士军刀」？它不直接决定模型结构，而是负责把各种基础能力打磨得足够顺手。上层应用只需要打开工具箱，就能拿到初始化、采样封装、文件系统、映射转换等通用功能。这种「基础设施层」的思路，能把业务逻辑和细节杂活儿分开。也让 llama.cpp 在复杂生态中保持清爽、可组合、可扩展。
 
-### 44.3.1 common_grammar()：语法约束的「封印」
+### 43.3.1 common_grammar()：语法约束的「封印」
 
 源码路径：`common/common.h` - `common_grammar`（220-229 行）
 
@@ -290,7 +290,7 @@ struct common_grammar {
 
 这段代码定义了 common_grammar 这个轻量级数据结构，它是 llama.cpp 中语法约束的统一表示，既支持默认空状态，也支持带类型和字符串的完整封装。
 
-### 44.3.2 common_grammar_value() / common_grammar_needs_prefill()：语法工具函数
+### 43.3.2 common_grammar_value() / common_grammar_needs_prefill()：语法工具函数
 
 源码路径：`common/common.h` - `common_grammar_value()`、`common_grammar_needs_prefill()`（236-246 行）
 
@@ -312,7 +312,7 @@ inline bool common_grammar_needs_prefill(const common_grammar & g) {
 
 这两个内联函数提供了对 common_grammar 的便捷访问和语义判断，是语法约束流程中的基础工具。
 
-### 44.3.3 string_split<T>() / string_split<std::string>()：模板拆分的泛型设计
+### 43.3.3 string_split<T>() / string_split<std::string>()：模板拆分的泛型设计
 
 源码路径：`common/common.h` - `string_split<T>()`、`string_split<std::string>()`（11-40 行）
 
@@ -355,7 +355,7 @@ inline std::vector<std::string> string_split<std::string>(const std::string & st
 
 这两个模板函数提供了类型安全的字符串拆分能力，泛型版本适合数值转换，特化版本专为字符串优化，体现了 C++ 模板特化的实用价值。
 
-### 44.3.4 模块依赖图
+### 43.3.4 模块依赖图
 
 ```mermaid
 graph TD
@@ -370,7 +370,7 @@ graph TD
     I --> J[模型/上下文/采样器]
 ```
 
-## 44.4 公共底层能力 —— 系统信息与字符串处理的「杂务工坊」
+## 43.4 公共底层能力 —— 系统信息与字符串处理的「杂务工坊」
 
 系统探测放在 common 是因为需要回答「代码跑在什么硬件上」的问题。cpu_get_num_physical_cores、cpu_get_num_math、is_hybrid_cpu、is_running_on_efficiency_core 这类函数，为后续线程配置、调度优先级、性能优化提供基线。尤其在混合 CPU 场景下，需要避开能效核、尽量让数学线程跑在真正适合计算的核上。
 
@@ -378,7 +378,7 @@ graph TD
 
 字符串与文件系统工具的作用方面，string_format、string_strip、string_join、string_split、string_replace_all、regex_escape、string_process_escapes，支撑日志、参数、调试输出等高频场景。fs_create_directory_with_parents、fs_get_cache_directory、fs_list、glob_match 让路径管理和目录遍历跨平台一致。这些函数像杂务工坊：看似琐碎，却是整个框架可靠性的底座。
 
-### 44.4.1 cpu_get_num_physical_cores()：跨平台的物理心脏
+### 43.4.1 cpu_get_num_physical_cores()：跨平台的物理心脏
 
 源码路径：`common/common.cpp` - `cpu_get_num_physical_cores()`（60-111 行）
 
@@ -396,7 +396,7 @@ int32_t cpu_get_num_physical_cores() {
 
 这段代码封装了对物理核心数的获取，为上层线程配置提供基础数据。
 
-### 44.4.2 is_hybrid_cpu() / is_running_on_efficiency_core()：避开能效核的「眼睛」
+### 43.4.2 is_hybrid_cpu() / is_running_on_efficiency_core()：避开能效核的「眼睛」
 
 源码路径：`common/common.cpp` - `is_hybrid_cpu()`、`is_running_on_efficiency_core()`（135-149 行）
 
@@ -423,7 +423,7 @@ static bool is_running_on_efficiency_core(void) {
 
 这两个函数利用 CPUID 指令精确识别 CPU 架构类型，为后续线程调度避开能效核提供依据。
 
-### 44.4.3 postprocess_cpu_params()：自动补全的「调度师」
+### 43.4.3 postprocess_cpu_params()：自动补全的「调度师」
 
 源码路径：`common/common.cpp` - `postprocess_cpu_params()`（237-258 行）
 
@@ -454,7 +454,7 @@ void postprocess_cpu_params(cpu_params& cpuparams, const cpu_params* role_model)
 
 这段代码体现了「角色模型」模式，允许从预设配置复制参数，同时自动校验掩码与线程数的一致性。
 
-### 44.4.4 string_format()：printf 的安全封装
+### 43.4.4 string_format()：printf 的安全封装
 
 源码路径：`common/common.cpp` - `string_format()`（382-395 行）
 
@@ -481,7 +481,7 @@ std::string string_format(const char * fmt, ...) {
 
 这种「两次调用法」是 C 中安全格式化的经典模式，避免了固定缓冲区溢出的问题。
 
-### 44.4.5 string_process_escapes()：让字符串「活」起来
+### 43.4.5 string_process_escapes()：让字符串「活」起来
 
 源码路径：`common/common.cpp` - `string_process_escapes()`（569-607 行）
 
@@ -521,7 +521,7 @@ void string_process_escapes(std::string & input) {
 
 这段代码将常见的转义序列转换为实际字符，方便用户从命令行传入特殊字符。
 
-### 44.4.6 fs_create_directory_with_parents()：跨平台的「文件收纳格」
+### 43.4.6 fs_create_directory_with_parents()：跨平台的「文件收纳格」
 
 源码路径：`common/common.cpp` - `fs_create_directory_with_parents()`（850-918 行）
 
@@ -548,7 +548,7 @@ bool fs_create_directory_with_parents(const std::string & path) {
 
 这段代码利用 std::filesystem 和递归实现了类似 mkdir -p 的功能，跨平台且健壮。
 
-### 44.4.7 glob_match()：通配符的「翻译官」
+### 43.4.7 glob_match()：通配符的「翻译官」
 
 源码路径：`common/common.cpp` - `glob_match()`（699-749 行）
 
@@ -593,7 +593,7 @@ static inline bool glob_match(const char * pattern, const char * str) {
 
 这段递归实现支持了文件系统中常见的通配符模式，是文件查找和过滤的基础。
 
-### 44.4.8 cpu_get_num_math()：推荐数学线程数
+### 43.4.8 cpu_get_num_math()：推荐数学线程数
 
 源码路径：`common/common.cpp` - `cpu_get_num_math()`（172-193 行）
 
@@ -608,7 +608,7 @@ int32_t cpu_get_num_math() {
 
 - 第 4 行：返回推荐线程数，实际实现会检测混合架构并过滤能效核、减少超线程干扰。
 
-### 44.4.9 parse_cpu_range()：解析 CPU 范围
+### 43.4.9 parse_cpu_range()：解析 CPU 范围
 
 源码路径：`common/common.cpp` - `parse_cpu_range()`（260-297 行）
 
@@ -622,7 +622,7 @@ bool parse_cpu_range(const std::string & range, bool (&boolmask)[GGML_MAX_N_THRE
 
 - 函数解析形如 "0-3" 的范围字符串，设置 boolmask 中对应位，非法格式返回 false。
 
-### 44.4.10 parse_cpu_mask()：解析 CPU 掩码
+### 43.4.10 parse_cpu_mask()：解析 CPU 掩码
 
 源码路径：`common/common.cpp` - `parse_cpu_mask()`（299-338 行）
 
@@ -637,7 +637,7 @@ bool parse_cpu_mask(const std::string & mask, bool (&boolmask)[GGML_MAX_N_THREAD
 
 - 支持 "0xFFFF" 格式，每个十六进制字符转换为 4 个掩码位。
 
-### 44.4.11 set_process_priority()：进程优先级设置
+### 43.4.11 set_process_priority()：进程优先级设置
 
 源码路径：`common/common.cpp` - `set_process_priority()`（201-229 行）
 
@@ -655,7 +655,7 @@ bool set_process_priority(enum ggml_sched_priority prio) {
 - 第 2-4 行：若优先级为 NORMAL，直接返回 true。
 - 第 5-7 行：Windows 用 SetPriorityClass，POSIX 用 setpriority，失败记录日志并返回 false。
 
-### 44.4.12 cpuid() / pin_cpu() / cpu_count_math_cpus()：CPU 控制基础
+### 43.4.12 cpuid() / pin_cpu() / cpu_count_math_cpus()：CPU 控制基础
 
 源码路径：`common/common.cpp` - `cpuid()`（116-125）、`pin_cpu()`（127-133）、`cpu_count_math_cpus()`（151-165）
 
@@ -695,7 +695,7 @@ static int cpu_count_math_cpus(int n_cpu) {
 - `pin_cpu`：使用 pthread 绑定 CPU 亲和性。
 - `cpu_count_math_cpus`：遍历 CPU，跳过能效核并减少超线程影响。
 
-### 44.4.13 string_strip()：去除首尾空白
+### 43.4.13 string_strip()：去除首尾空白
 
 源码路径：`common/common.cpp` - `string_strip()`（397-407 行）
 
@@ -712,7 +712,7 @@ std::string string_strip(const std::string & str) {
 - 第 3-4 行：找到第一个和最后一个非空白字符的位置。
 - 第 6 行：返回子字符串。
 
-### 44.4.14 string_join()：字符串连接
+### 43.4.14 string_join()：字符串连接
 
 源码路径：`common/common.cpp` - `string_join()`（452-461 行）
 
@@ -727,7 +727,7 @@ std::string string_join(const std::vector<std::string> & values, const std::stri
 }
 ```
 
-### 44.4.15 string_split()：字符串拆分
+### 43.4.15 string_split()：字符串拆分
 
 源码路径：`common/common.cpp` - `string_split()`（463-478 行）
 
@@ -740,7 +740,7 @@ std::vector<std::string> string_split(const std::string & str, const std::string
 }
 ```
 
-### 44.4.16 string_repeat()：重复字符串
+### 43.4.16 string_repeat()：重复字符串
 
 源码路径：`common/common.cpp` - `string_repeat()`（480-491 行）
 
@@ -754,7 +754,7 @@ std::string string_repeat(const std::string & str, size_t n) {
 }
 ```
 
-### 44.4.17 string_replace_all()：全局替换
+### 43.4.17 string_replace_all()：全局替换
 
 源码路径：`common/common.cpp` - `string_replace_all()`（428-445 行）
 
@@ -768,7 +768,7 @@ void string_replace_all(std::string & s, const std::string & search, const std::
 }
 ```
 
-### 44.4.18 regex_escape()：正则转义
+### 43.4.18 regex_escape()：正则转义
 
 源码路径：`common/common.cpp` - `regex_escape()`（447-450 行）
 
@@ -779,7 +779,7 @@ std::string regex_escape(const std::string & s) {
 }
 ```
 
-### 44.4.19 string_from 系列：类型转字符串
+### 43.4.19 string_from 系列：类型转字符串
 
 源码路径：`common/common.cpp` - `string_from()`（493-567 行）
 
@@ -813,7 +813,7 @@ std::string string_from(const struct llama_context * ctx, const struct llama_bat
 }
 ```
 
-### 44.4.20 string_parse_kv_override()：KV 覆盖解析
+### 43.4.20 string_parse_kv_override()：KV 覆盖解析
 
 源码路径：`common/common.cpp` - `string_parse_kv_override()`（609-655 行）
 
@@ -826,7 +826,7 @@ bool string_parse_kv_override(const char * data, std::vector<llama_model_kv_over
 }
 ```
 
-### 44.4.21 string_get_sortable_timestamp()：可排序时间戳
+### 43.4.21 string_get_sortable_timestamp()：可排序时间戳
 
 源码路径：`common/common.cpp` - `string_get_sortable_timestamp()`（409-426 行）
 
@@ -838,7 +838,7 @@ std::string string_get_sortable_timestamp() {
 }
 ```
 
-### 44.4.22 fs_validate_filename()：文件名校验
+### 43.4.22 fs_validate_filename()：文件名校验
 
 源码路径：`common/common.cpp` - `fs_validate_filename()`（756-824 行）
 
@@ -850,7 +850,7 @@ bool fs_validate_filename(const std::string & filename, bool allow_subdirs) {
 }
 ```
 
-### 44.4.23 fs_is_directory()：判断目录
+### 43.4.23 fs_is_directory()：判断目录
 
 源码路径：`common/common.cpp` - `fs_is_directory()`（920-923 行）
 
@@ -861,7 +861,7 @@ bool fs_is_directory(const std::string & path) {
 }
 ```
 
-### 44.4.24 fs_get_cache_directory()：获取缓存目录
+### 43.4.24 fs_get_cache_directory()：获取缓存目录
 
 源码路径：`common/common.cpp` - `fs_get_cache_directory()`（925-967 行）
 
@@ -873,7 +873,7 @@ std::string fs_get_cache_directory() {
 }
 ```
 
-### 44.4.25 fs_get_cache_file()：获取缓存文件路径
+### 43.4.25 fs_get_cache_file()：获取缓存文件路径
 
 源码路径：`common/common.cpp` - `fs_get_cache_file()`（969-978 行）
 
@@ -889,7 +889,7 @@ std::string fs_get_cache_file(const std::string & filename) {
 }
 ```
 
-### 44.4.26 fs_list()：列出目录内容
+### 43.4.26 fs_list()：列出目录内容
 
 源码路径：`common/common.cpp` - `fs_list()`（980-1018 行）
 
@@ -902,7 +902,7 @@ std::vector<common_file_info> fs_list(const std::string & path, bool include_dir
 }
 ```
 
-### 44.4.27 tty_can_use_colors()：终端颜色检测
+### 43.4.27 tty_can_use_colors()：终端颜色检测
 
 源码路径：`common/common.cpp` - `tty_can_use_colors()`（1024-1042 行）
 
@@ -914,7 +914,7 @@ bool tty_can_use_colors() {
 }
 ```
 
-### 44.4.28 utf8_to_wstring()：宽字符转换
+### 43.4.28 utf8_to_wstring()：宽字符转换
 
 源码路径：`common/common.cpp` - `utf8_to_wstring()`（830-846 行）
 
@@ -929,7 +929,7 @@ static std::wstring utf8_to_wstring(const std::string & str) {
 }
 ```
 
-### 44.4.29 glob_class_match()：字符类匹配
+### 43.4.29 glob_class_match()：字符类匹配
 
 源码路径：`common/common.cpp` - `glob_class_match()`（657-696 行）
 
@@ -941,7 +941,7 @@ static inline bool glob_class_match(const char c, const char * pattern, const ch
 }
 ```
 
-### 44.4.30 common_init()：公共环境初始化
+### 43.4.30 common_init()：公共环境初始化
 
 源码路径：`common/common.cpp` - `common_init()`（340-357 行）
 
@@ -960,7 +960,7 @@ void common_init() {
 - 第 6 行：设置全局日志回调。
 - 第 7 行：输出构建调试信息。
 
-### 44.4.31 common_params_get_system_info()：系统信息字符串
+### 43.4.31 common_params_get_system_info()：系统信息字符串
 
 源码路径：`common/common.cpp` - `common_params_get_system_info()`（359-376 行）
 
@@ -973,7 +973,7 @@ std::string common_params_get_system_info(const common_params & params) {
 }
 ```
 
-### 44.4.32 公共底层能力架构图
+### 43.4.32 公共底层能力架构图
 
 ```mermaid
 graph TD
@@ -1006,7 +1006,7 @@ graph TD
     F --> F1[common_init()]
 ```
 
-## 44.5 核心数据结构 —— CPU、采样、模型与训练参数的「控制面板」
+## 43.5 核心数据结构 —— CPU、采样、模型与训练参数的「控制面板」
 
 common_params 系列是 common 模块的中枢神经。cpu_params、common_params_sampling、common_params_model、common_params、common_params_speculative、common_params_vocoder、common_params_diffusion 等结构体，把推理所需的各类配置集中收纳。它们像一块块控制面板：线程数、采样策略、模型位置、LoRA 配置、扩散参数、语音合成参数都能在这里找到位置。这样上层程序就不必在代码中到处散落参数对象，工程一致性很强。
 
@@ -1014,7 +1014,7 @@ common_params 系列是 common 模块的中枢神经。cpu_params、common_param
 
 训练相关结构的价值方面，lr_opt 让训练/微调场景可以表达学习率衰减策略。common_adapter_lora_info、common_control_vector_data 描述了适配器、控制向量这类增强行为所需的元信息。这些结构共同说明 common 模块并不是「纯粹工程杂件」，而是为推理与训练两类工作提供统一骨架。
 
-### 44.5.1 common_init_result：资源生命周期的「总电源」
+### 43.5.1 common_init_result：资源生命周期的「总电源」
 
 源码路径：`common/common.h` - `common_init_result`（96-105 行）
 
@@ -1042,7 +1042,7 @@ private:
 
 这个类是 common 模块的资源管理核心，通过 Pimpl 模式隐藏实现细节，对外提供简洁的访问接口。
 
-### 44.5.2 common_init_result::sampler()：带边界检查的「取件口」
+### 43.5.2 common_init_result::sampler()：带边界检查的「取件口」
 
 源码路径：`common/common.cpp` - `common_init_result::sampler()`（1237-1242 行）
 
@@ -1061,7 +1061,7 @@ common_sampler * common_init_result::sampler(llama_seq_id seq_id) {
 
 这段代码体现了防御性编程，通过边界检查避免非法序列 ID 导致的崩溃。
 
-### 44.5.3 lr_opt：训练节奏的「节拍器」
+### 43.5.3 lr_opt：训练节奏的「节拍器」
 
 源码路径：`common/common.h` - `lr_opt`（438-442 行）
 
@@ -1086,7 +1086,7 @@ struct lr_opt {
 
 这个结构体封装了学习率调度策略，为微调训练提供灵活的配置。
 
-### 44.5.4 lr_opt::get_lr()：指数衰减的「分段函数」
+### 43.5.4 lr_opt::get_lr()：指数衰减的「分段函数」
 
 源码路径：`common/common.cpp` - `lr_opt::get_lr()`（1411-1417 行）
 
@@ -1106,7 +1106,7 @@ float lr_opt::get_lr(float epoch) const {
 
 这段代码实现了指数衰减策略，在训练中平滑降低学习率，提升收敛稳定性。
 
-### 44.5.5 common_time_meas：RAII 计时器
+### 43.5.5 common_time_meas：RAII 计时器
 
 源码路径：`common/common.h` - `common_time_meas`（40-43 行）
 
@@ -1132,7 +1132,7 @@ common_time_meas::~common_time_meas() {
 
 - 构造时记录开始时间，析构时累加耗时到目标变量，实现 RAII 风格计时。
 
-### 44.5.6 cpu_params：CPU 参数封装
+### 43.5.6 cpu_params：CPU 参数封装
 
 源码路径：`common/common.h` - `cpu_params`
 
@@ -1147,7 +1147,7 @@ struct cpu_params {
 };
 ```
 
-### 44.5.7 common_adapter_lora_info：LoRA 适配器信息
+### 43.5.7 common_adapter_lora_info：LoRA 适配器信息
 
 源码路径：`common/common.h` - `common_adapter_lora_info`
 
@@ -1159,7 +1159,7 @@ struct common_adapter_lora_info {
 };
 ```
 
-### 44.5.8 common_params_sampling：采样参数
+### 43.5.8 common_params_sampling：采样参数
 
 源码路径：`common/common.h` - `common_params_sampling`
 
@@ -1186,7 +1186,7 @@ struct common_params_sampling {
 };
 ```
 
-### 44.5.9 common_params_model：模型来源
+### 43.5.9 common_params_model：模型来源
 
 源码路径：`common/common.h` - `common_params_model`
 
@@ -1203,7 +1203,7 @@ struct common_params_model {
 };
 ```
 
-### 44.5.10 common_params_speculative：投机解码参数
+### 43.5.10 common_params_speculative：投机解码参数
 
 源码路径：`common/common.h` - `common_params_speculative`
 
@@ -1215,7 +1215,7 @@ struct common_params_speculative {
 };
 ```
 
-### 44.5.11 common_params_vocoder：语音合成参数
+### 43.5.11 common_params_vocoder：语音合成参数
 
 源码路径：`common/common.h` - `common_params_vocoder`
 
@@ -1226,7 +1226,7 @@ struct common_params_vocoder {
 };
 ```
 
-### 44.5.12 common_params_diffusion：扩散模型参数
+### 43.5.12 common_params_diffusion：扩散模型参数
 
 源码路径：`common/common.h` - `common_params_diffusion`
 
@@ -1239,7 +1239,7 @@ struct common_params_diffusion {
 };
 ```
 
-### 44.5.13 common_params：总控参数
+### 43.5.13 common_params：总控参数
 
 源码路径：`common/common.h` - `common_params`
 
@@ -1265,7 +1265,7 @@ struct common_params {
 };
 ```
 
-### 44.5.14 common_control_vector_data：控制向量数据
+### 43.5.14 common_control_vector_data：控制向量数据
 
 源码路径：`common/common.h` - `common_control_vector_data`
 
@@ -1276,7 +1276,7 @@ struct common_control_vector_data {
 };
 ```
 
-### 44.5.15 common_control_vector_load_info：控制向量加载配置
+### 43.5.15 common_control_vector_load_info：控制向量加载配置
 
 源码路径：`common/common.h` - `common_control_vector_load_info`
 
@@ -1287,7 +1287,7 @@ struct common_control_vector_load_info {
 };
 ```
 
-### 44.5.16 common_file_info：文件系统条目
+### 43.5.16 common_file_info：文件系统条目
 
 源码路径：`common/common.h` - `common_file_info`
 
@@ -1300,7 +1300,7 @@ struct common_file_info {
 };
 ```
 
-### 44.5.17 common_init_result 的资源访问方法
+### 43.5.17 common_init_result 的资源访问方法
 
 源码路径：`common/common.cpp` - `model()`、`context()`、`lora()`、`reset_samplers()`、析构函数
 
@@ -1331,7 +1331,7 @@ common_init_result::~common_init_result() = default;
 - `reset_samplers()`：批量重置采样器 RNG 状态。
 - 析构函数使用默认实现，自动释放 pimpl 持有的资源。
 
-### 44.5.18 lr_opt::init()：初始化衰减策略
+### 43.5.18 lr_opt::init()：初始化衰减策略
 
 源码路径：`common/common.cpp` - `lr_opt::init()`（1398-1409 行）
 
@@ -1352,7 +1352,7 @@ void lr_opt::init() {
 
 - 计算指数衰减的比例因子 `scale_epoch`，确保学习率在指定周期内从 `lr0` 衰减到 `lr_min`。
 
-### 44.5.19 llm_ffn_exps_block_regex()：FFN 专家张量正则
+### 43.5.19 llm_ffn_exps_block_regex()：FFN 专家张量正则
 
 源码路径：`common/common.h` - `llm_ffn_exps_block_regex()`
 
@@ -1364,7 +1364,7 @@ inline std::string llm_ffn_exps_block_regex(int idx) {
 
 - 生成指定层编号的 FFN 专家张量正则表达式，用于模型加载时的张量匹配。
 
-### 44.5.20 核心数据结构流程图
+### 43.5.20 核心数据结构流程图
 
 ```mermaid
 graph TD
@@ -1384,7 +1384,7 @@ graph TD
     K --> O[llama_adapter_lora_ptr]
 ```
 
-## 44.6 通用推理接口 —— 初始化、分词、批处理与状态回放的「流水线」
+## 43.6 通用推理接口 —— 初始化、分词、批处理与状态回放的「流水线」
 
 common_init 把平台初始化统一收进来：Windows 下设置 UTF-8 控制台输出，统一接入 llama_log_set，确保日志走向固定，打出关键构建信息，方便排查环境问题。这类初始化函数像流水线的总开关，先保证运行环境可控。
 
@@ -1392,7 +1392,7 @@ common_init 把平台初始化统一收进来：Windows 下设置 UTF-8 控制�
 
 批处理、分词、反分词是常用三件套。common_batch_clear、common_batch_add 让 batch 填充更直观。common_tokenize、common_token_to_piece、common_detokenize 将文本与 token 的来回转换包装得更顺手。配合 common_prompt_batch_decode 和 common_replay_last_token，可以处理 prompt+state 的恢复、续推等场景。这套流水线的价值在于稳定和可复用，上层应用不用重复造轮子，也不容易在细节上翻车。
 
-### 44.6.1 common_model_params_to_llama() / common_context_params_to_llama()：参数桥接的「翻译层」
+### 43.6.1 common_model_params_to_llama() / common_context_params_to_llama()：参数桥接的「翻译层」
 
 源码路径：`common/common.cpp` - `common_model_params_to_llama()`、`common_context_params_to_llama()`（1325-1383 行）
 
@@ -1430,7 +1430,7 @@ struct llama_context_params common_context_params_to_llama(const common_params &
 
 这两个函数充当了「翻译官」，让上层应用使用统一的 common_params，而底层引擎保持独立性。
 
-### 44.6.2 common_batch_add()：流水线上的「装货工」
+### 43.6.2 common_batch_add()：流水线上的「装货工」
 
 源码路径：`common/common.cpp` - `common_batch_add()`（1411-1426 行）
 
@@ -1460,7 +1460,7 @@ void common_batch_add(
 
 这个函数封装了向 llama_batch 添加元素的细节，支持多序列 ID，方便并行推理。
 
-### 44.6.3 common_tokenize() / common_detokenize()：文本与 token 的「双向翻译」
+### 43.6.3 common_tokenize() / common_detokenize()：文本与 token 的「双向翻译」
 
 源码路径：`common/common.cpp` - `common_tokenize()`、`common_detokenize()`（1439-1503 行）
 
@@ -1509,7 +1509,7 @@ std::string common_detokenize(const struct llama_vocab * vocab, const std::vecto
 
 这两个函数通过「两次调用」模式，安全地处理了分词和反分词中未知长度的问题。注意 common_tokenize 和 common_detokenize 各自有接受 llama_context* 的重载，它们内部通过 llama_get_model 和 llama_model_get_vocab 获取 vocab，再调用 vocab 版本，覆盖了两种使用场景。
 
-### 44.6.4 common_replay_last_token()：恢复会话的「续播键」
+### 43.6.4 common_replay_last_token()：恢复会话的「续播键」
 
 源码路径：`common/common.cpp` - `common_replay_last_token()`（1719-1727 行）
 
@@ -1532,7 +1532,7 @@ bool common_replay_last_token(struct llama_context * ctx, llama_token last_token
 
 这个函数在加载保存的状态后，重新产生最后一个 token 的 logits，确保推理连续性。
 
-### 44.6.5 common_batch_clear()：清空批处理
+### 43.6.5 common_batch_clear()：清空批处理
 
 源码路径：`common/common.cpp` - `common_batch_clear()`（1407-1409 行）
 
@@ -1544,7 +1544,7 @@ void common_batch_clear(struct llama_batch & batch) {
 
 - 将批处理中的 token 计数清零，为下一轮填充做准备。
 
-### 44.6.6 common_prompt_batch_decode()：批量解码提示词
+### 43.6.6 common_prompt_batch_decode()：批量解码提示词
 
 源码路径：`common/common.cpp` - `common_prompt_batch_decode()`（1729-1773 行）
 
@@ -1569,7 +1569,7 @@ bool common_prompt_batch_decode(
 
 - 支持在解码最后一个 token 前保存状态，以便后续恢复会话。
 
-### 44.6.7 common_token_to_piece()：token 转文本片段
+### 43.6.7 common_token_to_piece()：token 转文本片段
 
 源码路径：`common/common.cpp` - `common_token_to_piece()`（1469-1483 行）
 
@@ -1591,7 +1591,7 @@ std::string common_token_to_piece(const struct llama_vocab * vocab, llama_token 
 
 - 第 3-4 行：先用当前容量尝试转换，若返回负值则按所需大小扩容后重试。
 
-### 44.6.8 ggml_threadpool_params_from_cpu_params()：线程池参数转换
+### 43.6.8 ggml_threadpool_params_from_cpu_params()：线程池参数转换
 
 源码路径：`common/common.cpp` - `ggml_threadpool_params_from_cpu_params()`（1385-1395 行）
 
@@ -1611,7 +1611,7 @@ struct ggml_threadpool_params ggml_threadpool_params_from_cpu_params(const cpu_p
 
 - 将 cpu_params 中的线程数、掩码、优先级等字段复制到 ggml 线程池参数中。
 
-### 44.6.9 通用推理接口架构图
+### 43.6.9 通用推理接口架构图
 
 ```mermaid
 graph TD
@@ -1626,7 +1626,7 @@ graph TD
     N[common_prompt_batch_decode()] --> O[llama_decode()]
 ```
 
-## 44.7 模型资源与适配器管理 —— 采样器、LoRA 与控制向量的「中控室」
+## 43.7 模型资源与适配器管理 —— 采样器、LoRA 与控制向量的「中控室」
 
 common_init_result 是资源生命周期管理者。它把 model、context、sampler、LoRA 适配器等核心对象集中托管，通过 Pimpl 风格的 impl 类隐藏资源细节，避免实现和接口强耦合。构造函数里完成模型加载、上下文创建、采样器初始化，形成一条完整装配线。
 
@@ -1636,7 +1636,7 @@ LoRA 与控制向量体现 common 的开放扩展性。common_set_adapter_lora �
 
 嵌入向量与训练优化是进阶工具。common_embd_normalize 和 common_embd_similarity_cos 为嵌入任务提供数学基础。lr_opt、common_opt_dataset_init、common_opt_lr_pars、common_opt_get_optimizer 构成轻量级训练支持。从这些函数能看出 common 不仅服务推理，还考虑了微调和个性化训练的工程需求。
 
-### 44.7.1 common_init_result() 构造函数：完整的「装配流水线」
+### 43.7.1 common_init_result() 构造函数：完整的「装配流水线」
 
 源码路径：`common/common.cpp` - `common_init_result::common_init_result()`（1150-1227 行）
 
@@ -1664,7 +1664,7 @@ common_init_result::common_init_result(common_params & params) :
 
 这个构造函数完成了从参数到模型、上下文、采样器的完整初始化，是 common 模块最核心的流程。
 
-### 44.7.2 common_embd_normalize()：向量空间的「裁判」
+### 43.7.2 common_embd_normalize()：向量空间的「裁判」
 
 源码路径：`common/common.cpp` - `common_embd_normalize()`（1507-1539 行）
 
@@ -1698,7 +1698,7 @@ void common_embd_normalize(const float * inp, float * out, int n, int embd_norm)
 
 这个函数提供了灵活的向量归一化，是嵌入相似度计算的基础。
 
-### 44.7.3 common_control_vector_load()：多文件合并的「叠加器」
+### 43.7.3 common_control_vector_load()：多文件合并的「叠加器」
 
 源码路径：`common/common.cpp` - `common_control_vector_load()`（1637-1667 行）
 
@@ -1730,7 +1730,7 @@ common_control_vector_data common_control_vector_load(const std::vector<common_c
 
 这个函数实现了控制向量的叠加合并，允许多个文件共同影响模型行为。
 
-### 44.7.4 common_init_from_params()：完整初始化流程
+### 43.7.4 common_init_from_params()：完整初始化流程
 
 源码路径：`common/common.cpp` - `common_init_from_params()`（1254-1297 行）
 
@@ -1752,7 +1752,7 @@ common_init_result_ptr common_init_from_params(common_params & params) {
 
 - 在模型和上下文创建完成后，进行收尾工作：加载控制向量、应用 LoRA、执行 warmup。
 
-### 44.7.5 common_set_adapter_lora()：应用 LoRA 适配器
+### 43.7.5 common_set_adapter_lora()：应用 LoRA 适配器
 
 源码路径：`common/common.cpp` - `common_set_adapter_lora()`（1314-1323 行）
 
@@ -1770,7 +1770,7 @@ void common_set_adapter_lora(struct llama_context * ctx, std::vector<common_adap
 
 - 将 `common_adapter_lora_info` 列表解包为指针和缩放系数数组，调用 llama API 应用。
 
-### 44.7.6 get_model_endpoint()：获取模型下载端点
+### 43.7.6 get_model_endpoint()：获取模型下载端点
 
 源码路径：`common/common.cpp` - `get_model_endpoint()`（1300-1312 行）
 
@@ -1792,7 +1792,7 @@ std::string get_model_endpoint() {
 
 - 优先使用 MODEL_ENDPOINT 环境变量，其次使用 HF_ENDPOINT，默认端点为 huggingface.co。
 
-### 44.7.7 common_init_sampler_from_model()：从模型元数据读取采样参数
+### 43.7.7 common_init_sampler_from_model()：从模型元数据读取采样参数
 
 源码路径：`common/common.cpp` - `common_init_sampler_from_model()`（1048-1083 行）
 
@@ -1810,7 +1810,7 @@ void common_init_sampler_from_model(struct llama_model * model, common_sampler_p
 
 - 仅填充用户未显式指定的采样参数，避免覆盖用户配置。
 
-### 44.7.8 common_embd_similarity_cos()：余弦相似度
+### 43.7.8 common_embd_similarity_cos()：余弦相似度
 
 源码路径：`common/common.cpp` - `common_embd_similarity_cos()`（1541-1558 行）
 
@@ -1836,7 +1836,7 @@ float common_embd_similarity_cos(const float * embd1, const float * embd2, int n
 
 - 计算两个嵌入向量的余弦相似度，特判零向量情况。
 
-### 44.7.9 common_opt_dataset_init()：初始化训练数据集
+### 43.7.9 common_opt_dataset_init()：初始化训练数据集
 
 源码路径：`common/common.cpp` - `common_opt_dataset_init()`（1669-1681 行）
 
@@ -1858,7 +1858,7 @@ ggml_opt_dataset_t common_opt_dataset_init(struct llama_context * ctx, const std
 
 - 将 token 序列转换为训练数据集，每个数据点包含输入和标签。
 
-### 44.7.10 common_opt_lr_pars()：学习率调度回调
+### 43.7.10 common_opt_lr_pars()：学习率调度回调
 
 源码路径：`common/common.cpp` - `common_opt_lr_pars()`（1683-1689 行）
 
@@ -1874,7 +1874,7 @@ ggml_opt_optimizer_params common_opt_lr_pars(void * userdata) {
 
 - 回调函数，根据当前 epoch 返回优化器参数（学习率、权重衰减）。
 
-### 44.7.11 common_opt_get_optimizer()：解析优化器类型
+### 43.7.11 common_opt_get_optimizer()：解析优化器类型
 
 源码路径：`common/common.cpp` - `common_opt_get_optimizer()`（1703-1711 行）
 
@@ -1892,7 +1892,7 @@ enum ggml_opt_optimizer_type common_opt_get_optimizer(const char * n) {
 
 - 根据字符串名称返回优化器类型，支持大小写不敏感。
 
-### 44.7.12 eq_case_insensitive()：大小写不敏感比较
+### 43.7.12 eq_case_insensitive()：大小写不敏感比较
 
 源码路径：`common/common.cpp` - `eq_case_insensitive()`（1693-1701 行）
 
@@ -1910,7 +1910,7 @@ static inline bool eq_case_insensitive(char const* a, char const* b) {
 
 - 跨平台大小写不敏感字符串比较。
 
-### 44.7.13 common_control_vector_load_one()：单文件加载控制向量
+### 43.7.13 common_control_vector_load_one()：单文件加载控制向量
 
 源码路径：`common/common.cpp` - `common_control_vector_load_one()`（1562-1635 行）
 
@@ -1925,7 +1925,7 @@ static common_control_vector_data common_control_vector_load_one(const common_co
 
 - 从单个 GGUF 文件加载控制向量，失败时返回 n_embd=-1。
 
-### 44.7.14 模型资源与适配器管理架构图
+### 43.7.14 模型资源与适配器管理架构图
 
 ```mermaid
 graph TD
@@ -1940,7 +1940,7 @@ graph TD
     M[common_embd_similarity_cos()] --> N[余弦相似度]
 ```
 
-## 44.8 设计中的取舍
+## 43.8 设计中的取舍
 
 为什么在 common 模块中同时包含 CPU 检测、字符串处理、文件系统等看似不相关的功能？这种「大杂烩」设计的 trade-off 是什么？Pimpl 模式在 common_init_result 中带来了什么代价？为什么不用更直接的组合？两次调用 vsnprintf 的做法是否值得？有没有更现代的替代方案？
 
@@ -1950,7 +1950,7 @@ Pimpl 模式在 common_init_result 中隐藏了 impl 的具体成员，降低了
 
 两次调用 vsnprintf 是 C++ 中安全格式化的经典方案，虽然需要两次格式化，但避免了固定缓冲区溢出风险，也无需依赖 C++17 的 std::to_chars 或第三方库，在跨平台项目中非常实用。更现代的替代方案如 std::format（C++20）或 fmt 库确实能提供更好的性能和安全性，但 llama.cpp 为了保持零依赖和跨平台兼容性，选择继续使用 vsnprintf 是合理的工程折衷。
 
-## 44.9 动手练习
+## 43.9 动手练习
 
 - 阅读 `common/common.h` 第 88-443 行，理解以下核心结构：
   1. `common_init_result` - 初始化结果封装类
@@ -2080,7 +2080,7 @@ Pimpl 模式在 common_init_result 中隐藏了 impl 的具体成员，降低了
     - 模式与字符串长度差异很大
   - 进阶挑战：如何支持转义字符（如 `\\*` 表示字面星号）？
 
-## 44.10 本章小结
+## 43.10 本章小结
 
 这一章中我们深入解析了 common 模块的内部构造，了解了它作为 llama.cpp「随身工具箱」的定位。首先，我们看到 common 模块如何通过 common_grammar、string_split 等类型和内联函数提供语法约束和字符串处理能力；其次，掌握了 CPU 检测、进程优先级设置、字符串格式化、Glob 匹配、文件系统操作等公共底层能力的实现；接着，剖析了 common_params 系列数据结构和 common_init_result 的 Pimpl 模式，理解它们如何统一管理推理配置和资源生命周期；然后，学习了参数转换桥接、批处理、分词反分词、状态回放等通用推理接口；最后，探索了采样器管理、LoRA 适配器、控制向量加载、嵌入归一化以及训练优化等进阶功能。这些能力共同构成了 llama.cpp 的基础设施层，让上层应用可以专注于业务逻辑而无需重复造轮子。
 

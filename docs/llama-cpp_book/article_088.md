@@ -1,6 +1,6 @@
 
 
-# 第87章 测试体系全览 —— 电影特效工作室的质检防线
+# 第88章 测试体系全览 —— 电影特效工作室的质检防线
 
 ## 学习目标
 
@@ -13,7 +13,7 @@
 -   学习模型 ID 解析与 URI 模板处理：从字符串解析到资源定位的完整链路
 -   了解前端测试金字塔：单元测试、组件测试与 E2E 测试的分层协作
 
-## 87.1 生活类比：电影特效工作室的"质检部门"
+## 88.1 生活类比：电影特效工作室的"质检部门"
 
 想象 llama.cpp WebUI 的测试体系是一家**电影特效工作室的质检部门**。在这个工作室里，每一帧画面都经过严密的质检才能上映。Markdown 夹具就像**特效镜头剧本库**，里面存放着 AI 教程、API 文档、博客文章等不同风格的测试剧本，每份剧本都为检验特定渲染效果而精心设计。Storybook 环境则是**摄影棚灯光调试间**，确保不同布景下演员肤色一致——也就是让单元测试环境与 Storybook 预览环境的配置保持统一。
 
@@ -21,7 +21,7 @@ Mock 工具函数如同**替身演员与绿幕**，它们让测试无需真实�
 
 就像特效部门需要为每一场戏准备精确的剧本和替身，前端测试也需要为每一种 UI 状态准备真实的 Markdown 内容与 Mock 数据，确保最终渲染效果万无一失。
 
-## 87.2 源码地图
+## 88.2 源码地图
 
 ```
 tools/server/webui/tests/stories/fixtures/
@@ -78,7 +78,7 @@ tools/server/webui/tests/client/
     └── __main__                     # 使用 vitest-browser-svelte 渲染 TestWrapper 冒烟测试（1-11行）
 ```
 
-## 87.3 Markdown 内容夹具库 —— 模型输出的"剧本与道具组"
+## 88.3 Markdown 内容夹具库 —— 模型输出的"剧本与道具组"
 
 在测试 Markdown 渲染组件时，最大的挑战是如何获取真实的、多样化的测试数据。你不能在测试文件中硬编码超长文本——那会严重污染测试代码的可读性与可维护性。llama.cpp WebUI 团队采用了**独立夹具文件**的模式：将具有代表性的 Markdown 内容存放在 `tests/stories/fixtures/` 目录下，每个文件对应一种内容风格。
 
@@ -112,7 +112,7 @@ graph TD
     style H1 fill:#f0f4c3
 ```
 
-### `AI_TUTORIAL_MD`：技术教程类内容的测试夹具
+### 88.3.1 `AI_TUTORIAL_MD`：技术教程类内容的测试夹具
 
 源码路径：`tools/server/webui/tests/stories/fixtures/ai-tutorial.ts` - `AI_TUTORIAL_MD`（1-145行）
 
@@ -230,7 +230,7 @@ ${'```'}
 
 这段代码展示了夹具文件的核心设计模式：使用 `String.raw` 定义原始 Markdown 字符串，并通过 `${'```'}` 表达式安全地插入代码块分隔符，避免与模板字符串语法冲突。该夹具整体用于测试 AI 助手回复技术教程时的渲染效果，覆盖标题层级、行内格式、代码块、表格、Emoji 等边界情况，确保 SvelteKit+WebSocket 教程内容在 Markdown 渲染器中能正确呈现。
 
-### `API_DOCS_MD`：API 文档类内容的测试夹具
+### 88.3.2 `API_DOCS_MD`：API 文档类内容的测试夹具
 
 源码路径：`tools/server/webui/tests/stories/fixtures/api-docs.ts` - `API_DOCS_MD`（1-139行）
 
@@ -328,7 +328,7 @@ API 文档夹具重点测试渲染器对**HTTP 请求示例**、**JSON 响应体
 
 这段代码展示了如何在一个夹具中混合多种 Markdown 结构（标题、引用、代码块、表格），构建接近真实 API 文档的复杂场景。
 
-### `BLOG_POST_MD`：技术博客类内容的测试夹具
+### 88.3.3 `BLOG_POST_MD`：技术博客类内容的测试夹具
 
 源码路径：`tools/server/webui/tests/stories/fixtures/blog-post.ts` - `BLOG_POST_MD`（1-119行）
 
@@ -425,7 +425,7 @@ Rust's ownership system eliminates entire classes of bugs at compile time. While
 
 博客夹具的特点是**行内代码与代码块混排**、**引用块**（`>` 前缀）、**嵌套列表**和**外部链接**。它还包含 `#` 标题层级从 H1 到 H3 的嵌套结构，以及带"❌ ERROR"和"✅ OK"标记的 Rust 代码示例，测试渲染器对特殊字符的容错能力。该夹具整体用于测试 AI 生成技术博客文章时的渲染兼容性，确保读者在阅读长文时，代码示例、列表结构与链接跳转都能正常工作。
 
-### `DATA_ANALYSIS_MD`：数据分析报表类内容的测试夹具
+### 88.3.4 `DATA_ANALYSIS_MD`：数据分析报表类内容的测试夹具
 
 源码路径：`tools/server/webui/tests/stories/fixtures/data-analysis.ts` - `DATA_ANALYSIS_MD`（1-125行）
 
@@ -456,7 +456,7 @@ ${'```'}
 
 该夹具涵盖 KPI 列表、ASCII 对齐与表格分隔符，用于测试基于 Markdown 的数据报表场景下的渲染效果。
 
-### `MATH_FORMULAS_MD`：数学公式类内容的测试夹具
+### 88.3.5 `MATH_FORMULAS_MD`：数学公式类内容的测试夹具
 
 源码路径：`tools/server/webui/tests/stories/fixtures/math-formulas.ts` - `MATH_FORMULAS_MD`（1-248行）
 
@@ -473,7 +473,7 @@ export const MATH_FORMULAS_MD = String.raw`
 
 该夹具覆盖了 LaTeX 行内公式（如 `\(...\)`）、展示模式（如 `\[...\]`）以及化学式标记（mhchem 的 `\ce{...}` 与 `\pu{...}`），用于测试渲染器在数学公式密集场景下的正确处理能力。由于公式中大量使用特殊空白字符（如 Unicode 窄空格、数学斜体空格），文件顶部用 `/* eslint-disable no-irregular-whitespace */` 禁用了 ESLint 对不规则空白的检查，以保证夹具内容的原样保留。
 
-### `EMPTY_MD`：空状态内容的测试夹具
+### 88.3.6 `EMPTY_MD`：空状态内容的测试夹具
 
 源码路径：`tools/server/webui/tests/stories/fixtures/empty.ts` - `EMPTY_MD`（1-2行）
 
@@ -487,11 +487,11 @@ export const EMPTY_MD = '';
 
 而 `mockConfigs`（源码路径：`tools/server/webui/tests/stories/fixtures/storybook-mocks.ts` - `mockConfigs`，67-79行）则提供了四种预定义的多模态配置（`visionOnly`、`audioOnly`、`bothModalities`、`noModalities`），让测试无需手写模态配置即可模拟不同场景。
 
-## 87.4 Storybook 测试环境搭建 —— 摄影棚灯光调试间的"联姻仪式"
+## 88.4 Storybook 测试环境搭建 —— 摄影棚灯光调试间的"联姻仪式"
 
 当你在 Vitest 中运行测试时，是否希望 Storybook 的全局配置（装饰器、参数、全局样式）同样生效？答案是肯定的。storybook-mocks 只是数据层面，而环境配置需要 `vitest.setup.ts` 来完成这次"联姻"。
 
-### `__main__`：初始化并合并预览配置
+### 88.4.1 `__main__`：初始化并合并预览配置
 
 源码路径：`tools/server/webui/.storybook/vitest.setup.ts` - `__main__`（1-14行）
 
@@ -524,7 +524,7 @@ beforeAll(async () => {
 
 这段代码定义了测试环境的"宪法"：将 a11y 插件与项目 preview 配置统一注册到测试环境，并在每个测试文件开始前执行全局初始化钩子。这里的 `setProjectAnnotations` 就像我们摄影棚灯光调试间的**调光台**，将两路光源（a11y 插件与 preview 配置）合并为统一的照明方案，确保演员（组件）在不同布景（测试环境与 Storybook 预览）下的肤色完全一致。
 
-### `mockServerProps()`：替身演员与绿幕的注入
+### 88.4.2 `mockServerProps()`：替身演员与绿幕的注入
 
 源码路径：`tools/server/webui/tests/stories/fixtures/storybook-mocks.ts` - `mockServerProps()`（10-47行）
 
@@ -584,7 +584,7 @@ export function mockServerProps(props: Partial<ApiLlamaCppServerProps>): void {
 
 这段代码展示了如何通过类型断言直接修改 Store 内部状态，绕过真实 API 调用，并提供默认值保证字段完整性。这里就像替身演员的**绿幕注入**——无需真实服务器，只需在绿幕（Mock 数据）前完成表演（渲染），后期再合成真实场景。
 
-### `resetServerStore()` 与 `mockConfigs`：环境清理与预定义配置
+### 88.4.3 `resetServerStore()` 与 `mockConfigs`：环境清理与预定义配置
 
 源码路径：`tools/server/webui/tests/stories/fixtures/storybook-mocks.ts` - `resetServerStore()`（52-62行）
 
@@ -632,11 +632,11 @@ export const mockConfigs = {
 } as const;
 ```
 
-## 87.5 Agentic 消息结构测试 —— 剧本结构分析的"解剖课"
+## 88.5 Agentic 消息结构测试 —— 剧本结构分析的"解剖课"
 
 当模型不仅能生成文本，还能调用工具时，消息结构变得复杂了。`deriveAgenticSections` 是解析这类复杂消息的核心工具，它将原始消息数组解析为结构化段落。测试这类逻辑，我们需要遵循**消息构造器模式**。
 
-### `makeAssistant()` 与 `makeToolMsg()`：消息工厂函数
+### 88.5.1 `makeAssistant()` 与 `makeToolMsg()`：消息工厂函数
 
 源码路径：`tools/server/webui/tests/unit/agentic-sections.test.ts` - `makeAssistant()`（6-18行）
 
@@ -700,7 +700,7 @@ function makeToolMsg(overrides: Partial<DatabaseMessage> = {}): DatabaseMessage 
 
 注意 `makeToolMsg` 的默认 `toolCallId` 是 `'call_1'`，这与 `makeAssistant` 中的默认值一致。这种"**默认值配对**"设计让多轮工具调用的构造变得简单——你无需担心关联缺失。
 
-### `__main__`：核心测试套件
+### 88.5.2 `__main__`：核心测试套件
 
 源码路径：`tools/server/webui/tests/unit/agentic-sections.test.ts` - `__main__`（34-177行）
 
@@ -797,7 +797,7 @@ describe('hasAgenticContent', () => {
 
 这段代码定义了 `deriveAgenticSections` 与 `hasAgenticContent` 两个核心功能的完整测试矩阵。测试套件的覆盖面从基础的空内容、纯文本，到复杂的多轮工具调用会话，再到流式工具调用边界。这种"从简单到复杂"的设计，能精确定位 `deriveAgenticSections` 的每个逻辑分支。通过 `hasAgenticContent` 的四个用例，我们验证了判断逻辑的完整性：工具调用字段（`toolCalls`）与工具结果消息（`toolMessages`）都是判定 Agentic 内容的关键信号，而空 JSON 数组则不应触发误判。
 
-### `stripLegacyContextMarkers()`：旧格式兼容处理
+### 88.5.3 `stripLegacyContextMarkers()`：旧格式兼容处理
 
 源码路径：`tools/server/webui/tests/unit/agentic-strip.test.ts` - `stripLegacyContextMarkers()`（10-17行）
 
@@ -818,7 +818,7 @@ function stripLegacyContextMarkers(content: string): string {
 
 当模型更新后，**旧格式的推理标记**（如 `<<<reasoning_content_start>>>` 这样的标记）必须被清理。这个函数通过四步正则替换，依次剥离完整的推理块、推理开始标记、完整的工具调用块和工具调用开始标记。
 
-### `__main__`：旧格式标记清理的测试套件
+### 88.5.4 `__main__`：旧格式标记清理的测试套件
 
 源码路径：`tools/server/webui/tests/unit/agentic-strip.test.ts` - `__main__`（37-90行）
 
@@ -872,7 +872,7 @@ describe('legacy agentic marker stripping (for migration)', () => {
 
 这段代码验证了旧格式标记的完整清理逻辑：无论是完整块、未闭合块还是组合场景，所有旧标记都能被剥离，同时不破坏周围的正常文本。这是数据迁移期保证用户对话历史不被旧标记污染的关键防线。
 
-## 87.6 剪贴板消息格式化 —— 海关安检的数据进出
+## 88.6 剪贴板消息格式化 —— 海关安检的数据进出
 
 当用户复制聊天消息到剪贴板时，是直接复制纯文本，还是复制结构化数据？这取决于消息是否包含附件。`formatMessageForClipboard` 与 `parseClipboardContent` 构成了一对"打包"与"拆包"函数。其完整的数据流如下图所示：
 
@@ -898,7 +898,7 @@ graph TD
     O --> P
 ```
 
-### `__main__`：剪贴板格式化与解析的测试套件
+### 88.6.1 `__main__`：剪贴板格式化与解析的测试套件
 
 源码路径：`tools/server/webui/tests/unit/clipboard.test.ts` - `__main__`（1-355行）
 
@@ -1053,11 +1053,11 @@ describe('roundtrip edge cases', () => {
 
 这段代码定义了剪贴板格式化的**核心规则**：无附件时返回纯文本；有文本附件时自动过滤非文本附件（图片、PDF）并序列化为 JSON；用户指定 Plain Text 模式时拼接内容。而 `parseClipboardContent` 则反向解析：识别纯文本与 JSON，优雅处理截断 JSON、非法附件类型等异常输入。通过 round-trip 测试（先格式化再解析），确保了**打包与拆包的一致性**：特殊字符（引号、反斜杠、换行）经过转义后能无损还原，Unicode 字符（中日韩文字与 Emoji）在各种模式下都能正确保真。
 
-## 87.7 LaTeX 保护机制 —— 货币符号的"防伪检测"
+## 88.7 LaTeX 保护机制 —— 货币符号的"防伪检测"
 
 在 Markdown 渲染中，`$` 符号既可能是货币符号，也可能是 LaTeX 数学公式的定界符。一个渲染器要区分 `$5`（货币）与 `$x$`（数学公式），依赖启发式规则。
 
-### `__main__`：LaTeX 保护函数的测试套件
+### 88.7.1 `__main__`：LaTeX 保护函数的测试套件
 
 源码路径：`tools/server/webui/tests/unit/latex-protection.test.ts` - `__main__`（1-363行）
 
@@ -1133,11 +1133,11 @@ graph TD
     I --> J[最终安全渲染结果]
 ```
 
-## 87.8 模型 ID 解析与命名规范 —— 模型的"身份证识别"与资源调度
+## 88.8 模型 ID 解析与命名规范 —— 模型的"身份证识别"与资源调度
 
 用户输入的模型路径可能是 HuggingFace 的 `org/model` 格式，也可能是本地文件路径 `C:\models\model.bin`。`normalizeModelName` 需要统一处理这些格式差异，而 `parseModelId` 则进一步结构化解析标识。
 
-### `__main__`：模型名称规范化的测试用例
+### 88.8.1 `__main__`：模型名称规范化的测试用例
 
 源码路径：`tools/server/webui/tests/unit/model-names.test.ts` - `__main__`（5-50行）
 
@@ -1206,7 +1206,7 @@ it('returns false for empty values', () => {
 
 **关键设计决策**：单斜杠保留为 HuggingFace 格式，而多斜杠路径提取末级文件名。这解释了 `parseModelId` 在 `meta-llama/Llama-3.1-8B` 中如何拆分出组织名 `meta-llama` 和模型名 `Llama-3.1-8B`，并进一步提取参数规模 `8B` 和量化类型 `Q4_K_M`。
 
-### `__main__`：模型 ID 结构化解析的测试套件
+### 88.8.2 `__main__`：模型 ID 结构化解析的测试套件
 
 源码路径：`tools/server/webui/tests/unit/model-id-parser.test.ts` - `__main__`（1-265行）
 
@@ -1235,7 +1235,7 @@ describe('parseModelId', () => {
 
 在 `model-id-parser.test.ts` 中，测试覆盖了**组织名与模型名拆分**、**参数规模识别**、**量化类型提取**以及各种分隔符变体（短横线、下划线、无分隔符）。对于未知格式，解析器优雅降级，保持原样或标记为 unknown。
 
-### `__main__`：URI 模板处理与推理上下文过滤的测试套件
+### 88.8.3 `__main__`：URI 模板处理与推理上下文过滤的测试套件
 
 在测试体系中，还有两个容易被忽略却至关重要的工具模块：**URI 模板处理**与**推理上下文过滤**。前者负责 RFC 6570 标准的模板展开，后者保证推理过程的"内心独白"不会污染对外展示的文本。
 
@@ -1440,7 +1440,7 @@ describe('reasoning content in new structured format', () => {
 
 这段代码验证了两个测试模块的配合：URI 模板确保 API 路径正确展开，推理上下文过滤确保敏感推理内容不会未经授权地泄露。后者就像我们的**剧本审校员**，确保"内心独白"（推理过程）不会混入对外展示的台词，保护用户隐私与数据安全。
 
-## 87.9 设计中的取舍
+## 88.9 设计中的取舍
 
 在构建这套测试体系时，我们面临了多个关键的设计决策，每个决策都伴随着取舍。
 
@@ -1454,7 +1454,7 @@ describe('reasoning content in new structured format', () => {
 
 第四个取舍关乎剪贴板格式的双模式设计。为什么剪贴板既支持 JSON 也支持纯文本模式？JSON 结构化格式保留了附件的类型与内容元数据，适合 WebUI 与 WebUI 之间的数据迁移，确保复制粘贴不会丢失附件信息。但纯文本模式让用户能以最通用的格式复制消息到任何应用（如微信、邮件），提供最大的兼容性。两种模式的代价各不相同：JSON 模式的代价是特殊字符需要转义，增加了格式化与解析的复杂度；而纯文本模式的代价是丢失附件元数据，只能保留纯文本内容。这种双模式设计让用户根据使用场景灵活选择，实现了**功能性与通用性的平衡**。
 
-## 87.10 动手练习
+## 88.10 动手练习
 
 在此部分，我们通过五个练习掌握本章核心概念。每个练习包含具体步骤与需要回答的问题。建议按顺序完成，逐步构建对测试体系的全景认识。
 
@@ -1468,7 +1468,7 @@ describe('reasoning content in new structured format', () => {
 
 **练习 5：构建 Agentic 对话。** 阅读 `agentic-sections.test.ts` 中 `makeAssistant` 与 `makeToolMsg` 工厂函数。构造两轮 Agentic 对话：第一轮 Assistant 发起工具调用（pending 状态）；第二轮 Tool 返回结果，Assistant 生成最终回复。运行测试验证 `deriveAgenticSections` 是否将两轮对话正确分组。回答问题：`hasAgenticContent` 判定中 `toolCalls` 与 `toolMessages` 的关系是什么？为何需处理空字符串 content 的边界？
 
-## 87.11 本章小结
+## 88.11 本章小结
 
 在前面的十个章节中，我们从多个维度深入剖析了 llama.cpp WebUI 前端测试体系的完整面貌。现在让我们回顾本章的核心脉络：我们从 Markdown 内容夹具库的设计原则出发，理解了如何通过 `String.raw` 与独立文件组织，为不同渲染场景准备精确的"剧本与道具"。接着我们剖析了 Storybook 与 Vitest 的集成机制，掌握了 `setProjectAnnotations` 与 `beforeAll` 钩子如何实现全局环境的一致化。之后我们拆解了 Agentic 消息测试，学会了用工厂函数模式构造复杂多轮对话，并用 `deriveAgenticSections` 将原始消息解析为结构化段落。随后我们分析了剪贴板数据进出的"海关检验"，理解了 JSON 与纯文本双模式的设计哲学与边界处理。我们还研究了 LaTeX 保护机制的启发式规则，掌握了区分货币与数学公式的"防弹衣"算法。最后我们学习了模型 ID 解析与命名规范，理解了从字符串到结构化元数据的完整链路，以及 URI 模板处理与推理上下文过滤如何共同守护资源定位的安全性与用户隐私。
 

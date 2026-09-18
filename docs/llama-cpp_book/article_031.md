@@ -1,5 +1,5 @@
 
-# 30.1 编码器与双向架构：BERT 家族的"理解型图谱"之旅
+# 第31章 1 编码器与双向架构：BERT 家族的"理解型图谱"之旅
 
 ## 学习目标
 
@@ -10,11 +10,11 @@
 - 了解 WavTokenizer 解码器的 ConvNeXt + PosNet 双阶段音频生成流程
 - 理解 llm_graph_context 基础设施方法（build_inp_*, build_attn_inp_*, build_attn, build_ffn, build_norm, build_pos_bias, build_cvec）是如何被所有编码器模型复用
 
-## 30.2 生活类比
+## 31.1 生活类比
 
 想象编码器模型家族是一家**各具特色的"理解型餐厅厨房"**：BERT 就像经典老派厨房，坚持 Post-Norm（先炒菜再调味）、可选拼盘（qkv 融合或独立）、主厨特选酱汁（GELU/SiLU/GEGLU 按菜品切换）；ModernBERT 是现代改良厨房，改用 Pre-Norm（先备料再下锅）、只走 QKV 拼盘流水线、按楼层定制火候（per-layer RoPE）；NeoBERT 是精简版快餐厨房，RMSNorm 统一调料、SWIGLU 顺序门控、只产出半成品（t_embd 不算账）；EuroBERT 是全定制私房菜，每道菜独立 Q/K/V 火眼（独立权重）、SiLU 并行双灶台、强调个性化；T5 则是双厅联动餐厅，前台（编码器）接单并记住位置感（相对位置桶），后厨（解码器）边做菜边查菜谱（交叉注意力），同时支持 ReLU 老菜单和 GELU 新菜单（Flan-T5）；PaddleOCR 是 OCR 专窗，与 Qwen2VL 共用骨架但偏置可选（看顾客预算），时间/高度/宽度分段旋转（M-RoPE）；Pangu-Embedded 是昇腾嵌入式厨房，全套带偏置的标准化流程，从切菜到装盘（Q/K/V + FFN + output）一丝不苟；WavTokenizer 则是音频解码糕点店，PosNet 是上裱花机（6 层异构），ConvNeXt 是精修模具（残差 + gamma 缩放），全程要不停翻面（transpose）。就像不同餐厅各有自己的招牌菜，llama.cpp 的每个编码器模型都通过精心组合 Pre-Norm / Post-Norm、QKV 融合方式、FFN 激活、RoPE 策略等"调味料"，形成自己独特的"风味"。
 
-## 30.3 源码地图
+## 31.2 源码地图
 
 ```mermaid
 graph TD
@@ -194,11 +194,11 @@ graph TD
     end
 ```
 
-## 30.4 BERT 主体架构 —— 经典双向编码器的"理解型图谱"
+## 31.3 BERT 主体架构 —— 经典双向编码器的"理解型图谱"
 
 BERT 是经典的双向 Transformer 编码器，擅长文本理解而非生成。与 GPT 类自回归模型相反，BERT 通过完整双向注意力同时看到上下文。本单元聚焦 `llm_build_bert::llm_build_bert()` 的图构建全流程，展示经典 BERT 如何在 llama.cpp 中落地。
 
-### 30.4.1 llm_build_bert::llm_build_bert()：构造函数与输入嵌入构建
+### 31.3.1 llm_build_bert::llm_build_bert()：构造函数与输入嵌入构建
 
 BERT 的图构建入口是 `llm_build_bert` 类的构造函数，它继承自 `llm_graph_context` 基类，复用了大量基础设施方法。
 
@@ -253,7 +253,7 @@ flowchart LR
     I --> K[build_inp_out_ids]
 ```
 
-### 30.4.2 llm_build_bert::llm_build_bert()：QKV 融合与独立路径的视图切分
+### 31.3.2 llm_build_bert::llm_build_bert()：QKV 融合与独立路径的视图切分
 
 BERT 支持两种 Q/K/V 权重布局：融合的 `wqkv` 和独立的 `wq`/`wk`/`wv`，体现了对新旧 checkpoint 的兼容。
 
@@ -322,7 +322,7 @@ flowchart TD
     O --> P
 ```
 
-### 30.4.3 llm_build_bert::llm_build_bert()：可选 Q/K 归一化与 RoPE 应用
+### 31.3.3 llm_build_bert::llm_build_bert()：可选 Q/K 归一化与 RoPE 应用
 
 部分 BERT 变体（如 Nomic、Jina V3）引入了 Query/Key 归一化与 RoPE，增强长序列建模能力。
 
@@ -378,7 +378,7 @@ flowchart TD
     K --> L
 ```
 
-### 30.4.4 llm_build_bert::llm_build_bert()：Post-Norm 双轨与架构感知 FFN 分支
+### 31.3.4 llm_build_bert::llm_build_bert()：Post-Norm 双轨与架构感知 FFN 分支
 
 BERT 经典的 Post-Norm 设计：注意力输出先残差再 Norm，且可能有双轨 `attn_norm_2`；FFN 根据架构动态选择激活函数。
 
@@ -473,7 +473,7 @@ flowchart TD
     S --> T[inpL = cur]
 ```
 
-### 30.4.5 llm_build_bert::llm_build_bert()：输出与图构建完成
+### 31.3.5 llm_build_bert::llm_build_bert()：输出与图构建完成
 
 源码路径：`src/models/bert.cpp` - `llm_build_bert::llm_build_bert()`（第 140-145 行）
 
@@ -489,11 +489,11 @@ ggml_build_forward_expand(gf, cur);
 
 ---
 
-## 30.5 ModernBERT —— 新派编码器的"Pre-Norm 改良派"
+## 31.4 ModernBERT —— 新派编码器的"Pre-Norm 改良派"
 
 ModernBERT 在 BERT 基础上引入 Pre-Norm、RoPE、SwiGLU 等现代优化。与传统 BERT 的 Post-Norm 相比，Pre-Norm 训练更稳定、收敛更快。
 
-### 30.5.1 llm_build_modern_bert::llm_build_modern_bert()：类定义与输入嵌入流程
+### 31.4.1 llm_build_modern_bert::llm_build_modern_bert()：类定义与输入嵌入流程
 
 源码路径：`src/models/modern-bert.cpp` - `llm_build_modern_bert::llm_build_modern_bert()`（第 3-30 行）
 
@@ -529,7 +529,7 @@ flowchart LR
     C --> E[build_inp_out_ids]
 ```
 
-### 30.5.2 llm_build_modern_bert::llm_build_modern_bert()：强制 QKV 融合与 Per-Layer RoPE
+### 31.4.2 llm_build_modern_bert::llm_build_modern_bert()：强制 QKV 融合与 Per-Layer RoPE
 
 ModernBERT 强制使用融合权重 `wqkv`，并引入逐层独立的 RoPE 频率，支持长上下文外推。
 
@@ -589,7 +589,7 @@ flowchart TD
     J --> K[ggml_rope_ext Kcur freq_base_l/scale_l]
 ```
 
-### 30.5.3 llm_build_modern_bert::llm_build_modern_bert()：Pre-Norm + 残差设计与 GEGLU FFN
+### 31.4.3 llm_build_modern_bert::llm_build_modern_bert()：Pre-Norm + 残差设计与 GEGLU FFN
 
 ModernBERT 采用标准 Pre-Norm：子层前归一化，残差连接在 Norm 之前的输入上。
 
@@ -643,7 +643,7 @@ flowchart TD
     I --> J[inpL = cur]
 ```
 
-### 30.5.4 llm_build_modern_bert::llm_build_modern_bert()：最终输出归一化
+### 31.4.4 llm_build_modern_bert::llm_build_modern_bert()：最终输出归一化
 
 源码路径：`src/models/modern-bert.cpp` - `llm_build_modern_bert::llm_build_modern_bert()`（第 90-94 行）
 
@@ -662,11 +662,11 @@ ggml_build_forward_expand(gf, cur);
 
 ---
 
-## 30.6 NeoBERT —— RMSNorm 化的"瘦身版 BERT"
+## 31.5 NeoBERT —— RMSNorm 化的"瘦身版 BERT"
 
 NeoBERT 是 BERT 风格的现代精简版，仅保留必要组件：FFN 使用 SwiGLU 而非 GEGLU，全部归一化统一用 `LLM_NORM_RMS`。
 
-### 30.6.1 llm_build_neo_bert::llm_build_neo_bert()：类定义与最简输入嵌入
+### 31.5.1 llm_build_neo_bert::llm_build_neo_bert()：类定义与最简输入嵌入
 
 源码路径：`src/models/neo-bert.cpp` - `llm_build_neo_bert::llm_build_neo_bert()`（第 1-20 行）
 
@@ -689,7 +689,7 @@ llm_build_neo_bert::llm_build_neo_bert(const llama_model & model, const llm_grap
 **代码解释：**
 NeoBERT 输入最简：仅 token embedding，无 `tok_norm`，直接进入逐层循环。
 
-### 30.6.2 llm_build_neo_bert::llm_build_neo_bert()：Pre-Norm + 无中间 Norm + 全局 RoPE
+### 31.5.2 llm_build_neo_bert::llm_build_neo_bert()：Pre-Norm + 无中间 Norm + 全局 RoPE
 
 源码路径：`src/models/neo-bert.cpp` - `llm_build_neo_bert::llm_build_neo_bert()`（第 20-55 行）
 
@@ -750,7 +750,7 @@ flowchart TD
     N --> O[inpL = cur]
 ```
 
-### 30.6.3 llm_build_neo_bert::llm_build_neo_bert()：编码器专用输出
+### 31.5.3 llm_build_neo_bert::llm_build_neo_bert()：编码器专用输出
 
 源码路径：`src/models/neo-bert.cpp` - `llm_build_neo_bert::llm_build_neo_bert()`（第 55-60 行）
 
@@ -767,11 +767,11 @@ ggml_build_forward_expand(gf, cur);
 
 ---
 
-## 30.7 EuroBERT —— 独立 QKV 权重与"SiluFFN"实践
+## 31.6 EuroBERT —— 独立 QKV 权重与"SiluFFN"实践
 
 EuroBERT 采用独立 Q/K/V 权重而非融合方案，兼容更广泛的预训练 checkpoint；FFN 使用 SiLU 并行门控。
 
-### 30.7.1 llm_build_eurobert::llm_build_eurobert()：类定义与输入基础设施
+### 31.6.1 llm_build_eurobert::llm_build_eurobert()：类定义与输入基础设施
 
 源码路径：`src/models/eurobert.cpp` - `llm_build_eurobert::llm_build_eurobert()`（第 1-15 行）
 
@@ -793,7 +793,7 @@ llm_build_eurobert::llm_build_eurobert(const llama_model & model, const llm_grap
 **代码解释：**
 输入管线同 NeoBERT：token embedding + 位置索引，无额外 Norm。
 
-### 30.7.2 llm_build_eurobert::llm_build_eurobert()：独立 Q/K/V 权重与 RMSNorm 全覆盖
+### 31.6.2 llm_build_eurobert::llm_build_eurobert()：独立 Q/K/V 权重与 RMSNorm 全覆盖
 
 源码路径：`src/models/eurobert.cpp` - `llm_build_eurobert::llm_build_eurobert()`（第 15-40 行）
 
@@ -820,7 +820,7 @@ for (int il = 0; il < n_layer; ++il) {
 **代码解释：**
 Pre-Norm 后分别对三个独立权重做 `build_lora_mm`，再 `ggml_reshape_3d` 调整形状。RoPE 用全局频率。注意力输出投影 `wo` 无偏置。
 
-### 30.7.3 llm_build_eurobert::llm_build_eurobert()：Pre-Norm 残差范式与 SiLU 并行 FFN
+### 31.6.3 llm_build_eurobert::llm_build_eurobert()：Pre-Norm 残差范式与 SiLU 并行 FFN
 
 源码路径：`src/models/eurobert.cpp` - `llm_build_eurobert::llm_build_eurobert()`（第 40-65 行）
 
@@ -844,7 +844,7 @@ Pre-Norm 后分别对三个独立权重做 `build_lora_mm`，再 `ggml_reshape_3
 **代码解释：**
 残差范式同 ModernBERT。FFN 使用 **SiLU + 并行模式**（`LLM_FFN_SILU, LLM_FFN_PAR`）：`ffn_up` 与 `ffn_gate` 并行投影，gate 端 SiLU 激活后与 up 端逐元素相乘，再投影 `ffn_down`。此模式参数量与 GEGLU 相当但激活函数不同。
 
-### 30.7.4 llm_build_eurobert::llm_build_eurobert()：最终输出
+### 31.6.4 llm_build_eurobert::llm_build_eurobert()：最终输出
 
 源码路径：`src/models/eurobert.cpp` - `llm_build_eurobert::llm_build_eurobert()`（第 65-72 行）
 
@@ -861,11 +861,11 @@ ggml_build_forward_expand(gf, cur);
 
 ---
 
-## 30.8 T5 编码器 —— 相对位置桶的"位置偏置大师"
+## 31.7 T5 编码器 —— 相对位置桶的"位置偏置大师"
 
 T5 编码器的独特性在于使用**相对位置桶编码**，通过 `build_inp_pos_bucket_enc()` 生成位置桶输入，再由 `build_pos_bias` 构造 Attention Bias。
 
-### 30.8.1 llm_build_t5_enc::llm_build_t5_enc()：类定义与相对位置桶输入
+### 31.7.1 llm_build_t5_enc::llm_build_t5_enc()：类定义与相对位置桶输入
 
 源码路径：`src/models/t5-enc.cpp` - `llm_build_t5_enc::llm_build_t5_enc()`（第 5-20 行）
 
@@ -886,7 +886,7 @@ llm_build_t5_enc::llm_build_t5_enc(const llama_model & model, const llm_graph_pa
 **代码解释：**
 T5 编码器不使用绝对位置嵌入，而是构建相对位置桶张量 `pos_bucket_enc`（形状 `[n_head, n_tokens, n_tokens]` 或兼容广播形状），编码 token 对的相对距离分桶索引，供后续偏置查表使用。
 
-### 30.8.2 llm_build_t5_enc::llm_build_t5_enc()：位置偏置构建与共享机制
+### 31.7.2 llm_build_t5_enc::llm_build_t5_enc()：位置偏置构建与共享机制
 
 源码路径：`src/models/t5-enc.cpp` - `llm_build_t5_enc::llm_build_t5_enc()`（第 20-45 行）
 
@@ -931,7 +931,7 @@ flowchart TD
     H --> I[build_attn kq_b=pos_bias]
 ```
 
-### 30.8.3 T5 编码器单元级架构图
+### 31.7.3 T5 编码器单元级架构图
 
 ```mermaid
 flowchart TD
@@ -963,7 +963,7 @@ flowchart TD
     Next -.-> Final
 ```
 
-### 30.8.4 llm_build_t5_enc::llm_build_t5_enc()：FFN 双模式：原始 T5 vs Flan-T5
+### 31.7.4 llm_build_t5_enc::llm_build_t5_enc()：FFN 双模式：原始 T5 vs Flan-T5
 
 源码路径：`src/models/t5-enc.cpp` - `llm_build_t5_enc::llm_build_t5_enc()`（第 45-70 行）
 
@@ -992,7 +992,7 @@ flowchart TD
 **代码解释：**
 FFN 前做 RMSNorm。若存在 `ffn_gate_enc` 权重（Flan-T5 等变体），采用 **GELU + 并行模式**（gate 端 GELU 门控）；否则采用原始 T5 的 **ReLU + 顺序模式**（单路 up->ReLU->down）。FFN 输出残差后调用 `build_cvec` 注入控制向量（可选）。
 
-### 30.8.5 llm_build_t5_enc::llm_build_t5_enc()：编码器专用输出
+### 31.7.5 llm_build_t5_enc::llm_build_t5_enc()：编码器专用输出
 
 源码路径：`src/models/t5-enc.cpp` - `llm_build_t5_enc::llm_build_t5_enc()`（第 70-78 行）
 
@@ -1010,11 +1010,11 @@ FFN 前做 RMSNorm。若存在 `ffn_gate_enc` 权重（Flan-T5 等变体），�
 
 ---
 
-## 30.9 T5 解码器 —— 自注意力与交叉注意力的"双重舞台"
+## 31.8 T5 解码器 —— 自注意力与交叉注意力的"双重舞台"
 
 T5 解码器在编码器输出基础上做条件生成，核心是**双注意力流**：自注意力 + 交叉注意力。
 
-### 30.9.1 llm_build_t5_dec::llm_build_t5_dec()：类定义与多模态输入准备
+### 31.8.1 llm_build_t5_dec::llm_build_t5_dec()：类定义与多模态输入准备
 
 源码路径：`src/models/t5-dec.cpp` - `llm_build_t5_dec::llm_build_t5_dec()`（第 1-20 行）
 
@@ -1050,7 +1050,7 @@ flowchart TD
     F --> G[build_inp_out_ids]
 ```
 
-### 30.9.2 llm_build_t5_dec::llm_build_t5_dec()：自注意力：相对位置偏置 + 标准流程
+### 31.8.2 llm_build_t5_dec::llm_build_t5_dec()：自注意力：相对位置偏置 + 标准流程
 
 源码路径：`src/models/t5-dec.cpp` - `llm_build_t5_dec::llm_build_t5_dec()`（第 20-50 行）
 
@@ -1081,7 +1081,7 @@ for (int il = 0; il < dec_n_layer; ++il) {
 **代码解释：**
 自注意力流程：Pre-Norm -> 独立 Q/K/V 投影 + reshape -> 构建解码器相对位置偏置 `kq_b`（共享第 0 层偏置表）-> `build_attn`（带 KV Cache、因果掩码、输出偏置 `bo`）。输出与 `inpSA` 残差得到 `cross_inp`。
 
-### 30.9.3 llm_build_t5_dec::llm_build_t5_dec()：交叉注意力：读取编码器记忆
+### 31.8.3 llm_build_t5_dec::llm_build_t5_dec()：交叉注意力：读取编码器记忆
 
 源码路径：`src/models/t5-dec.cpp` - `llm_build_t5_dec::llm_build_t5_dec()`（第 50-80 行）
 
@@ -1121,7 +1121,7 @@ flowchart TD
     H --> I[build_attn inp_attn_cross wo_cross kq_b=null]
 ```
 
-### 30.9.4 T5 解码器单元级架构图
+### 31.8.4 T5 解码器单元级架构图
 
 ```mermaid
 flowchart TD
@@ -1161,7 +1161,7 @@ flowchart TD
     Next -.-> Final
 ```
 
-### 30.9.5 llm_build_t5_dec::llm_build_t5_dec()：FFN 双模式与双输出产物
+### 31.8.5 llm_build_t5_dec::llm_build_t5_dec()：FFN 双模式与双输出产物
 
 源码路径：`src/models/t5-dec.cpp` - `llm_build_t5_dec::llm_build_t5_dec()`（第 80-115 行）
 
@@ -1201,11 +1201,11 @@ ggml_build_forward_expand(gf, cur);
 
 ---
 
-## 30.10 PaddleOCR —— 视觉文本识别的"轻量 OCR 解码器"
+## 31.9 PaddleOCR —— 视觉文本识别的"轻量 OCR 解码器"
 
 PaddleOCR 基于 Qwen2VL 的轻量解码器，关键差异在于**所有 Q/K/V/Out 的 bias 都为可选**，并使用四段式 M-RoPE。
 
-### 30.10.1 llm_build_paddleocr::llm_build_paddleocr()：类定义与 M-RoPE 四段配置
+### 31.9.1 llm_build_paddleocr::llm_build_paddleocr()：类定义与 M-RoPE 四段配置
 
 源码路径：`src/models/paddleocr.cpp` - `llm_build_paddleocr::llm_build_paddleocr()`（第 1-25 行）
 
@@ -1234,7 +1234,7 @@ llm_build_paddleocr::llm_build_paddleocr(const llama_model & model, const llm_gr
 **代码解释：**
 从 `hparams.rope_sections` 复制 4 个段长到 `sections` 数组，分别对应 M-RoPE 的时间、高度、宽度三个空间维度及剩余维度。`build_attn_inp_kv` 启用 KV Cache（解码器模式）。
 
-### 30.10.2 llm_build_paddleocr::llm_build_paddleocr()：偏置可选的 QKV 构建与 ggml_rope_multi
+### 31.9.2 llm_build_paddleocr::llm_build_paddleocr()：偏置可选的 QKV 构建与 ggml_rope_multi
 
 源码路径：`src/models/paddleocr.cpp` - `llm_build_paddleocr::llm_build_paddleocr()`（第 25-70 行）
 
@@ -1319,7 +1319,7 @@ flowchart TD
     S --> T[build_attn wo + (bo?)]
 ```
 
-### 30.10.3 PaddleOCR 单元级架构图
+### 31.9.3 PaddleOCR 单元级架构图
 
 ```mermaid
 flowchart TD
@@ -1353,7 +1353,7 @@ flowchart TD
     Next -.-> Final --> LMHead
 ```
 
-### 30.10.4 llm_build_paddleocr::llm_build_paddleocr()：SwiGLU FFN + 控制向量 + 双输出
+### 31.9.4 llm_build_paddleocr::llm_build_paddleocr()：SwiGLU FFN + 控制向量 + 双输出
 
 源码路径：`src/models/paddleocr.cpp` - `llm_build_paddleocr::llm_build_paddleocr()`（第 70-110 行）
 
@@ -1402,11 +1402,11 @@ FFN 采用 **SiLU + 并行模式**（SwiGLU 等价）。残差后注入控制向
 
 ---
 
-## 30.11 Pangu-Embedded —— 昇腾嵌入模型的"标准 Transformer"
+## 31.10 Pangu-Embedded —— 昇腾嵌入模型的"标准 Transformer"
 
 Pangu-Embedded 是标准 Pre-Norm Transformer，**所有 Q/K/V/FFN/Output 都带有偏置项**，类似 BERT 与 ModernBERT 的中间形态。
 
-### 30.11.1 llm_build_pangu_embedded::llm_build_pangu_embedded()：类定义与输入管线
+### 31.10.1 llm_build_pangu_embedded::llm_build_pangu_embedded()：类定义与输入管线
 
 源码路径：`src/models/pangu-embedded.cpp` - `llm_build_pangu_embedded::llm_build_pangu_embedded()`（第 1-15 行）
 
@@ -1427,7 +1427,7 @@ llm_build_pangu_embedded::llm_build_pangu_embedded(const llama_model & model, co
 **代码解释：**
 标准输入：token embedding + 位置索引 + 带 KV Cache 的注意力输入。
 
-### 30.11.2 llm_build_pangu_embedded::llm_build_pangu_embedded()：逐层 Pre-Norm + 完整偏置 QKV + 标准 RoPE
+### 31.10.2 llm_build_pangu_embedded::llm_build_pangu_embedded()：逐层 Pre-Norm + 完整偏置 QKV + 标准 RoPE
 
 源码路径：`src/models/pangu-embedded.cpp` - `llm_build_pangu_embedded::llm_build_pangu_embedded()`（第 15-50 行）
 
@@ -1459,7 +1459,7 @@ for (int il = 0; il < n_layer; ++il) {
 **代码解释：**
 Pre-Norm 后独立投影 Q/K/V，**强制加偏置**（无 `if` 判断），reshape 后标准 `ggml_rope_ext`（全局频率），注意力输出投影 `wo` 也强制带偏置 `bo`。体现"全链路带偏置"的标准化设计。
 
-### 30.11.3 Pangu-Embedded 单元级架构图
+### 31.10.3 Pangu-Embedded 单元级架构图
 
 ```mermaid
 flowchart TD
@@ -1485,7 +1485,7 @@ flowchart TD
     Next -.-> Final --> LMHead
 ```
 
-### 30.11.4 llm_build_pangu_embedded::llm_build_pangu_embedded()：SwiGLU FFN + 三组偏置 + 控制向量
+### 31.10.4 llm_build_pangu_embedded::llm_build_pangu_embedded()：SwiGLU FFN + 三组偏置 + 控制向量
 
 源码路径：`src/models/pangu-embedded.cpp` - `llm_build_pangu_embedded::llm_build_pangu_embedded()`（第 50-80 行）
 
@@ -1513,7 +1513,7 @@ flowchart TD
 **代码解释：**
 FFN 同样用 **SiLU + 并行模式**，但 `build_ffn` 传入了完整的三组偏置：`ffn_up_b`、`ffn_gate_b`、`ffn_down_b`，体现全链路偏置一致性。
 
-### 30.11.5 llm_build_pangu_embedded::llm_build_pangu_embedded()：输出头也带偏置
+### 31.10.5 llm_build_pangu_embedded::llm_build_pangu_embedded()：输出头也带偏置
 
 源码路径：`src/models/pangu-embedded.cpp` - `llm_build_pangu_embedded::llm_build_pangu_embedded()`（第 80-95 行）
 
@@ -1536,11 +1536,11 @@ ggml_build_forward_expand(gf, cur);
 
 ---
 
-## 30.12 WavTokenizer 解码器 —— 音频生成的"双阶段异构架构"
+## 31.11 WavTokenizer 解码器 —— 音频生成的"双阶段异构架构"
 
 WavTokenizer 解码器将离散音频 token 转回连续波形，采用 **PosNet（上采样频谱生成）+ ConvNeXt（精修）** 双阶段异构架构。
 
-### 30.12.1 llm_build_wavtokenizer_dec::llm_build_wavtokenizer_dec()：类定义与输入转置适配
+### 31.11.1 llm_build_wavtokenizer_dec::llm_build_wavtokenizer_dec()：类定义与输入转置适配
 
 源码路径：`src/models/wavtokenizer-dec.cpp` - `llm_build_wavtokenizer_dec::llm_build_wavtokenizer_dec()`（第 5-15 行）
 
@@ -1568,7 +1568,7 @@ flowchart LR
     D --> E[PosNet 6层循环]
 ```
 
-### 30.12.2 llm_build_wavtokenizer_dec::llm_build_wavtokenizer_dec()：PosNet 六层异构设计
+### 31.11.2 llm_build_wavtokenizer_dec::llm_build_wavtokenizer_dec()：PosNet 六层异构设计
 
 PosNet 由 6 层组成，第 2 层（索引 2）插入自注意力，其余为纯卷积残差块。
 
@@ -1646,7 +1646,7 @@ flowchart TD
     B -- 5 --> R[build_norm GroupNorm norm]
 ```
 
-### 30.12.3 WavTokenizer 解码器单元级架构图
+### 31.11.3 WavTokenizer 解码器单元级架构图
 
 ```mermaid
 flowchart TD
@@ -1679,7 +1679,7 @@ flowchart TD
     ConvNext -.-> FinalOut
 ```
 
-### 30.12.4 llm_build_wavtokenizer_dec::llm_build_wavtokenizer_dec()：中间转置与 Token Norm
+### 31.11.4 llm_build_wavtokenizer_dec::llm_build_wavtokenizer_dec()：中间转置与 Token Norm
 
 源码路径：`src/models/wavtokenizer-dec.cpp` - `llm_build_wavtokenizer_dec::llm_build_wavtokenizer_dec()`（第 55-62 行）
 
@@ -1693,7 +1693,7 @@ inpL = cur;
 **代码解释：**
 PosNet 结束后，转置回 `[B, T, C]` 做标准 LayerNorm（`tok_norm`），再转回 `[B, C, T]` 适配后续 ConvNeXt 的 depthwise 卷积。
 
-### 30.12.5 llm_build_wavtokenizer_dec::llm_build_wavtokenizer_dec()：ConvNeXt 残差块 + Gamma 缩放
+### 31.11.5 llm_build_wavtokenizer_dec::llm_build_wavtokenizer_dec()：ConvNeXt 残差块 + Gamma 缩放
 
 源码路径：`src/models/wavtokenizer-dec.cpp` - `llm_build_wavtokenizer_dec::llm_build_wavtokenizer_dec()`（第 62-78 行）
 
@@ -1731,7 +1731,7 @@ flowchart TD
     I --> J[inpL = cur]
 ```
 
-### 30.12.6 llm_build_wavtokenizer_dec::llm_build_wavtokenizer_dec()：最终输出头
+### 31.11.6 llm_build_wavtokenizer_dec::llm_build_wavtokenizer_dec()：最终输出头
 
 源码路径：`src/models/wavtokenizer-dec.cpp` - `llm_build_wavtokenizer_dec::llm_build_wavtokenizer_dec()`（第 78-86 行）
 
@@ -1751,7 +1751,7 @@ ggml_build_forward_expand(gf, cur);
 
 ---
 
-## 30.13 设计中的取舍
+## 31.12 设计中的取舍
 
 **为什么 BERT 家族要保留 Post-Norm 与 Pre-Norm 两条路线？**
 经典 BERT 采用 Post-Norm（残差在 Norm 之后），前向数值稳定但深层梯度易爆炸；ModernBERT/NeoBERT/EuroBERT 改用 Pre-Norm（Norm 在残差之前），梯度可直接流向浅层，预训练极其稳定。llama.cpp 同时支持两者，通过架构标识自动分派，最大化模型兼容性。
@@ -1767,16 +1767,16 @@ ggml_build_forward_expand(gf, cur);
 
 ---
 
-## 30.14 动手练习
+## 31.13 动手练习
 
-### 练习 1：对比 BERT 家族三种 Pre-Norm 模式
+### 31.13.1 练习 1：对比 BERT 家族三种 Pre-Norm 模式
 
 阅读 `src/models/modern-bert.cpp`、`src/models/neo-bert.cpp`、`src/models/eurobert.cpp`，对比三种 Pre-Norm 编码器的实现差异：
 1. ModernBERT 的 per-layer RoPE 与 NeoBERT/EuroBERT 的全局 RoPE 实现区别是什么？
 2. 三者中谁的 FFN 调用了 `LLM_FFN_SEQ`，谁调用了 `LLM_FFN_PAR`？为什么？
 3. 哪些模型保留了 `attn_out_norm`/`layer_out_norm` 中间层 norm，哪些省略？
 
-### 练习 2：追踪 T5 编解码器的位置偏置流
+### 31.13.2 练习 2：追踪 T5 编解码器的位置偏置流
 
 阅读 `src/models/t5-enc.cpp` 和 `src/models/t5-dec.cpp`，追踪相对位置桶偏置的完整数据流：
 1. `build_inp_pos_bucket_enc/dec()` 生成了什么样的张量？其形状含义是什么？
@@ -1784,7 +1784,7 @@ ggml_build_forward_expand(gf, cur);
 3. `build_pos_bias` 输出的 `kq_b` 张量如何被 `build_attn` 消费？
 4. T5 解码器的交叉注意力中，K/V 矩阵的 `n_outputs_enc` 来自哪个张量的哪个维度？
 
-### 练习 3：解码 PaddleOCR 与 Pangu-Embedded 的偏置哲学
+### 31.13.3 练习 3：解码 PaddleOCR 与 Pangu-Embedded 的偏置哲学
 
 阅读 `src/models/paddleocr.cpp` 和 `src/models/pangu-embedded.cpp`，对比两个"带偏置"模型的实现差异：
 1. PaddleOCR 中 `bq`/`bk`/`bv` 为可选时，代码如何用 `if` 跳过偏置加法？Pangu-Embedded 为何强制带偏置？
@@ -1792,7 +1792,7 @@ ggml_build_forward_expand(gf, cur);
 3. 两个模型的 FFN 都用了 `LLM_FFN_SILU + LLM_FFN_PAR`，为何它们的偏置参数列表不同？
 4. 末尾 `res->t_embd` 和 `res->t_logits` 的设置顺序有什么讲究？
 
-### 练习 4：剖析 WavTokenizer 解码器的异构层结构
+### 31.13.4 练习 4：剖析 WavTokenizer 解码器的异构层结构
 
 阅读 `src/models/wavtokenizer-dec.cpp`，理解 PosNet + ConvNeXt 的混合解码流程：
 1. PosNet 第 2 层（case 2）与其他卷积层（case 0/1/3/4）在数据流上有何本质区别？
@@ -1800,7 +1800,7 @@ ggml_build_forward_expand(gf, cur);
 3. ConvNeXt 中的 `layer.gamma` 张量起什么作用？为何 FFN 输出要乘以它？
 4. PosNet 第 5 层（case 5）只做 norm 而不做任何变换，这是何种设计意图？
 
-### 练习 5：手写一个极简 BERT-style 编码器图
+### 31.13.5 练习 5：手写一个极简 BERT-style 编码器图
 
 基于本章学到的 Pre-Norm + QKV 融合模式，尝试在 `src/models/` 下添加一个新的 `llm_build_myencoder`：
 1. 继承 `llm_graph_context`，构造中实现 `build_inp_embd(model.tok_embd)` + `build_inp_pos()` + `tok_norm`
@@ -1809,7 +1809,7 @@ ggml_build_forward_expand(gf, cur);
 
 ---
 
-## 30.15 本章小结
+## 31.14 本章小结
 
 这一章中我们学习了 llama.cpp 中各类编码器与双向架构模型的图构建实现。首先深入剖析了经典 BERT 的 Post-Norm 双轨制、QKV 融合/独立双路径、架构感知的 FFN 分派机制；其次对比了 ModernBERT、NeoBERT、EuroBERT 三种 Pre-Norm 现代变体在 RoPE 策略、FFN 激活、Norm 类型、QKV 权重布局上的差异化设计；接着解读了 T5 编码器-解码器的相对位置桶偏置共享机制、双注意力流（自注意+交叉注意）与 ReLU/GELU 双模式 FFN；然后分析了 PaddleOCR 的可选偏置 QKV 与四段式 M-RoPE、Pangu-Embedded 的全链路强制偏置标准化流程；最后探索了 WavTokenizer 解码器独特的 PosNet 异构六层（含中间注意力）与 ConvNeXt 残差块（Gamma 缩放）双阶段架构，以及频繁 transpose 适配卷积内存布局的工程细节。
 

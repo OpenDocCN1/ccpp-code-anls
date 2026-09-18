@@ -1,6 +1,6 @@
 
 
-# 71 性能评估与基准测试 —— 推理质量的「度量衡」
+# 第70章 71 性能评估与基准测试 —— 推理质量的「度量衡」
 
 > 本章原标题为「控制向量与表示工程」，但给定的细纲、学习目标、源码地图与生活类比全部指向性能评估工具链（llama-bench、batched-bench、perplexity、results）。为避免标题与内容错位，本章按实际内容重新命名，聚焦于 llama.cpp 如何系统性地度量推理吞吐、困惑度、多任务准确率与数值一致性。
 
@@ -24,11 +24,11 @@
 - 掌握 perplexity main() 的命令行解析与评估模式分发逻辑
 - 能阅读并分析性能评估工具的参数解析、批处理、计时、输出全链路
 
-## 71.1 生活类比
+## 70.1 生活类比
 
 想象性能评估工具链是一座**精密钟表匠工坊**：进入这座工坊，你会看到一排排正在校准的计时仪器，它们并非随意摆放，而是按照测量目标与精度要求被分成不同的工位。llama-bench 是钟表匠手中的**精密测时仪**，用统一的标准测量不同「机芯」（模型/配置）的转速——cmd_params 是试验配方清单（如「测试温度从 -20°C 到 +50°C，每 5°C 一档」），cmd_params_instance 是单次实验的精确设置卡（温度=25°C，湿度=45%），而 get_cmd_params_instances() 则像一位按配方清单排列组合、生成所有试管分配方案的调度员。parse_int_range() 是能快速写出「1-10, 12-20+2, 100-1000*10」的速记员，把人类友好的范围语法翻译成机器可遍历的整数序列。printer 家族则是不同语言的记录员——CSV 会计、JSON 翻译、Markdown 排版、SQL 档案员，各自以最适合的格式把同一组性能数据转写成可读的报告。test_prompt 与 test_gen 是标准动作测试员，一个像上发条看初始转速，一个像摘下发条看惯性滑行。batched-bench 则是**多车道高速 traffic simulator**，同时安排多辆车在不同车道测试通行效率：PP 阶段是车辆进入收费站的加速过程（共享入口=多车道共用一个闸机），TG 阶段是车辆在高速上持续巡航（独立巡航 vs 编队巡航）。perplexity 是**品酒师盲品会**，不知酒名（token）品尝味道（概率），评估一致性；perplexity_v2 是快速小口品鉴（stride 大步长）而非一饮而尽；KL 散度则是两位品酒师对同一瓶酒打分差异的量化。HellaSwag/Winogrande 是**多选题快判官**，先看问题主干（common_prefix）一次，然后快速翻看多个选项打分。results 是**指纹比对仪**，将本次「签名」（logits）与档案指纹（.bin）对比，差异超过阈值即报警。正如钟表匠不会用同一把钥匙开所有锁，评估工具也根据不同场景（吞吐/延迟/精度/一致性）选择不同的测量策略和精度标准。
 
-## 71.2 源码地图
+## 70.2 源码地图
 
 ```text
 tools/
@@ -204,11 +204,11 @@ tools/
                 └── 1e-6阈值判定OK/FAIL
 ```
 
-## 71.3 llama-bench 参数体系与测试实例工厂 —— 性能实验的「参数矩阵发生器」
+## 70.3 llama-bench 参数体系与测试实例工厂 —— 性能实验的「参数矩阵发生器」
 
 llama-bench 的核心挑战在于：如何把用户在命令行上用逗号分隔、范围语法表达的「测试配方」，系统性地展开成一组可依次执行的精确测试实例，同时尽量减少模型重复加载的开销。这套机制的关键就是 **cmd_params 与 cmd_params_instance 的双层分离**：`cmd_params` 是 CLI 层的容器，支持 `-p 512,1024` 或 `512-2048+512` 这样的列表/范围语法；`cmd_params_instance` 是执行层的单次测试快照，代表一次具体的「pp512 + tg128」组合。两者之间的桥梁就是 `get_cmd_params_instances()`，它通过嵌套循环完成笛卡尔积展开，并按照模型参数是否变化智能排序，避免同一模型被反复卸载 reload。
 
-### 71.3.1 参数解析与实例展开架构图
+### 70.3.1 参数解析与实例展开架构图
 
 ```mermaid
 graph TD
@@ -226,7 +226,7 @@ graph TD
     I -->|否| J[复用已加载模型]
 ```
 
-### 71.3.2 `parse_cmd_params()`：命令行参数解析入口
+### 70.3.2 `parse_cmd_params()`：命令行参数解析入口
 
 源码路径：`tools/llama-bench/llama-bench.cpp` - `parse_cmd_params()`（727-1012 行）
 
@@ -276,7 +276,7 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
 
 这段代码定义/展示/实现了 `parse_cmd_params()`，它是 llama-bench 的命令行参数解析入口，负责将用户输入的字符串参数转换为 `cmd_params` 结构体中的强类型字段，并通过统一的异常处理机制保证解析的健壮性。函数首先从默认参数出发逐字段赋值，再遍历命令行参数，统一将下划线转为连字符，最后按参数名分发到具体的解析分支，捕获并打印异常信息。
 
-### 71.3.3 `parse_devices_arg()` 与 `register_rpc_server_list()`：设备与 RPC 参数解析
+### 70.3.3 `parse_devices_arg()` 与 `register_rpc_server_list()`：设备与 RPC 参数解析
 
 源码路径：`tools/llama-bench/llama-bench.cpp` - `parse_devices_arg()`（122-150 行）、`register_rpc_server_list()`（152-171 行）
 
@@ -338,7 +338,7 @@ static void register_rpc_server_list(const std::string & servers) {
 
 这段代码定义/展示/实现了 `parse_devices_arg()` 与 `register_rpc_server_list()`，前者负责将用户输入的设备字符串（如 `auto`、`none`、`CUDA:0/Vulkan:0`）解析为 `ggml_backend_dev_t` 向量，后者通过 RPC 后端的函数指针动态注册远程推理服务器，共同构成了 llama-bench 的异构设备配置层。`parse_devices_arg()` 支持 `auto`（返回空向量使用默认选择）、`none`（显式指定无设备）以及显式设备列表（以 `/` 分隔），并校验设备是否存在且非 CPU 类型，最后以 `nullptr` 结尾符合 C 风格数组约定。`register_rpc_server_list()` 则通过后端注册表查找 RPC 后端并动态获取注册函数地址，逐个注册用户指定的远程服务器端点。
 
-### 71.3.4 `devices_to_string()`：设备列表序列化
+### 70.3.4 `devices_to_string()`：设备列表序列化
 
 源码路径：`tools/llama-bench/llama-bench.cpp` - `devices_to_string()`（173-191 行）
 
@@ -366,7 +366,7 @@ static std::string devices_to_string(const std::vector<ggml_backend_dev_t> & dev
 
 这段代码定义/展示/实现了 `devices_to_string()`，它将设备句柄向量反向序列化为字符串，与 `parse_devices_arg()` 构成双向转换，确保测试结果在输出时能够以人类可读的方式显示设备配置。空向量映射为 "auto"，单个 nullptr 映射为 "none"，否则遍历向量直到遇到 nullptr，用设备名称拼接成 `/` 分隔的字符串。
 
-### 71.3.5 `cmd_params_instance.to_llama_mparams()`：实例到模型参数的桥梁
+### 70.3.5 `cmd_params_instance.to_llama_mparams()`：实例到模型参数的桥梁
 
 源码路径：`tools/llama-bench/llama-bench.cpp` - `cmd_params_instance`（1128-1178 行）
 
@@ -418,7 +418,7 @@ llama_model_params to_llama_mparams() const {
 
 这段代码定义/展示/实现了 `cmd_params_instance` 到 `llama_model_params` 的转换，它把单次测试实例中存储的设备、分片、内存映射等配置翻译成 llama.cpp 模型加载器可直接消费的结构体，是 CLI 参数与推理引擎之间的关键适配层。函数从默认参数出发逐字段填充，重点处理 `tensor_buft_overrides`：当 `n_cpu_moe <= 0` 时直接透传用户覆盖列表（需以空 pattern 结尾）；当 `n_cpu_moe > 0` 时动态构造 merged 列表，为每个 MoE 专家块生成正则表达式并强制使用 CPU 缓冲区类型，最后以空 pattern 结尾。
 
-### 71.3.6 `cmd_params_instance.to_llama_cparams()`：实例到上下文参数的转换
+### 70.3.6 `cmd_params_instance.to_llama_cparams()`：实例到上下文参数的转换
 
 源码路径：`tools/llama-bench/llama-bench.cpp` - `cmd_params_instance`（1191-1204 行）
 
@@ -441,7 +441,7 @@ llama_context_params to_llama_cparams() const {
 
 这段代码定义/展示/实现了 `cmd_params_instance` 到 `llama_context_params` 的转换，它把单次测试实例中存储的批大小、KV 类型、Flash Attention 等配置翻译成 llama.cpp 上下文创建器可直接消费的结构体，其中 `n_ctx` 的计算公式确保了上下文窗口能容纳 prompt、生成 token 与深度缓存。关键字段：`n_ctx = n_prompt + n_gen + n_depth`，`offload_kqv` 与 `op_offload` 取反逻辑，Flash Attention 根据布尔值映射为启用/禁用枚举。
 
-### 71.3.7 `equal_mparams()`：模型参数相等性判断
+### 70.3.7 `equal_mparams()`：模型参数相等性判断
 
 源码路径：`tools/llama-bench/llama-bench.cpp` - `cmd_params_instance`（1180-1189 行）
 
@@ -459,7 +459,7 @@ bool equal_mparams(const cmd_params_instance & other) const {
 
 这段代码定义/展示/实现了 `equal_mparams()`，它逐字段比较两个实例的模型相关参数是否完全一致，是 `get_cmd_params_instances()` 实现智能排序、避免同一模型反复加载的核心判断函数。比较字段涵盖模型路径、GPU 层数、CPU MoE 数、分片模式、主 GPU、张量切分、内存映射、直接 I/O、设备列表、no_host 标志以及张量缓冲区覆盖配置。
 
-### 71.3.8 `parse_int_range()`：正则范围解析
+### 70.3.8 `parse_int_range()`：正则范围解析
 
 源码路径：`tools/llama-bench/llama-bench.cpp` - `parse_int_range()`（253-285 行）
 
@@ -507,7 +507,7 @@ static std::vector<int> parse_int_range(const std::string & s) {
 
 这段代码定义/展示/实现了 `parse_int_range()`，它利用正则表达式循环解析 `first-last+step` 与 `first-last*mult` 两种扩展 range 格式，将人类可读的范围速记转换成机器可遍历的整数向量，是 llama-bench 参数矩阵展开的基础语法糖。正则捕获组分别对应：group1=first，group2=last（可选），group3=操作符 +/-/*（可选），group4=step/mult（可选）。循环中根据操作符进行加法或乘法步进，并通过 `i <= prev_i` 检查防御无效步进（如 step=0 或 mult=1 导致死循环）。
 
-### 71.3.9 `get_cmd_params_instances()`：笛卡尔积展开与智能排序
+### 70.3.9 `get_cmd_params_instances()`：笛卡尔积展开与智能排序
 
 源码路径：`tools/llama-bench/llama-bench.cpp` - `get_cmd_params_instances()`（1206-1507 行）
 
@@ -526,11 +526,11 @@ static std::vector<cmd_params_instance> get_cmd_params_instances(const cmd_param
 
 这段代码定义/展示/实现了 `get_cmd_params_instances()`，它通过多层嵌套循环遍历 `cmd_params` 中的所有列表型参数（模型路径、GPU 层数、批大小、线程数等），完成笛卡尔积展开，并智能排序使得模型参数相同的实例相邻，从而最小化模型重复加载次数。外层循环遍历模型、fit_target、fit_min_ctx、n_gpu_layers 等会影响模型加载的参数，内层循环遍历 n_batch、n_ubatch、n_threads 等仅影响上下文创建的参数，最内层生成三种测试类型的实例。排序策略保证相同模型参数的实例连续分布，配合 main() 中的 `equal_mparams()` 判断实现模型复用。
 
-## 71.4 llama-bench 测试执行与多格式输出 —— 性能数据的「格式化印刷厂」
+## 70.4 llama-bench 测试执行与多格式输出 —— 性能数据的「格式化印刷厂」
 
 当参数矩阵被展开成一组 `cmd_params_instance` 之后，llama-bench 需要做三件事：**执行测试、记录数据、输出结果**。测试执行由 `test_prompt()` 与 `test_gen()` 分别覆盖 prompt 处理与 token 生成两个维度；数据记录由 `test` 类封装，它从实例和模型上下文中提取全部元数据，并通过 `samples_ns` 向量存储每次重复的纳秒耗时，最终由 `avg_ts()` / `stdev_ts()` 等统计方法算出吞吐量的均值与标准差；输出结果由 **printer 继承体系** 完成，抽象基类定义 `print_header` / `print_test` / `print_footer` 三段式接口，五个子类分别覆盖 CSV、JSON、JSONL、Markdown、SQL 五种格式。
 
-### 71.4.1 测试执行与输出流程架构图
+### 70.4.1 测试执行与输出流程架构图
 
 ```mermaid
 graph TD
@@ -555,7 +555,7 @@ graph TD
     J5 --> K
 ```
 
-### 71.4.2 `test::test()`：构造函数提取元数据
+### 70.4.2 `test::test()`：构造函数提取元数据
 
 源码路径：`tools/llama-bench/llama-bench.cpp` - `test::test()`（1520-1566 行）
 
@@ -605,7 +605,7 @@ test(const cmd_params_instance & inst, const llama_model * lmodel, const llama_c
 
 这段代码定义/展示/实现了 `test` 类的构造函数，它从 `cmd_params_instance` 和模型/上下文中提取全部配置快照，包括硬件信息、模型元数据、推理参数、测试规格等，并记录 ISO 8601 格式的测试时间，为后续输出提供完整的可追溯元数据。
 
-### 71.4.3 `test::get_ts()` 与统计方法：吞吐量计算与统计
+### 70.4.3 `test::get_ts()` 与统计方法：吞吐量计算与统计
 
 源码路径：`tools/llama-bench/llama-bench.cpp` - `get_ts()`（1572-1579）、`avg_ts()`（1581）、`stdev_ts()`（1583）
 
@@ -624,7 +624,7 @@ double stdev_ts() const { return ::stdev(get_ts()); }
 
 这段代码定义/展示/实现了 `test` 类的统计方法，`get_ts()` 将纳秒耗时转换为吞吐量（tokens/秒），公式为 `1e9 * (n_prompt + n_gen) / t_ns`；`avg_ts()` 与 `stdev_ts()` 则基于模板函数 `avg` 与 `stdev` 计算吞吐量的均值与标准差，为后续输出提供统计数据。
 
-### 71.4.4 `test::get_backend()`：后端名称汇总
+### 70.4.4 `test::get_backend()`：后端名称汇总
 
 源码路径：`tools/llama-bench/llama-bench.cpp` - `get_backend()`（1585-1602 行）
 
@@ -654,7 +654,7 @@ static std::string get_backend() {
 
 这段代码定义/展示/实现了 `get_backend()`，它遍历所有已注册的后端，过滤掉 CPU 后端，将非 CPU 后端名称收集到向量，RPC 后端若有设备则统一标记为 "RPC"，最后用逗号连接返回，用于测试结果中记录使用的计算后端。
 
-### 71.4.5 `test::get_fields()`、`get_field_type()`、`get_values()`、`get_map()`：字段元数据与序列化
+### 70.4.5 `test::get_fields()`、`get_field_type()`、`get_values()`、`get_map()`：字段元数据与序列化
 
 源码路径：`tools/llama-bench/llama-bench.cpp` - `get_fields()`（1604-1613）、`get_field_type()`（1615-1630）、`get_values()`（1632-1698）、`get_map()`（1700-1707 行）
 
@@ -782,7 +782,7 @@ std::map<std::string, std::string> get_map() const {
 
 这段代码定义/展示/实现了 `test` 类的字段元数据与序列化方法：`get_fields()` 返回固定的 44 个字段名列表；`get_field_type()` 将字段分类为 INT/BOOL/FLOAT/STRING 四种类型，供格式化输出使用；`get_values()` 将所有字段按顺序转为字符串，特别处理 `tensor_split`（截断尾部零值并用 `/` 连接）和 `tensor_buft_overrides`（pattern=buft 格式用 `;` 分隔）；`get_map()` 将字段名与值组合成 map，供 markdown_printer 查找使用。
 
-### 71.4.6 `escape_csv()` 与 `escape_json()`：特殊字符转义
+### 70.4.6 `escape_csv()` 与 `escape_json()`：特殊字符转义
 
 源码路径：`tools/llama-bench/llama-bench.cpp` - `escape_csv()`（1653-1666 行）、`escape_json()`（1687-1701 行）
 
@@ -826,7 +826,7 @@ static std::string escape_json(const std::string & value) {
 
 这段代码定义/展示/实现了 CSV 与 JSON 两种转义函数：CSV 仅在字段包含逗号、换行或引号时才用双引号包裹并转义内部引号；JSON 则对双引号、反斜杠以及所有 ≤ 0x1f 的控制字符做无条件转义，确保生成的 JSON 字符串符合 RFC 8259 规范。`escape_json()` 对控制字符使用 `\uXXXX` 形式转义，这是 JSON 规范要求的，而 CSV 规范不涉及控制字符转义。
 
-### 71.4.7 `csv_printer`：CSV 格式输出
+### 70.4.7 `csv_printer`：CSV 格式输出
 
 源码路径：`tools/llama-bench/llama-bench.cpp` - `csv_printer`（1667-1679 行）
 
@@ -846,7 +846,7 @@ void print_test(const test & t) override {
 
 这段代码定义/展示/实现了 `csv_printer`，它以逗号分隔字段名与字段值，对字符串值调用 `escape_csv()` 转义，输出标准的 CSV 格式，适合导入电子表格软件。`print_header` 输出字段名行，`print_test` 输出每行数据，均通过 `join` 拼接。
 
-### 71.4.8 `json_printer`：JSON 数组格式输出
+### 70.4.8 `json_printer`：JSON 数组格式输出
 
 源码路径：`tools/llama-bench/llama-bench.cpp` - `json_printer`（1710-1735 行）
 
@@ -875,7 +875,7 @@ void print_footer() override { fprintf(fout, "\n]\n"); }
 
 这段代码定义/展示/实现了 `json_printer`，它输出 JSON 数组格式，每个测试结果为一个对象，包含所有字段与两次重复的原始耗时（`samples_ns`）和吞吐量（`samples_ts`）数组，适合程序化分析。`first` 标志控制逗号分隔，`print_fields` 辅助函数根据字段类型格式化键值对。
 
-### 71.4.9 `jsonl_printer`：JSONL 逐行格式输出
+### 70.4.9 `jsonl_printer`：JSONL 逐行格式输出
 
 源码路径：`tools/llama-bench/llama-bench.cpp` - `jsonl_printer`（1743-1758 行）
 
@@ -892,7 +892,7 @@ void print_test(const test & t) override {
 
 这段代码定义/展示/实现了 `jsonl_printer`，它将每个测试结果输出为单独一行 JSON 对象，无数组包裹，适合流式处理与日志分析。不需要 `print_header` 和 `print_footer`，每行自包含。
 
-### 71.4.10 `markdown_printer`：Markdown 表格格式输出
+### 70.4.10 `markdown_printer`：Markdown 表格格式输出
 
 源码路径：`tools/llama-bench/llama-bench.cpp` - `markdown_printer`（1772-1945 行，核心方法）
 
@@ -1040,7 +1040,7 @@ void print_test(const test & t) override {
 
 这段代码定义/展示/实现了 `markdown_printer`，它通过 `get_field_width()` 与 `get_field_display_name()` 动态计算列宽与缩写，仅输出与默认值不同的字段以减少噪音，最终生成 human-readable 的 Markdown 表格。`get_field_width()` 为常用字段定制宽度（负数表示左对齐），`get_field_display_name()` 提供短别名，`print_header()` 对比参数与默认值动态选择列，`print_test()` 从 `get_map()` 取值并格式化（模型大小转 MiB/GiB，参数量转 M/B，吞吐量显示 `均值 ± 标准差`）。
 
-### 71.4.11 `sql_printer`：SQL 建表与插入语句输出
+### 70.4.11 `sql_printer`：SQL 建表与插入语句输出
 
 源码路径：`tools/llama-bench/llama-bench.cpp` - `sql_printer`（1951-1982 行）
 
@@ -1084,7 +1084,7 @@ void print_test(const test & t) override {
 
 这段代码定义/展示/实现了 `sql_printer`，它生成 `CREATE TABLE` 与 `INSERT INTO` 语句，将测试结果直接写入 SQLite 等关系数据库，`get_sql_field_type()` 将 C++ 类型映射为 SQL 类型（STRING→TEXT、INT→INTEGER、FLOAT→REAL）。`print_header` 输出建表语句，`print_test` 输出插入语句，所有值统一用单引号包裹。
 
-### 71.4.12 `create_printer()` 工厂函数
+### 70.4.12 `create_printer()` 工厂函数
 
 源码路径：`tools/llama-bench/llama-bench.cpp` - `create_printer()`（2050-2064 行）
 
@@ -1110,7 +1110,7 @@ static std::unique_ptr<printer> create_printer(output_formats format) {
 
 这段代码定义/展示/实现了 `create_printer()` 工厂函数，它根据 `output_formats` 枚举值返回对应 printer 子类的智能指针，使 main() 可以用同一套接口处理多种输出目标。
 
-### 71.4.13 `test_prompt()`：Prompt 处理基准
+### 70.4.13 `test_prompt()`：Prompt 处理基准
 
 源码路径：`tools/llama-bench/llama-bench.cpp` - `test_prompt()`（1999-2022 行）
 
@@ -1142,7 +1142,7 @@ static bool test_prompt(llama_context * ctx, int n_prompt, int n_batch, int n_th
 
 这段代码定义/展示/实现了 `test_prompt()`，它执行 prompt 处理基准测试：设置线程数，按 `n_batch` 分块生成随机 token（首块首 token 可能为 BOS），调用 `llama_batch_get_one()` 构造临时 batch 并 `llama_decode()`，循环直到处理完 `n_prompt` 个 token，最后 `llama_synchronize()` 确保计时准确。
 
-### 71.4.14 `test_gen()`：文本生成基准
+### 70.4.14 `test_gen()`：文本生成基准
 
 源码路径：`tools/llama-bench/llama-bench.cpp` - `test_gen()`（2025-2041 行）
 
@@ -1168,7 +1168,7 @@ static bool test_gen(llama_context * ctx, int n_gen, int n_threads) {
 
 这段代码定义/展示/实现了 `test_gen()`，它执行文本生成基准测试：单 token 循环，每次 `llama_decode()` 一个 token，立即 `llama_synchronize()` 确保 GPU 计算完成再计时，然后生成下一个随机 token 作为下一步输入，模拟自回归生成过程。
 
-### 71.4.15 `main()`：程序入口与测试循环
+### 70.4.15 `main()`：程序入口与测试循环
 
 源码路径：`tools/llama-bench/llama-bench.cpp` - `main()`（2068-2233 行，关键片段）
 
@@ -1228,11 +1228,11 @@ int main(int argc, char ** argv) {
 
 这段代码定义/展示/实现了 llama-bench 的 `main()` 函数，它是整个基准测试的编排器：初始化后端与线程池，解析参数生成实例列表，创建双输出 printer，然后遍历实例列表。核心逻辑：通过 `equal_mparams()` 判断是否复用已加载模型，`fit_target` 模式下调用 `llama_params_fit()` 自动计算 ngl 与 tensor_split，创建上下文与线程池，构造 `test` 对象记录元数据，执行 warmup 与 `reps` 次重复测试（每次清 KV、可选 depth 缓存复用、计时 `test_prompt`+`test_gen`、记录 `samples_ns`），最后调用 printer 输出并打印性能统计。
 
-## 71.5 batched-bench 多序列批量解码测试 —— 并发推理的「交通流量模拟器」
+## 70.5 batched-bench 多序列批量解码测试 —— 并发推理的「交通流量模拟器」
 
 batched-bench 的目标是系统性地探索**三维参数空间**：`n_pp`（prompt 长度）、`n_tg`（生成长度）、`n_pl`（并行序列数）。它的核心优化在于 **PP 阶段的共享前缀**：当 `is_pp_shared = true` 时，只需对一份 prompt 解码一次，然后通过 `llama_memory_seq_cp()` 把 KV 复制到其余序列，若 `kv_unified = false` 还需运行一次 dummy token 触发复制生效。TG 阶段则提供两种调度模式：`is_tg_separate = true` 时每个序列独立完成全部生成，便于逐序列分析；`false` 时所有序列交错生成，更贴近真实并发场景。
 
-### 71.5.1 batched-bench 整体架构图
+### 70.5.1 batched-bench 整体架构图
 
 ```mermaid
 graph LR
@@ -1255,7 +1255,7 @@ graph LR
     N --> O
 ```
 
-### 71.5.2 PP/TG 阶段时序流程图
+### 70.5.2 PP/TG 阶段时序流程图
 
 ```mermaid
 sequenceDiagram
@@ -1307,7 +1307,7 @@ sequenceDiagram
     M->>M: 计算速度并输出
 ```
 
-### 71.5.3 `main()`：三维参数循环与阶段计时
+### 70.5.3 `main()`：三维参数循环与阶段计时
 
 源码路径：`tools/batched-bench/batched-bench.cpp` - `main()`（19-223 行）
 
@@ -1556,11 +1556,11 @@ int main(int argc, char ** argv) {
 
 这段代码定义/展示/实现了 batched-bench 的 `main()` 函数，它通过三维嵌套循环枚举 n_pp×n_tg×n_pl 参数空间，在 PP 阶段利用 `llama_memory_seq_cp()` 实现共享前缀的 KV 复制，在 TG 阶段提供独立/交错两种生成模式，并以分离的计时与速度公式输出多序列并发下的吞吐量表现。`decode_helper` lambda 将大 batch 按 `n_batch` 拆分解码，可选同步。PP 阶段：共享前缀时只构造 1 份 prompt，解码后 `seq_cp` 复制 KV 到其余序列，非 `kv_unified` 时跑一个 dummy token 触发复制生效并删除 dummy 痕迹。TG 阶段：`is_tg_separate` 决定逐序列串行生成还是交错并行生成。速度计算中，共享前缀时 PP 速度分子为 `pp`（只算一次），否则为 `pl*pp`。
 
-## 71.6 perplexity 工具核心：标准困惑度计算 —— 语言模型质量的「标尺」
+## 70.6 perplexity 工具核心：标准困惑度计算 —— 语言模型质量的「标尺」
 
 perplexity 的目标是计算语言模型在给定文本上的**负对数似然（NLL）**，进而得到 `PPL = exp(NLL)`。其核心流程是：将 tokenize 后的文本按 `n_ctx` 分块，每块内首 token 替换为 BOS，然后以 `n_seq = n_batch / n_ctx` 的多序列并行方式一次 decode 多个序列；只计算后半部分（`first = n_ctx/2`）的 log-likelihood，确保模型始终有足够上下文。NLL 的计算由 `process_logits()` 的多线程版本完成：worker 线程通过 mutex 保护的 counter 竞争任务，每个线程本地累加 `local_nll` 与 `local_nll2`，最后一次性加到全局，减少锁竞争。
 
-### 71.6.1 标准困惑度计算架构图
+### 70.6.1 标准困惑度计算架构图
 
 ```mermaid
 graph TD
@@ -1576,7 +1576,7 @@ graph TD
     J --> K[输出 PPL +/- stderr]
 ```
 
-### 71.6.2 process_logits 多线程协作流程图
+### 70.6.2 process_logits 多线程协作流程图
 
 ```mermaid
 sequenceDiagram
@@ -1605,7 +1605,7 @@ sequenceDiagram
     Main->>Worker: join 所有线程
 ```
 
-### 71.6.3 `softmax()` 与 `log_softmax()`：概率计算基础
+### 70.6.3 `softmax()` 与 `log_softmax()`：概率计算基础
 
 源码路径：`tools/perplexity/perplexity.cpp` - `softmax()`（18-35 行）、`log_softmax()`（37-48 行）
 
@@ -1644,7 +1644,7 @@ static results_log_softmax log_softmax(int n_vocab, const float * logits, int to
 
 这段代码定义/展示/实现了 `softmax()` 与单 token `log_softmax()`，前者用于多选题评分中的概率归一化，后者用于在数值稳定的前提下提取目标 token 的对数概率，是 perplexity 所有对数似然计算的数学基础。`softmax()` 先减去最大值防止上溢，再归一化；`log_softmax()` 直接返回 `logits[tok] - max_logit - log(sum_exp)`，避免显式计算概率再取对数的精度损失。
 
-### 71.6.4 `process_logits()`：多线程 NLL 计算
+### 70.6.4 `process_logits()`：多线程 NLL 计算
 
 源码路径：`tools/perplexity/perplexity.cpp` - `process_logits()`（90-121 行）
 
@@ -1687,7 +1687,7 @@ static void process_logits(
 
 这段代码定义/展示/实现了 `process_logits()` 的多线程 NLL 计算，它通过 mutex 保护的 counter 分摊 token 位置，每个线程先在线程局部累加 `local_nll`/`local_nll2`，最后一次性加到全局，显著减少锁竞争；同时使用 `std::unique_lock` 实现细粒度的锁释放，保证 log_softmax 计算期间其他线程可以并行工作。主线程也参与计算（`compute()`），充分利用硬件并发。
 
-### 71.6.5 `perplexity()` 主函数
+### 70.6.5 `perplexity()` 主函数
 
 源码路径：`tools/perplexity/perplexity.cpp` - `perplexity()`（560-700 行）
 
@@ -1807,11 +1807,11 @@ static results_perplexity perplexity(llama_context * ctx, const common_params & 
 
 这段代码定义/展示/实现了 `perplexity()` 主函数，它负责将输入文本分块、多序列并行解码，仅计算后半部分 token 的负对数似然，通过多线程 `process_logits()` 累加 NLL/NLL2，最终输出 PPL 及其标准误差，同时支持将量化 logprobs 写入文件供 KL 散度对比。关键设计：`first = n_ctx/2` 只评估后半段，保证有足够上下文；`n_seq = n_batch / n_ctx` 多序列并行填满 batch；BOS token 在每个 chunk 首批次插入。
 
-## 71.7 perplexity_v2 与 KL 散度计算 —— 滑窗策略与模型对比的「精细显微镜」
+## 70.7 perplexity_v2 与 KL 散度计算 —— 滑窗策略与模型对比的「精细显微镜」
 
 标准 perplexity 每次移动一个完整的 `n_ctx` 窗口，粒度较粗。perplexity_v2 引入 **stride** 机制：每次只向前移动 `ppl_stride` 个 token，从而可以逐 token 地记录 logit 与概率曲线，适用于需要观察局部 PPL 波动的场景。KL 散度则进一步把两个模型的输出差异量化：基线模型以 uint16 量化格式（`scale + min_log_prob` 编码）保存 log_probs，当前模型重新推理后，通过 `log_softmax(int, const float*, const uint16_t*, int, kl_divergence_result&)` 逐 token 计算 NLL、KL 散度、概率差值矩以及 top-1 一致率，最终由 `mean_and_uncertainty()` 与 `covariance()` 汇总统计指标。
 
-### 71.7.1 perplexity_v2 滑窗流程图
+### 70.7.1 perplexity_v2 滑窗流程图
 
 ```mermaid
 graph TD
@@ -1831,7 +1831,7 @@ graph TD
     N --> O[返回最终 PPL = exp(nll/count)]
 ```
 
-### 71.7.2 log_softmax 量化编码流程图
+### 70.7.2 log_softmax 量化编码流程图
 
 ```mermaid
 flowchart TD
@@ -1849,7 +1849,7 @@ flowchart TD
     K --> M[返回 NLL = max_logit + log_sum_exp - logits[tok]]
 ```
 
-### 71.7.3 KL 散度计算架构图
+### 70.7.3 KL 散度计算架构图
 
 ```mermaid
 graph TD
@@ -1865,7 +1865,7 @@ graph TD
     J --> K[输出 NLL/KLD/p_diff 统计]
 ```
 
-### 71.7.4 `perplexity_v2()`：滑窗 PPL
+### 70.7.4 `perplexity_v2()`：滑窗 PPL
 
 源码路径：`tools/perplexity/perplexity.cpp` - `perplexity_v2()`（430-558 行，关键片段）
 
@@ -1903,7 +1903,7 @@ static results_perplexity perplexity_v2(llama_context * ctx, const common_params
 
 这段代码定义/展示/实现了 `perplexity_v2()`，它通过 stride 步长控制滑窗粒度，每次移动 `ppl_stride` 个 token 即可重新计算一个完整 `n_ctx` 窗口的 PPL，从而支持逐 token 的 logit/prob 记录与更细粒度的 PPL 曲线输出。与标准版本不同，它使用单序列模式（`n_seq=1`），每个 chunk 重新解码完整 `n_ctx`，仅统计最后 `stride` 个位置的 next token 概率。
 
-### 71.7.5 `log_softmax()` 的 KL 版本
+### 70.7.5 `log_softmax()` 的 KL 版本
 
 源码路径：`tools/perplexity/perplexity.cpp` - `log_softmax()`（349-395 行）
 
@@ -1974,7 +1974,7 @@ static std::pair<double, float> log_softmax(int n_vocab, const float * logits, c
 
 这段代码定义/展示/实现了 `log_softmax()` 的 KL 版本，它在计算当前模型 log_softmax 的同时，解析基线模型的 uint16 量化 log_prob，逐 token 累加 NLL、KL 散度、概率差值矩与 top-1 一致率，为后续统计汇总提供原始数据。关键步骤：读取基线量化参数 `scale` 与 `min_log_prob` 反解 `nll_base`，计算 KL 散度 `sum(p_base * (log p_base - log p))`，统计 `imax == imax_base` 的 top-1 一致数，计算概率差值 `p - p_base` 及其 1~4 阶矩。
 
-### 71.7.6 `process_logits(kld)`：KL 散度多线程计算
+### 70.7.6 `process_logits(kld)`：KL 散度多线程计算
 
 源码路径：`tools/perplexity/perplexity.cpp` - `process_logits()`（397-428 行）
 
@@ -2024,7 +2024,7 @@ static void process_logits(int n_vocab, const float * logits, const int * tokens
 
 这段代码定义/展示/实现了 `process_logits()` 的 KL 版本，它使用与标准 NLL 版本相同的多线程竞争模式，每个线程本地累加 `local_kld` 的各个统计字段，最后一次性合并到全局 `kld`，同时输出逐 token 的 KL 散度与概率差值数组，用于后续可视化或深入分析。
 
-### 71.7.7 `mean_and_uncertainty()` 与 `covariance()`
+### 70.7.7 `mean_and_uncertainty()` 与 `covariance()`
 
 源码路径：`tools/perplexity/perplexity.cpp` - `mean_and_uncertainty()`（1961-1970 行）、`covariance()`（1971-1977 行）
 
@@ -2048,7 +2048,7 @@ static double covariance(double sum_xy, double sum_x, double sum_y, int64_t coun
 
 这段代码定义/展示/实现了 `mean_and_uncertainty()` 与 `covariance()`，前者根据 sum/sum2/count 计算均值与标准误差，后者计算两组变量的协方差，为 KL 散度结果中的 NLL、KLD、概率差值等统计量提供统一的不确定性量化基础。
 
-### 71.7.8 `kl_divergence()` 主流程
+### 70.7.8 `kl_divergence()` 主流程
 
 源码路径：`tools/perplexity/perplexity.cpp` - `kl_divergence()`（713-803 行，关键片段）
 
@@ -2064,11 +2064,11 @@ static void kl_divergence(llama_context * ctx, const common_params & params) {
 
 这段代码定义/展示/实现了 `kl_divergence()` 主流程，它负责读取基线模型的量化 log_probs 文件，重新推理当前模型，通过多线程 `process_logits(kld)` 逐 token 计算 NLL、KL 散度、概率差值矩与 top-1 一致率，最终输出均值、标准误差、协方差等统计指标，量化两个模型之间的输出差异。
 
-## 71.8 HellaSwag 与 Winogrande：多选项任务的批量加速评分 —— 常识推理的「快速考官」
+## 70.8 HellaSwag 与 Winogrande：多选项任务的批量加速评分 —— 常识推理的「快速考官」
 
 HellaSwag 与 Winogrande 都是多选一的常识推理任务，评估流程高度相似：**计算公共前缀 → 批量构造序列 → 批量解码 → 计算各选项对数概率 → 比较选择**。公共前缀优化是关键：多个选项的共享部分只需 decode 一次（共用同一 seq_id），后续分支各自独立，大幅降低评估成本。`decode_helper()` 负责将大 batch 按 `n_batch` 拆分并收集所有需要的 logits；`compute_logprobs()` 则多线程地对 `(logits_offset, target_token)` 对计算 log 概率，按 `K_TOKEN_CHUNK` 分块减少线程竞争。
 
-### 71.8.1 多选项任务评估架构图
+### 70.8.1 多选项任务评估架构图
 
 ```mermaid
 graph TD
@@ -2083,7 +2083,7 @@ graph TD
     I --> J[输出准确率/置信区间]
 ```
 
-### 71.8.2 HellaSwag 批量构造与 common_prefix 优化流程图
+### 70.8.2 HellaSwag 批量构造与 common_prefix 优化流程图
 
 ```mermaid
 flowchart TD
@@ -2104,7 +2104,7 @@ flowchart TD
     O --> P[acc_norm 统计 + 95% CI]
 ```
 
-### 71.8.3 `load_winogrande_from_csv()`：CSV 解析
+### 70.8.3 `load_winogrande_from_csv()`：CSV 解析
 
 源码路径：`tools/perplexity/perplexity.cpp` - `load_winogrande_from_csv()`（213-278 行）
 
@@ -2173,7 +2173,7 @@ static std::vector<winogrande_entry> load_winogrande_from_csv(const std::string 
 
 这段代码定义/展示/实现了 `load_winogrande_from_csv()`，它手动解析带引号的 CSV 行，提取 sentence（含 `_` 占位符）、两个选项与正确答案索引，并将 sentence 拆分为前缀与后缀，为后续的公共前缀优化与批量评分提供结构化输入。
 
-### 71.8.4 `decode_helper()` 与 `compute_logprobs()`
+### 70.8.4 `decode_helper()` 与 `compute_logprobs()`
 
 源码路径：`tools/perplexity/perplexity.cpp` - `decode_helper()`（702-730 行）、`compute_logprobs()`（733-774 行）
 
@@ -2259,7 +2259,7 @@ static void compute_logprobs(const float * batch_logits, int n_vocab, std::vecto
 
 这段代码定义/展示/实现了 `decode_helper()` 与 `compute_logprobs()`，前者负责将大 batch 拆分为可处理的子批并收集所有需要的 logits，后者通过多线程原子计数器分摊 `(logits_offset, target_token)` 对的 logprob 计算任务，两者共同构成了多选项任务评估的统一推理与评分引擎。`decode_helper` 逐子批解码，统计需输出 logits 的 token 数，拷贝到连续的 `batch_logits` 缓冲区；`compute_logprobs` 使用 `std::atomic` 原子计数器，每线程每次领取 `K_TOKEN_CHUNK` 个任务，局部数组计算后批量拷贝回结果向量。
 
-### 71.8.5 `hellaswag_score()`
+### 70.8.5 `hellaswag_score()`
 
 源码路径：`tools/perplexity/perplexity.cpp` - `hellaswag_score()`（776-1000 行，关键片段）
 
@@ -2276,7 +2276,7 @@ static void hellaswag_score(llama_context * ctx, const common_params & params) {
 
 这段代码定义/展示/实现了 `hellaswag_score()`，它遵循加载→公共前缀计算→批量构造→批量解码→logprob 计算→比较选择的标准流程，最终输出归一化准确率（acc_norm）及 95% 置信区间。
 
-### 71.8.6 `winogrande_score()`
+### 70.8.6 `winogrande_score()`
 
 源码路径：`tools/perplexity/perplexity.cpp` - `winogrande_score()`（280-424 行，关键片段）
 
@@ -2294,11 +2294,11 @@ static void winogrande_score(llama_context * ctx, const common_params & params) 
 
 这段代码定义/展示/实现了 `winogrande_score()`，它针对 2 选项任务进行了特化，支持 `skip_choice` 逻辑以跳过尾部无关 token，最终输出准确率与标准差。
 
-## 71.9 多选题评分：ARC/MMLU/TruthfulQA —— 标准学术评估的「自动化流水线」
+## 70.9 多选题评分：ARC/MMLU/TruthfulQA —— 标准学术评估的「自动化流水线」
 
 `multiple_choice_score()` 面向更通用的 N 选项任务（ARC、MMLU、TruthfulQA 等）。输入为二进制序列化格式：`n_task` + `task_pos` 数组 + 序列化的 `multiple_choice_task`。每个 task 包含 `question` 与 `mc1`（答案集与 labels）。评分逻辑使用**首个非公共 token 的 softmax 概率**作为基准（即公共前缀最后一 token 的 logits），累加后续所有 token 的 logprob 并除以 token 数得到平均 log_prob，在 `mc1.labels` 中找到 `label == 1` 的索引作为正确答案，最终输出总正确率、随机基线（1/n_answers）及标准差。
 
-### 71.9.1 多选题评分架构图
+### 70.9.1 多选题评分架构图
 
 ```mermaid
 graph TD
@@ -2314,7 +2314,7 @@ graph TD
     J --> K[输出 acc / 随机基线 / sigma]
 ```
 
-### 71.9.2 multiple_choice_prepare_one_task 预处理流程图
+### 70.9.2 multiple_choice_prepare_one_task 预处理流程图
 
 ```mermaid
 flowchart TD
@@ -2331,7 +2331,7 @@ flowchart TD
     J --> K[返回 true]
 ```
 
-### 71.9.3 多选题随机采样流程图
+### 70.9.3 多选题随机采样流程图
 
 ```mermaid
 flowchart TD
@@ -2350,7 +2350,7 @@ flowchart TD
     K --> L[多线程 parallel prepare]
 ```
 
-### 71.9.4 `multiple_choice_prepare_one_task()`
+### 70.9.4 `multiple_choice_prepare_one_task()`
 
 源码路径：`tools/perplexity/perplexity.cpp` - `multiple_choice_prepare_one_task()`（480-517 行）
 
@@ -2401,7 +2401,7 @@ static bool multiple_choice_prepare_one_task(llama_context * ctx, multiple_choic
 
 这段代码定义/展示/实现了 `multiple_choice_prepare_one_task()`，它负责将 question 与每个 answer 拼接后 tokenize，计算跨所有答案的公共前缀长度与所需 token 总数，为后续批量构造与上下文容量判断提供依据。
 
-### 71.9.5 `multiple_choice_score()`
+### 70.9.5 `multiple_choice_score()`
 
 源码路径：`tools/perplexity/perplexity.cpp` - `multiple_choice_score()`（519-711 行，关键片段）
 
@@ -2422,11 +2422,11 @@ static void multiple_choice_score(llama_context * ctx, const common_params & par
 
 这段代码定义/展示/实现了 `multiple_choice_score()`，它通过二进制反序列化加载任务，支持多线程并行准备与随机采样，利用公共前缀优化与批量 logprob 计算，最终输出准确率、随机基线与标准差，适用于 ARC、MMLU、TruthfulQA 等标准学术评测。
 
-## 71.10 perplexity 主程序与评估模式分发 —— 多模态评估的「总控开关」
+## 70.10 perplexity 主程序与评估模式分发 —— 多模态评估的「总控开关」
 
 `perplexity` 的 `main()` 函数（约 2941-3020 行）是整个评估工具链的入口。它首先调用 `common_params_parse` 解析命令行参数与预设文件，自动设置合理默认值（`n_ctx=512, n_batch=512, ppl_stride=0` 等），并支持 `--hellaswag`、`--winogrande`、`--multiple-choice`、`--kl-divergence` 等专用参数。然后调用 `common_init()` 与 `common_init_from_params()` 初始化推理环境，加载模型并创建 `llama_context`，确保资源充足。最后根据 `params` 中的模式标志选择对应的评估函数，支持多种评估串行执行（如先 perplexity 再 hellaswag），每个评估函数独立运行并共享同一模型上下文。评估完成后调用 `llama_perf_context_print()` 打印性能统计，释放模型与上下文资源。
 
-### 71.10.1 perplexity main() 完整流程图
+### 70.10.1 perplexity main() 完整流程图
 
 ```mermaid
 flowchart TD
@@ -2455,7 +2455,7 @@ flowchart TD
     Q --> R[llama_backend_free]
 ```
 
-### 71.10.2 `main()`：模式分发逻辑
+### 70.10.2 `main()`：模式分发逻辑
 
 源码路径：`tools/perplexity/perplexity.cpp` - `main()`（2941-3020 行，关键片段）
 
@@ -2510,11 +2510,11 @@ int main(int argc, char ** argv) {
 
 这段代码定义/展示/实现了 perplexity 的 `main()` 函数，它按顺序检查各评估模式标志并调用对应函数，支持多模式串行执行（如同时指定 `--hellaswag --winogrande` 会依次运行两个评估），最后统一打印性能统计并释放资源。默认模式（无专用标志）运行标准 perplexity 计算。
 
-## 71.11 results 工具：logits 快照与 NMSE 验证 —— 推理一致性的「数字指纹」
+## 70.11 results 工具：logits 快照与 NMSE 验证 —— 推理一致性的「数字指纹」
 
 `results` 工具用于验证两次推理运行的**数值一致性**。它有两种模式：在 `check=false` 时，它把当前推理得到的 `tokens`（I32, 1D）与 `logits`（F32, 2D）写入 GGUF 文件；在 `check=true` 时，它读取磁盘上的 GGUF 文件，逐 token 比对 `tokens_disk` 与 `tokens_calc`（使用 `GGML_ASSERT`），然后调用 `nmse()` 计算 `logits_disk` 与 `logits_calc` 的归一化均方误差，阈值 `1e-6` 判定 PASS/FAIL。
 
-### 71.11.1 results 工具架构图
+### 70.11.1 results 工具架构图
 
 ```mermaid
 graph TD
@@ -2538,7 +2538,7 @@ graph TD
     E7 -->|否| G[OK 绿色]
 ```
 
-### 71.11.2 get_logits 解码流程图
+### 70.11.2 get_logits 解码流程图
 
 ```mermaid
 sequenceDiagram
@@ -2564,7 +2564,7 @@ sequenceDiagram
     Main-->>Caller: 返回 ret vector<float>
 ```
 
-### 71.11.3 `nmse()`：归一化均方误差
+### 70.11.3 `nmse()`：归一化均方误差
 
 源码路径：`tools/results/results.cpp` - `nmse()`（18-32 行）
 
@@ -2588,7 +2588,7 @@ static double nmse(const std::vector<float> & a, const std::vector<float> & b) {
 
 这段代码定义/展示/实现了 `nmse()`，它将两个等长浮点向量的均方误差除以第一个向量自身的均方值，得到一个与绝对尺度无关的相对误差指标，比原始 MSE 更适合跨不同模型规模的一致性判定。公式为 `NMSE = Σ(a_i - b_i)² / Σ(a_i²)`。
 
-### 71.11.4 `get_logits()`：全量 logits 提取
+### 70.11.4 `get_logits()`：全量 logits 提取
 
 源码路径：`tools/results/results.cpp` - `get_logits()`（35-58 行）
 
@@ -2624,7 +2624,7 @@ static std::vector<float> get_logits(
 
 这段代码定义/展示/实现了 `get_logits()`，它负责对给定 token 序列进行一次性解码，并返回每个位置在所有词表维度上的 logits 向量，是 results 工具中生成或验证 logits 快照的核心函数。构造 batch 时所有 token 的 `logits=1` 以获取完整 logits，解码后遍历位置调用 `llama_get_logits_ith` 收集。
 
-### 71.11.5 `main()`：check 模式的验证流程
+### 70.11.5 `main()`：check 模式的验证流程
 
 源码路径：`tools/results/results.cpp` - `main()`（61-212 行，check 分支关键片段）
 
@@ -2684,7 +2684,7 @@ if (params.check) {
 
 这段代码定义/展示/实现了 results 工具的 `check` 模式，它通过 GGUF 读取器定位 `tokens` 与 `logits` 张量的磁盘偏移，逐 token 断言比对并计算 NMSE，以彩色输出给出最终的一致性判定，是模型量化、分片、后端切换等场景下验证数值稳定性的标准手段。`load_tensor_data` lambda 通过 GGUF 元数据计算文件偏移并直接 `fread` 读取张量数据。
 
-## 71.12 设计中的取舍
+## 70.12 设计中的取舍
 
 **为什么 llama-bench 要使用 cmd_params 与 cmd_params_instance 双层设计，而不是直接在 main() 的循环里展开参数？**  
 双层设计的核心动机是**模型复用**。如果直接在循环里展开，每次参数变化（如 n_gpu_layers 改变）都需要重新加载模型，而模型加载是整个基准测试中最昂贵的操作之一。通过 `cmd_params` 收集所有 CLI 层的列表/范围语法，再由 `get_cmd_params_instances()` 按模型参数是否变化进行智能排序，可以确保同一模型的所有测试实例连续执行，只需加载一次。`equal_mparams()` 的存在正是为了判断相邻实例是否可复用已加载模型——这种设计将 O(N) 次模型加载压缩为 O(M) 次（M 为不同模型参数组合数），在大规模参数扫描时收益显著。
@@ -2698,7 +2698,7 @@ perplexity 需要为每个 token 计算 `log_softmax`，这是一个 embarrassin
 **为什么 results 使用 NMSE 而不是简单的 MSE？**  
 MSE 的绝对大小与 logits 的尺度强相关：不同模型的 logits 方差可能差异巨大，直接比较 MSE 没有统一的阈值。NMSE 将 MSE 除以 `Σ(a²)`，相当于以「信号能量」为基准做归一化，使得 `1e-6` 这个阈值可以跨模型、跨配置通用。这使得 results 工具可以作为一种「数字指纹」验证：只要两次推理的 NMSE 低于阈值，就认为它们在数值上等价，无论模型大小或量化方式如何。
 
-## 71.13 动手练习
+## 70.13 动手练习
 
 - 阅读 `tools/llama-bench/llama-bench.cpp` 第253-285行的 `parse_int_range()` 函数。回答以下问题：
   - 正则表达式 `^(\\d+)(?:(\\d+)(?:([\\+|\\*])(\\d+))?)?(?:,|$)` 中每个捕获组（group）分别代表什么？
@@ -2757,7 +2757,7 @@ MSE 的绝对大小与 logits 的尺度强相关：不同模型的 logits 方差
   - 为什么在调用评估函数前需要 `common_init_from_params(params)`？这个函数做了什么初始化？
   - 如果同时指定多个评估模式，程序会按什么顺序执行？是否有互斥逻辑？
 
-## 71.14 本章小结
+## 70.14 本章小结
 
 这一章中我们系统性地审视了 llama.cpp 性能评估工具链的完整全景。首先，我们深入了 llama-bench 的参数体系，理解了 `cmd_params` 与 `cmd_params_instance` 的双层分离如何通过笛卡尔积展开与智能排序减少模型重载，以及 `parse_int_range()` 的正则魔法如何将人类友好的范围语法翻译成机器可遍历的整数序列。接着，我们剖析了 printer 继承体系的策略模式，看到 CSV、JSON、JSONL、Markdown、SQL 五种输出格式如何通过统一的三段式接口对外暴露，以及 `test` 类如何封装单次测试的全部元数据与统计方法。batched-bench 则展示了多序列并发场景下的三维参数空间枚举，PP 阶段的共享前缀优化与 TG 阶段的独立/交错双模式调度，揭示了高吞吐推理背后的并发设计模式。perplexity 部分从标准 PPL 计算的块处理与多线程 NLL 计算出发，延伸到 perplexity_v2 的滑窗机制与 KL 散度的多维度统计指标，为我们提供了量化模型质量与模型间差异的精细工具。HellaSwag、Winogrande 与 multiple_choice 三个评估任务则展示了公共前缀优化、批量构造与 logprob 计算在常识推理与学术评测中的工程化落地。results 工具以 NMSE 验证与 GGUF 持久化为数值一致性提供了「数字指纹」级别的保障。最后，perplexity main() 的模式分发逻辑将所有评估能力整合到统一入口，使工具链既丰富又易用。
 

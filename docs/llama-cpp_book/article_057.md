@@ -1,7 +1,9 @@
+# 第57章 GGUF 常量体系 —— 全球化智能物流中心的标准化编码系统
 
-## 58 GGUF 常量体系 —— 全球化智能物流中心的标准化编码系统
 
-## 58.1 学习目标
+## 57.1 GGUF 常量体系 —— 全球化智能物流中心的标准化编码系统
+
+## 57.2 学习目标
 
 - 掌握GGUF元数据键名（Keys）的分层设计与架构无关占位符模式，理解18个嵌套子类的职责划分
 - 理解MODEL_ARCH/MODEL_TENSOR/MODEL_TENSORS/GGufType如何构成模型架构的统一坐标系
@@ -11,11 +13,11 @@
 - 理解GGUF_ENDIAN字节序与GGUFValueType.get_type()自动类型推导的实现原理
 - 掌握后缀剥离算法与get_type_and_name()的鲁棒查询机制
 
-## 58.2 生活类比
+## 57.3 生活类比
 
 想象GGUF的常量体系是一个全球化智能物流中心的标准化编码系统。在这个物流中心里，Keys的18个子类就像是18个专业部门窗口，比如收件部、分拣部、冷链部和国际部，每个部门只处理特定类型的包裹信息：General部门负责所有包裹的通用标签，而LLM部门则专门处理大语言模型的专属参数。{arch}占位符就像国家代码，自动适配不同地区的格式要求，使得同一套模板可以无缝应用于llama、qwen等不同架构。GGUFType则像是包裹的四种运输方式标识，MODEL代表标准货运，ADAPTER代表外挂配件，IMATRIX代表质检报告，MMPROJ代表多模态集装箱，决定了整个物流链的处理流程。MODEL_ARCH就像是100多种集装箱类型，每种类型都有唯一的ISO编码，从冷藏箱到框架箱，对应着llama、qwen、mamba、deepseek等不同模型家族。MODEL_TENSOR则是集装箱内的货物分类学，无论哪种箱子，内部货物都按统一标准分类贴标，比如ATTN_Q代表注意力查询权重，FFN_DOWN代表前馈网络下投影。MODEL_TENSORS映射表就像每种集装箱的标准装箱清单，规定Qwen3必须装哪些货物，Mamba必须装哪些部件。TensorNameMap则是多语言翻译官加自动贴标机，既懂英文（PyTorch的命名），也懂世界语（GGUF的标准命名），并能为100层的超大型集装箱自动生成每一层的标签。量化类型则是不同的压缩包装工艺，Q4_0是经济压缩，Q8_0是标准包装，F32是豪华精装，MXFP4是新型纳米压缩，而LlamaFileType决定整个集装箱以哪种工艺为主。GGUFValueType.get_type()则是智能材质检测仪，放入Python对象自动判断应贴哪种标签，避免人工填写错误。整个系统确保了从模型创建到部署的每一个环节都能准确无误地识别和处理模型元数据。这个类比将贯穿本章，后续每个单元我们都会用物流中心的不同角色来类比相应的常量设计。
 
-## 58.3 源码地图
+## 57.4 源码地图
 
 ```
 gguf-py/gguf/constants.py
@@ -75,11 +77,11 @@ gguf-py/gguf/tensor_mapping.py
 └── arch_block_mappings_cfg        # 架构特定的块映射补充协议
 ```
 
-## 58.4 Keys 元数据键名体系 —— 模型的「身份档案柜」
+## 57.5 Keys 元数据键名体系 —— 模型的「身份档案柜」
 
 在物流中心，Keys的18个子类就像是18个专业部门窗口，每个部门只处理特定类型的包裹信息，确保从收件到分拣的每一条元数据都能被准确归档。
 
-### 58.4.1 Keys.General 类：通用元数据键定义
+### 57.5.1 Keys.General 类：通用元数据键定义
 
 源码路径：`gguf-py/gguf/constants.py` - `Keys.General`（26-116行）
 
@@ -125,7 +127,7 @@ classDiagram
     }
 ```
 
-### 58.4.2 Keys.LLM 类：大语言模型专属参数定义
+### 57.5.2 Keys.LLM 类：大语言模型专属参数定义
 
 源码路径：`gguf-py/gguf/constants.py` - `Keys.LLM`（120-162行）
 
@@ -167,7 +169,7 @@ classDiagram
     }
 ```
 
-### 58.4.3 {arch} 占位符替换流程
+### 57.5.3 {arch} 占位符替换流程
 
 在物流中心，{arch} 占位符就像包裹上的国家代码，实际分拣时需要替换为具体的国家名称。以下是占位符替换的流程图：
 
@@ -182,7 +184,7 @@ flowchart TD
     F --> G
 ```
 
-### 58.4.4 Keys.Attention 类：注意力机制参数定义
+### 57.5.4 Keys.Attention 类：注意力机制参数定义
 
 源码路径：`gguf-py/gguf/constants.py` - `Keys.Attention`（163-193行）
 
@@ -219,11 +221,11 @@ classDiagram
     Attention --> Indexer : 包含
 ```
 
-### 58.4.5 其他子类详解
+### 57.5.5 其他子类详解
 
 除了上述四个子类，Keys 还包含众多专业模块子类，每个子类都承载着特定领域的元数据键定义，共同构成了 GGUF 元数据的完整身份档案柜。以下逐一展开各子类的源码路径、代码实现与设计意图。
 
-#### Keys.Rope：RoPE 位置编码参数定义
+#### 57.5.5.1 Keys.Rope：RoPE 位置编码参数定义
 
 源码路径：`gguf-py/gguf/constants.py` - `Keys.Rope`（196-210行）
 
@@ -257,7 +259,7 @@ classDiagram
     }
 ```
 
-#### Keys.Split：模型分片参数定义
+#### 57.5.5.2 Keys.Split：模型分片参数定义
 
 源码路径：`gguf-py/gguf/constants.py` - `Keys.Split`（213-215行）
 
@@ -281,7 +283,7 @@ classDiagram
     }
 ```
 
-#### Keys.SSM：状态空间模型参数定义
+#### 57.5.5.3 Keys.SSM：状态空间模型参数定义
 
 源码路径：`gguf-py/gguf/constants.py` - `Keys.SSM`（217-222行）
 
@@ -305,7 +307,7 @@ classDiagram
     }
 ```
 
-#### Keys.KDA：KDA 模块参数定义
+#### 57.5.5.4 Keys.KDA：KDA 模块参数定义
 
 源码路径：`gguf-py/gguf/constants.py` - `Keys.KDA`（226-227行）
 
@@ -325,7 +327,7 @@ classDiagram
     }
 ```
 
-#### Keys.WKV：RWKV 模型核心参数定义
+#### 57.5.5.5 Keys.WKV：RWKV 模型核心参数定义
 
 源码路径：`gguf-py/gguf/constants.py` - `Keys.WKV`（231-232行）
 
@@ -345,7 +347,7 @@ classDiagram
     }
 ```
 
-#### Keys.PosNet：Position Network 参数定义
+#### 57.5.5.6 Keys.PosNet：Position Network 参数定义
 
 源码路径：`gguf-py/gguf/constants.py` - `Keys.PosNet`（236-237行）
 
@@ -367,7 +369,7 @@ classDiagram
     }
 ```
 
-#### Keys.ConvNext：ConvNeXt 模型参数定义
+#### 57.5.5.7 Keys.ConvNext：ConvNeXt 模型参数定义
 
 源码路径：`gguf-py/gguf/constants.py` - `Keys.ConvNext`（241-242行）
 
@@ -389,7 +391,7 @@ classDiagram
     }
 ```
 
-#### Keys.Classifier：分类器参数定义
+#### 57.5.5.8 Keys.Classifier：分类器参数定义
 
 源码路径：`gguf-py/gguf/constants.py` - `Keys.Classifier`（246-247行）
 
@@ -408,7 +410,7 @@ classDiagram
     }
 ```
 
-#### Keys.ShortConv：短卷积模块参数定义
+#### 57.5.5.9 Keys.ShortConv：短卷积模块参数定义
 
 源码路径：`gguf-py/gguf/constants.py` - `Keys.ShortConv`（251-252行）
 
@@ -428,7 +430,7 @@ classDiagram
     }
 ```
 
-#### Keys.Tokenizer：分词器配置定义
+#### 57.5.5.10 Keys.Tokenizer：分词器配置定义
 
 源码路径：`gguf-py/gguf/constants.py` - `Keys.Tokenizer`（256-289行）
 
@@ -468,7 +470,7 @@ classDiagram
     }
 ```
 
-#### Keys.Adapter：适配器配置定义
+#### 57.5.5.11 Keys.Adapter：适配器配置定义
 
 源码路径：`gguf-py/gguf/constants.py` - `Keys.Adapter`（293-297行）
 
@@ -494,7 +496,7 @@ classDiagram
     }
 ```
 
-#### Keys.IMatrix：重要性矩阵元数据定义
+#### 57.5.5.12 Keys.IMatrix：重要性矩阵元数据定义
 
 源码路径：`gguf-py/gguf/constants.py` - `Keys.IMatrix`（301-303行）
 
@@ -518,7 +520,7 @@ classDiagram
     }
 ```
 
-#### Keys.Clip：CLIP 基础配置定义
+#### 57.5.5.13 Keys.Clip：CLIP 基础配置定义
 
 源码路径：`gguf-py/gguf/constants.py` - `Keys.Clip`（307-310行）
 
@@ -544,7 +546,7 @@ classDiagram
     }
 ```
 
-#### Keys.ClipVision：CLIP 视觉编码器配置定义
+#### 57.5.5.14 Keys.ClipVision：CLIP 视觉编码器配置定义
 
 源码路径：`gguf-py/gguf/constants.py` - `Keys.ClipVision`（313-337行）
 
@@ -596,7 +598,7 @@ classDiagram
     ClipVision --> SAM
 ```
 
-#### Keys.ClipAudio：CLIP 音频编码器配置定义
+#### 57.5.5.15 Keys.ClipAudio：CLIP 音频编码器配置定义
 
 源码路径：`gguf-py/gguf/constants.py` - `Keys.ClipAudio`（340-353行）
 
@@ -633,7 +635,7 @@ classDiagram
     ClipAudio --> Projector
 ```
 
-#### Keys.Diffusion：扩散模型参数定义
+#### 57.5.5.16 Keys.Diffusion：扩散模型参数定义
 
 源码路径：`gguf-py/gguf/constants.py` - `Keys.Diffusion`（356-357行）
 
@@ -652,7 +654,7 @@ classDiagram
     }
 ```
 
-#### Keys.xIELU：xIELU 激活函数参数定义
+#### 57.5.5.17 Keys.xIELU：xIELU 激活函数参数定义
 
 源码路径：`gguf-py/gguf/constants.py` - `Keys.xIELU`（361-364行）
 
@@ -677,7 +679,7 @@ classDiagram
     }
 ```
 
-### 58.4.6 模块依赖图
+### 57.5.6 模块依赖图
 
 ```mermaid
 graph TD
@@ -700,11 +702,11 @@ graph TD
     B3 --> B3A[Indexer 子类]
 ```
 
-## 58.5 模型架构、文件类型与张量映射 —— 百种架构的「统一坐标系」
+## 57.6 模型架构、文件类型与张量映射 —— 百种架构的「统一坐标系」
 
 在物流中心，MODEL_ARCH 就像是 100 多种集装箱类型，每种类型都有唯一的 ISO 编码，从冷藏箱到框架箱，对应着 llama、qwen、mamba、deepseek 等不同模型家族。MODEL_TENSOR 则是集装箱内的货物分类学，无论哪种箱子，内部货物都按统一标准分类贴标。
 
-### 58.5.1 GGUFType 枚举：文件类型枚举
+### 57.6.1 GGUFType 枚举：文件类型枚举
 
 源码路径：`gguf-py/gguf/constants.py` - `GGUFType`（369-373行）
 
@@ -729,7 +731,7 @@ classDiagram
     }
 ```
 
-### 58.5.2 MODEL_ARCH 枚举：模型架构枚举
+### 57.6.2 MODEL_ARCH 枚举：模型架构枚举
 
 源码路径：`gguf-py/gguf/constants.py` - `MODEL_ARCH`（376-500行，部分）
 
@@ -777,7 +779,7 @@ MODEL_ARCH_NAMES: dict[MODEL_ARCH, str] = {
 }
 ```
 
-### 58.5.3 MODEL_TENSOR 枚举：张量类型枚举
+### 57.6.3 MODEL_TENSOR 枚举：张量类型枚举
 
 源码路径：`gguf-py/gguf/constants.py` - `MODEL_TENSOR`（部分）
 
@@ -818,7 +820,7 @@ classDiagram
     }
 ```
 
-### 58.5.4 MODEL_TENSORS 与 TENSOR_NAMES：装箱清单与命名规范
+### 57.6.4 MODEL_TENSORS 与 TENSOR_NAMES：装箱清单与命名规范
 
 源码路径：`gguf-py/gguf/constants.py` - `MODEL_TENSORS` 与 `TENSOR_NAMES`（827-1630行，部分）
 
@@ -870,7 +872,7 @@ graph TD
     D --> F[运行时内存分配]
 ```
 
-### 58.5.5 模块依赖图
+### 57.6.5 模块依赖图
 
 ```mermaid
 graph TD
@@ -881,11 +883,11 @@ graph TD
     D --> F[运行时内存分配]
 ```
 
-## 58.6 量化类型、值类型与字节序 —— 数据世界的「度量衡体系」
+## 57.7 量化类型、值类型与字节序 —— 数据世界的「度量衡体系」
 
 在物流中心，量化类型则是不同的压缩包装工艺，Q4_0 是经济压缩，Q8_0 是标准包装，F32 是豪华精装，MXFP4 是新型纳米压缩，而 LlamaFileType 决定整个集装箱以哪种工艺为主。
 
-### 58.6.1 GGMLQuantizationType 枚举：量化类型枚举
+### 57.7.1 GGMLQuantizationType 枚举：量化类型枚举
 
 源码路径：`gguf-py/gguf/constants.py` - `GGMLQuantizationType`（3934-3970行）
 
@@ -947,7 +949,7 @@ classDiagram
     }
 ```
 
-### 58.6.2 量化策略选择流程
+### 57.7.2 量化策略选择流程
 
 在物流中心，选择量化策略就像根据包裹价值和目的地选择压缩工艺。以下是量化策略选择的简化流程图：
 
@@ -966,7 +968,7 @@ flowchart TD
     H --> I
 ```
 
-### 58.6.3 LlamaFileType 枚举：文件量化策略枚举
+### 57.7.3 LlamaFileType 枚举：文件量化策略枚举
 
 源码路径：`gguf-py/gguf/constants.py` - `LlamaFileType`（3978-4025行）
 
@@ -1035,7 +1037,7 @@ classDiagram
     }
 ```
 
-### 58.6.4 GGUFValueType 枚举：元数据值类型枚举
+### 57.7.4 GGUFValueType 枚举：元数据值类型枚举
 
 源码路径：`gguf-py/gguf/constants.py` - `GGUFValueType`（4033-4061行）
 
@@ -1091,7 +1093,7 @@ classDiagram
     }
 ```
 
-### 58.6.5 GGUFEndian 枚举：字节序枚举
+### 57.7.5 GGUFEndian 枚举：字节序枚举
 
 源码路径：`gguf-py/gguf/constants.py` - `GGUFEndian`（4027-4031行）
 
@@ -1113,11 +1115,11 @@ classDiagram
     }
 ```
 
-## 58.7 特殊化枚举 —— 分词、池化、门控与视觉的「扩展词典」
+## 57.8 特殊化枚举 —— 分词、池化、门控与视觉的「扩展词典」
 
 在物流中心，特殊化枚举就像是专业领域的处理规则，例如分词部门有六种身份标签，池化部门有五种聚合方式，每个规则都确保包裹在特定环节被正确处理。
 
-### 58.7.1 TokenType 枚举：分词单元类型枚举
+### 57.8.1 TokenType 枚举：分词单元类型枚举
 
 源码路径：`gguf-py/gguf/constants.py` - `TokenType`（3908-3915行）
 
@@ -1147,7 +1149,7 @@ classDiagram
     }
 ```
 
-### 58.7.2 RopeScalingType 枚举：RoPE 缩放类型枚举
+### 57.8.2 RopeScalingType 枚举：RoPE 缩放类型枚举
 
 源码路径：`gguf-py/gguf/constants.py` - `RopeScalingType`（3917-3923行）
 
@@ -1173,7 +1175,7 @@ classDiagram
     }
 ```
 
-### 58.7.3 PoolingType 枚举：池化方式枚举
+### 57.8.3 PoolingType 枚举：池化方式枚举
 
 源码路径：`gguf-py/gguf/constants.py` - `PoolingType`（3925-3932行）
 
@@ -1201,7 +1203,7 @@ classDiagram
     }
 ```
 
-### 58.7.4 ExpertGatingFuncType 枚举：MoE 门控函数类型枚举
+### 57.8.4 ExpertGatingFuncType 枚举：MoE 门控函数类型枚举
 
 源码路径：`gguf-py/gguf/constants.py` - `ExpertGatingFuncType`（3972-3976行）
 
@@ -1223,7 +1225,7 @@ classDiagram
     }
 ```
 
-### 58.7.5 VisionProjectorType 常量类：视觉投影器类型常量
+### 57.8.5 VisionProjectorType 常量类：视觉投影器类型常量
 
 源码路径：`gguf-py/gguf/constants.py` - `VisionProjectorType`（4063-4097行）
 
@@ -1279,11 +1281,11 @@ classDiagram
     }
 ```
 
-## 58.8 TensorNameMap 映射引擎 —— 框架方言的「通用翻译官」
+## 57.9 TensorNameMap 映射引擎 —— 框架方言的「通用翻译官」
 
 在物流中心，TensorNameMap 则是多语言翻译官加自动贴标机，既懂英文（PyTorch 的命名），也懂世界语（GGUF 的标准命名），并能为 100 层的超大型集装箱自动生成每一层的标签。它通过三层映射架构，将框架特定的张量名称转换为 GGUF 标准名称。
 
-### 58.8.1 TensorNameMap 类：映射引擎核心方法
+### 57.9.1 TensorNameMap 类：映射引擎核心方法
 
 源码路径：`gguf-py/gguf/tensor_mapping.py` - `TensorNameMap`（1709-1756行）
 
@@ -1388,7 +1390,7 @@ graph TD
     F --> G[后缀剥离重试]
 ```
 
-### 58.8.2 mappings_cfg 与 arch_block_mappings_cfg：静态与架构特定映射表
+### 57.9.2 mappings_cfg 与 arch_block_mappings_cfg：静态与架构特定映射表
 
 源码路径：`gguf-py/gguf/tensor_mapping.py` - `mappings_cfg`（1443-1708行）与 `arch_block_mappings_cfg`
 
@@ -1452,7 +1454,7 @@ graph TD
     E --> F[按层展开 {bid}]
 ```
 
-### 58.8.3 模块依赖图
+### 57.9.3 模块依赖图
 
 ```mermaid
 graph TD
@@ -1469,41 +1471,41 @@ graph TD
     I --> J[后缀剥离重试]
 ```
 
-## 58.9 设计中的取舍
+## 57.10 设计中的取舍
 
-### 为什么 Keys 使用嵌套子类而不是将所有键平铺在一个类中？
+### 57.10.1 为什么 Keys 使用嵌套子类而不是将所有键平铺在一个类中？
 
 嵌套子类提供了更好的组织性和可读性。每个子类只负责特定领域的键名，便于维护和扩展。如果平铺在一个类中，500+ 的键名会变得难以管理，且容易发生命名冲突。嵌套结构还允许每个子类独立演化，不影响其他领域的键名。例如，新增一个 MoE 架构时，只需在 `Keys.MoE` 中添加专属键，而不会影响 `Keys.LLM` 或 `Keys.Attention` 的命名空间。这种设计代价是增加了查找时的层级深度，但通过 IDE 的代码折叠和命名规范，这一代价可以忽略不计。
 
-### 为什么 MODEL_ARCH 使用 auto() 而不是手动指定整数值？
+### 57.10.2 为什么 MODEL_ARCH 使用 auto() 而不是手动指定整数值？
 
 `auto()` 自动分配唯一 ID，避免了手动编号带来的冲突风险。当新增一个架构时，无需考虑下一个可用编号，也避免了因编号不连续而产生的混淆。同时，`auto()` 使得枚举值的顺序可以自由调整，提高了可维护性。然而，这也意味着枚举值的具体数字不再连续，在调试时难以直观判断枚举的先后顺序，序列化时如果依赖数值大小进行比较或排序，可能产生意外结果；但 GGUF 内部主要使用枚举名称而非数值，且通过 `MODEL_TENSORS` 字典的间接引用，这一问题被屏蔽了。
 
-### GGUFValueType.get_type() 中为什么 int 映射到 INT32 而不是 INT64？
+### 57.10.3 GGUFValueType.get_type() 中为什么 int 映射到 INT32 而不是 INT64？
 
 Python 的 `int` 类型在底层可能是任意精度的，但在 GGUF 中通常使用 INT32 即可满足大多数场景。如果需要 64 位整数，可以使用显式类型或后续扩展。这种设计简化了自动推导，避免了类型模糊，但也牺牲了部分类型安全：当 Python 整数超出 INT32 范围（约 ±2.1×10^9）时，写入 GGUF 文件可能因溢出而截断，导致数据损坏。尽管元数据中的整数通常较小，但若用于存储文件偏移或计数时，风险不可忽视。这种妥协提高了易用性，但需要调用方注意数值范围，或通过运行时验证来弥补。
 
-### {arch} 占位符的设计有什么取舍？
+### 57.10.4 {arch} 占位符的设计有什么取舍？
 
 `{arch}` 占位符实现了架构无关的键名模板，但这也意味着键名在运行时才完全确定。这种设计的好处是新增架构时无需修改键名定义，只需要在子类中添加带占位符的键即可。取舍在于，键名的最终形式依赖于架构名称的替换，如果架构名称发生变化，需要确保替换逻辑正确，但这种风险可以通过自动化测试来规避。此外，占位符的使用也使得键名在编译时无法完全确定，增加了静态分析的难度，但 GGUF 的动态特性使得这种灵活性更为重要。
 
-### 三层映射架构（mappings_cfg / arch_block_mappings_cfg / block_mappings_cfg）的必要性是什么？
+### 57.10.5 三层映射架构（mappings_cfg / arch_block_mappings_cfg / block_mappings_cfg）的必要性是什么？
 
 三层映射架构将张量名称的映射分为三个层次：通用静态映射、架构特定补充映射、动态按层映射。这种设计隔离了变化——大多数架构共享的通用张量（如 embedding、output）只需定义一次，特殊架构的专属张量通过第二层补充，而重复出现的层张量通过第三层动态生成。这避免了为每种架构定义完整映射的冗余，同时保持了扩展性。代价是查询时需要遍历多层映射，但通过合并到 `self.mapping` 中，查询性能不受影响。
 
-### MOSTLY 策略对 1D/2D 张量差异化处理的权衡是什么？
+### 57.10.6 MOSTLY 策略对 1D/2D 张量差异化处理的权衡是什么？
 
 MOSTLY 策略将 1D 张量（如词嵌入、层归一化参数）保持高精度（F32 或 F16），而将 2D 张量（如注意力矩阵、FFN 权重）量化为低精度（Q4_0、Q8_0 等）。这种差异化处理的权衡在于：1D 张量对量化误差更敏感，因为它们直接影响模型的表示能力；2D 张量通常更大，量化带来的体积收益显著，且对精度的影响相对较小。这种策略在精度和体积之间取得了良好平衡，但需要额外的逻辑来区分张量维度，增加了实现复杂度。
 
-### get_type() 自动推导对类型安全的妥协是什么？
+### 57.10.7 get_type() 自动推导对类型安全的妥协是什么？
 
 `get_type()` 自动推导将 Python 的动态类型映射为 GGUF 的静态类型，这提高了写入的便捷性，但牺牲了部分类型安全。具体而言，Python 的动态类型可能在运行时发生变化，而 GGUF 的静态类型在写入后无法更改；此外，如前所述，整数溢出风险在编译时无法检测。这种妥协是故意的，因为 GGUF 的元数据通常为小整数或字符串，溢出风险较低，且可以通过运行时验证来弥补。
 
-### GGUF_ENDIAN 在处理新型量化格式时的作用是什么？
+### 57.10.8 GGUF_ENDIAN 在处理新型量化格式时的作用是什么？
 
 `GGUF_ENDIAN` 定义了字节序标识，读取时自动检测并转换，确保模型文件在不同平台间的兼容性。对于新型量化格式（如 MXFP4、NVFP4），它们通常定义了特定的字节布局，字节序会影响数据的解释。例如，小端系统上的 MXFP4 数据如果按大端写入，读取时会导致数值错误。因此，`GGUF_ENDIAN` 在处理任何量化格式时都是必要的，无需特殊处理，因为它已经在文件头中标识了字节序，读取器会据此调整解析逻辑。
 
-## 58.10 动手练习
+## 57.11 动手练习
 
 - 扩展Keys：为MoE架构添加路由相关元数据键
   在 `gguf-py/gguf/constants.py` 的 `Keys` 类中，为混合专家（MoE）架构添加新的元数据键：
@@ -1539,7 +1541,7 @@ MOSTLY 策略将 1D 张量（如词嵌入、层归一化参数）保持高精度
   3. `IMATRIX` 类型的文件与 `MODEL` 类型的文件在 `Keys` 的使用上有何差异？（提示：查看 `Keys.IMatrix` 与 `Keys.LLM` 的键定义）
   4. 设计一个场景：你需要创建一个包含视觉编码器和语言模型的多模态文件，但只保存投影层（projector），你会如何组合使用 `GGUFType` 和相关 `Keys`？
 
-## 58.11 本章小结
+## 57.12 本章小结
 
 本章我们一起学习了以下概念：
 

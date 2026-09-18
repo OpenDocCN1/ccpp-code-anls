@@ -1,6 +1,6 @@
 
 
-# 第 8 章 遗留模型转换工具 —— 兼容「远古版本」的手术刀
+# 第7章 遗留模型转换工具 —— 兼容「远古版本」的手术刀
 
 ## 学习目标
 
@@ -12,11 +12,11 @@
 - 理解 bounded_parallel_map 的限流并发机制与 ProcessPoolExecutor 在 Q8_0 量化中的应用
 - 能阅读并修改遗留模型转换脚本以适配新的 checkpoint 格式
 
-## 8.1 生活类比
+## 7.1 生活类比
 
 想象遗留模型转换工具集是一家**「老照片修复工作室」：** convert_legacy_llama.py 是老照片修复师，能把 decades 前的 PyTorch checkpoint 逐步修复成可读的 GGUF 格式；惰性加载（LazyTensor/LazyStorage）是按需翻阅的放大镜，只在需要时才从底片（zip/safetensors）中读取特定区域；Params.guessed() 是老照片修复中的「凭痕迹推测」，通过张量名称的磨损程度（embed_tokens/W_pack/layers）反推模型的 n_layer、n_head；Q8_0 量化与 GGMLFileType 是老照片的数字化压缩，AllF32/MostlyF16/MostlyQ8_0 三种精度选择就像三种不同的扫描分辨率；convert_image_encoder_to_gguf.py 是视觉神经的「移植手术」，把 CLIP/SigLIP 的视觉部分从 HuggingFace 的躯体中完整取出；GLM-Edge 双脚本协作是分身术，第一阶段（surgery.py）把视觉部分从原 LLM 中物理分离，第二阶段（convert）把分离出来的视觉部分封装为可被 mtmd 加载的 mmproj；LLaVA surgery v1/v2 是拆弹专家的两种武器：v1 是「一刀切」只读最后一个分片，v2 是「多文件侦探」跨所有分片搜索 projector 与 newline；MiniCPM-V 转换器是多版本兼容的拼装工厂，通过 minicpmv_version 参数自动识别 7 种不同版本的 Resampler 与视觉塔结构（同时内嵌了一份 SigLIP 的纯 NumPy 复刻定义）；bounded_parallel_map 是限流并发的交通警察，最多同时启动 N 个线程但每个线程只缓冲 1 个结果，Q8_0 时切换 ProcessPoolExecutor 真正利用多核。就像修复师需要根据照片的年代、材质、破损程度选择不同的修复策略，遗留转换工具也需要根据模型的版本、格式、模态选择不同的提取与打包方案。
 
-## 8.2 源码地图
+## 7.2 源码地图
 
 ```
 examples/convert_legacy_llama.py
@@ -181,13 +181,13 @@ tools/mtmd/legacy-models/minicpmv-convert-image-encoder-to-gguf.py
 └── main() / __main__                                      # argparse 入口与流程编排（第 281-585 行）
 ```
 
-## 8.3 convert_legacy_llama.py：旧 LLaMA 转换器 —— 解剖「远古时代」的转换手术刀
+## 7.3 convert_legacy_llama.py：旧 LLaMA 转换器 —— 解剖「远古时代」的转换手术刀
 
-### 8.3.1 核心数据类型：DataType 与 Q8_0QuantizedDataType
+### 7.3.1 核心数据类型：DataType 与 Q8_0QuantizedDataType
 
 在 `convert_legacy_llama.py` 开头，定义了描述张量数据类型的核心类层级。我们先看「设计图纸」——类型定义，再看具体实现。
 
-#### DataType 基类与非量化类型
+#### 7.3.1.1 DataType 基类与非量化类型
 
 ```python
 # examples/convert_legacy_llama.py (第 48-72 行)
@@ -213,7 +213,7 @@ DT_BF16 = DataType("BF16", np.dtype(np.uint16), ["F32", "F16", "Q8_0"])
 - `DataType` 封装了名称、NumPy dtype 与允许的转换目标列表。
 - `elements_to_bytes` 直接用 `dtype.itemsize` 乘以元素数，适用于密集存储的非量化类型。
 
-#### QuantizedDataType 与 Q8_0QuantizedDataType
+#### 7.3.1.2 QuantizedDataType 与 Q8_0QuantizedDataType
 
 ```python
 # examples/convert_legacy_llama.py (第 74-122 行)
@@ -263,7 +263,7 @@ class Q8_0QuantizedDataType(QuantizedDataType):
 - `Q8_0QuantizedDataType.quantize()` 实现了标准 Q8_0 算法：每 32 个元素为一块，计算绝对值最大值除以 127 得到 `scale (fp16)`，再将原值除以 scale 四舍五入得到 `int8`。`np.errstate` 忽略除零警告，`d==0` 时直接置零。
 - 返回结构化数组，每个元素包含 `(d: fp16, qs: int8[32])`，完美匹配 GGML 的 `block_q8_0` 布局。
 
-### 8.3.2 GGMLFileType：旧版文件格式枚举
+### 7.3.2 GGMLFileType：旧版文件格式枚举
 
 ```python
 # examples/convert_legacy_llama.py (第 124-184 行)
@@ -290,11 +290,11 @@ GGML_FILE_TYPE_TO_DATA_TYPE = {
 **代码解析**：
 - 三种输出精度枚举，`type_for_tensor()` 是「精度选择器」：遇到 1D 张量（如 bias、LayerNorm weight）无视全局设置强制用 F32，其余按全局 `ftype` 选择。这是为了兼容早期 GGML 仅对 1D 张量实现 F32 内核的历史包袱。
 
-### 8.3.3 Params：超参数猜测与三级回退加载
+### 7.3.3 Params：超参数猜测与三级回退加载
 
 `Params` 类承担「超参数侦探」角色，按优先级尝试三种来源。
 
-#### 1. Params.guessed() —— 无配置时的启发式推断
+#### 7.3.3.1 . Params.guessed() —— 无配置时的启发式推断
 
 ```python
 # examples/convert_legacy_llama.py (第 221-253 行)
@@ -333,7 +333,7 @@ def guessed(model: LazyModel) -> Params:
 - 通过张量键名的存在性计数反推 `n_layer`，兼容 HF、Baichuan、原版 LLaMA 三种命名。
 - `n_head`、`n_ff` 采用经验公式猜测，`n_ctx=-1` 标记未知，后续需用户 `--ctx` 指定。
 
-#### 2. loadHFTransformerJson() —— 现代 HF config.json
+#### 7.3.3.2 . loadHFTransformerJson() —— 现代 HF config.json
 
 ```python
 # examples/convert_legacy_llama.py (第 263-306 行)
@@ -374,7 +374,7 @@ def loadHFTransformerJson(model: LazyModel, config_path: Path) -> Params:
 **代码解析**：
 - 直接映射 HF 标准字段，特别处理 `rope_scaling` 与 MoE 字段，生成完整的 `Params` 对象。
 
-#### 3. loadOriginalParamsJson() —— LLaMA v1/v2 / CodeLlama / Mixtral 老格式
+#### 7.3.3.3 . loadOriginalParamsJson() —— LLaMA v1/v2 / CodeLlama / Mixtral 老格式
 
 ```python
 # examples/convert_legacy_llama.py (第 313-348 行)
@@ -414,7 +414,7 @@ def loadOriginalParamsJson(model: LazyModel, config_path: Path) -> Params:
 **代码解析**：
 - 老版本 `params.json` 缺少 `n_ctx`、`rope_theta` 等字段，通过 `norm_eps`、`rope_theta`、`moe` 字段反推模型版本并设定默认上下文长度。
 
-#### 4. Params.load() —— 三级回退总入口
+#### 7.3.3.4 . Params.load() —— 三级回退总入口
 
 ```python
 # examples/convert_legacy_llama.py (第 351-364 行)
@@ -435,11 +435,11 @@ def load(model_plus: ModelPlus) -> Params:
 **代码解析**：
 - 优先级：HF config.json → 原版 params.json → 启发式猜测。体现「兼容性优先」的工程哲学。
 
-### 8.3.4 惰性加载体系：LazyTensor / LazyStorage / LazyUnpickler
+### 7.3.4 惰性加载体系：LazyTensor / LazyStorage / LazyUnpickler
 
 这是处理百 GB 模型的关键——**只在真正需要时才读磁盘**。
 
-#### LazyTensor：延迟计算的句柄
+#### 7.3.4.1 LazyTensor：延迟计算的句柄
 
 ```python
 # examples/convert_legacy_llama.py (第 470-488 行)
@@ -477,7 +477,7 @@ class LazyTensor:
 - `load()` 真正触发 I/O，返回具体 `Tensor`（`UnquantizedTensor` 或量化后的数组）。
 - `astype()` **不执行转换**，而是返回新的 `LazyTensor`，其 `_load` 链式包装原 `load()` + `astype()`，实现「操作树」延迟求值。
 
-#### LazyUnpickler：零依赖反序列化 PyTorch zip
+#### 7.3.4.2 LazyUnpickler：零依赖反序列化 PyTorch zip
 
 ```python
 # examples/convert_legacy_llama.py (第 527-574 行)
@@ -526,7 +526,7 @@ class LazyUnpickler(pickle.Unpickler):
 - `lazy_rebuild_tensor_v2` 是 `torch._utils._rebuild_tensor_v2` 的替身，将 `LazyStorage` + 元数据包装成 `LazyTensor`。
 - `find_class` 将 `torch.*` 类重定向到脚本内定义的 `CLASSES` 字典（`torch.Tensor`、`torch.nn.Parameter` 等），实现**零 PyTorch 依赖**反序列化。
 
-#### safetensors mmap 零拷贝加载
+#### 7.3.4.3 safetensors mmap 零拷贝加载
 
 ```python
 # examples/convert_legacy_llama.py (第 593-610 行)
@@ -553,7 +553,7 @@ def lazy_load_safetensors_file(fp: IO[bytes], path: Path) -> ModelPlus:
 - 读取 header 后，`mmap` 将整个文件映射进内存地址空间，`byte_buf[begin:end]` 直接得到张量数据的内存视切片，**无额外内存分配、无拷贝**。
 - `LazyTensor._load` 捕获这个 `memoryview` 切片，`np.frombuffer` 极其高效地构造 `ndarray`。
 
-#### 格式自动识别入口
+#### 7.3.4.4 格式自动识别入口
 
 ```python
 # examples/convert_legacy_llama.py (第 617-625 行)
@@ -573,9 +573,9 @@ def lazy_load_file(path: Path) -> ModelPlus:
 **代码解析**：
 - 读前 8 字节：`PK` → PyTorch zip；header_size < 16MB → safetensors（头部含 JSON 元数据，通常很小）。`lru_cache` 避免重复打开同一文件。
 
-### 8.3.5 张量操作工具：permute / part / merge_sharded
+### 7.3.5 张量操作工具：permute / part / merge_sharded
 
-#### permute：QKV 头维度重排核心
+#### 7.3.5.1 permute：QKV 头维度重排核心
 
 ```python
 # examples/convert_legacy_llama.py (第 373-378 行)
@@ -591,7 +591,7 @@ def permute(weights: NDArray, n_head: int, n_head_kv: int) -> NDArray:
 **代码解析**：
 - HF 的 `q_proj/k_proj` 权重形状通常为 `(n_head * head_dim, hidden)`，LLaMA 期望 `(n_head, head_dim, 2, ...)` 交错布局。`permute` 通过 reshape+swapaxes 完成布局转换。
 
-#### 惰性版本包装器
+#### 7.3.5.2 惰性版本包装器
 
 ```python
 # examples/convert_legacy_llama.py (第 552-568 行)
@@ -618,7 +618,7 @@ def part_lazy(lazy_tensor: LazyTensor, n_part: int) -> LazyTensor:
 **代码解析**：
 - 三个函数均返回新的 `LazyTensor`，**不触发加载**，仅记录操作描述，真正的 `permute/part` 在最终 `write_tensor_data` 时由 `load()` 链式执行。
 
-#### merge_sharded：分片模型拼接
+#### 7.3.5.3 merge_sharded：分片模型拼接
 
 ```python
 # examples/convert_legacy_llama.py (第 500-525 行)
@@ -653,11 +653,11 @@ def merge_sharded(models: list[LazyModel]) -> LazyModel:
 - 原版 LLaMA 分片策略：`tok_embeddings`、`wo`、`w2` 按列（axis=1）切分，其余按行（axis=0）。
 - `merge_sharded` 构造新的 `LazyTensor`，其 `load()` 闭包并行加载各分片张量并 `np.concatenate`。**只有在最终写入时才真正拼接**，内存峰值仅为单分片大小。
 
-### 8.3.6 OutputFile：GGUF 打包流水线
+### 7.3.6 OutputFile：GGUF 打包流水线
 
 `OutputFile` 封装 `gguf.GGUFWriter`，实现分阶段写入：元数据 → 张量信息 → 张量数据。
 
-#### 元数据写入
+#### 7.3.6.1 元数据写入
 
 ```python
 # examples/convert_legacy_llama.py (第 456-532 行)
@@ -688,7 +688,7 @@ def add_meta_arch(self, params: Params) -> None:
     # RoPE scaling 字段...
 ```
 
-#### 词表提取与写入
+#### 7.3.6.2 词表提取与写入
 
 ```python
 # examples/convert_legacy_llama.py (第 975-1001 行)
@@ -707,7 +707,7 @@ def add_meta_vocab(self, vocab: Vocab) -> None:
     self.gguf.add_token_types(toktypes)
 ```
 
-#### 静态流水线节点：do_item / maybe_do_quantize
+#### 7.3.6.3 静态流水线节点：do_item / maybe_do_quantize
 
 ```python
 # examples/convert_legacy_llama.py (第 1067-1079 行)
@@ -729,7 +729,7 @@ def maybe_do_quantize(item: tuple[DataType, NDArray]) -> NDArray:
 - `do_item` 是「加载+展开惰性操作」的同步点，返回 `(目标DataType, 最终ndarray)`。
 - `maybe_do_quantize` 只有当目标 `DataType` 是 `QuantizedDataType` 子类（如 `DT_Q8_0`）时才真正量化。
 
-#### write_tensor_data：并发写入 + Q8_0 切换进程池
+#### 7.3.6.4 write_tensor_data：并发写入 + Q8_0 切换进程池
 
 ```python
 # examples/convert_legacy_llama.py (第 1018-1041 行)
@@ -758,7 +758,7 @@ def write_tensor_data(self, ftype: GGMLFileType, model: LazyModel, concurrency: 
 - 两级 `bounded_parallel_map`：第一级加载数据（I/O 密集，用线程池），第二级 Q8_0 量化（CPU 密集，用进程池绕过 GIL）。
 - `bounded_parallel_map` 保证每线程/进程最多缓冲 1 个结果，防止内存堆积。
 
-#### bounded_parallel_map：限流并发核心
+#### 7.3.6.5 bounded_parallel_map：限流并发核心
 
 ```python
 # examples/convert_legacy_llama.py (第 633-650 行)
@@ -786,7 +786,7 @@ def bounded_parallel_map(func, iterable, concurrency, max_workers=None, use_proc
 - `pop(0).result()` 保证结果**按提交顺序**产出，满足 GGUF 写入的顺序要求。
 - `use_processpool_executor=True` 时自动切换 `ProcessPoolExecutor`，利用多核加速 Q8_0 量化。
 
-### 8.3.7 convert_model_names：HF→GGUF 命名规范化与 MoE 打包
+### 7.3.7 convert_model_names：HF→GGUF 命名规范化与 MoE 打包
 
 ```python
 # examples/convert_legacy_llama.py (第 508-573 行)
@@ -844,7 +844,7 @@ def convert_model_names(model: LazyModel, params: Params, skip_unknown: bool) ->
 - 再处理注意力权重：HF 的 `q_proj/k_proj` 做 `permute_lazy`；Baichuan 的 `W_pack` 做 `permute_part_lazy` + `part_lazy` 拆分 Q/K/V。
 - 最后用 `gguf.TensorNameMap` 做统一重命名，`skip_unknown` 允许跳过未知张量（如 LLaVA 的 projector 权重）。
 
-### 8.3.8 主流程 main() 与命令行入口
+### 7.3.8 主流程 main() 与命令行入口
 
 ```python
 # examples/convert_legacy_llama.py (第 765-869 行)
@@ -895,13 +895,13 @@ def main(args_in: list[str] | None = None) -> None:
 
 ---
 
-## 8.4 LazyStorage 与 LazyTensor：按需加载的「记忆宫殿」
+## 7.4 LazyStorage 与 LazyTensor：按需加载的「记忆宫殿」
 
 > **核心概念**：`LazyTensor` 与 `LazyStorage` 共同构成了转换器处理超大模型（70B+）的基础设施。它们将「读取磁盘」这一昂贵操作推迟到真正需要数据的那一刻（`write_tensor_data` 阶段），并通过闭包捕获上下文实现零拷贝、零依赖的惰性求值。
 
-### 8.4.1 核心数据结构
+### 7.4.1 核心数据结构
 
-#### LazyStorageKind：存储类型描述符
+#### 7.4.1.1 LazyStorageKind：存储类型描述符
 
 ```python
 # examples/convert_legacy_llama.py (第 460-465 行)
@@ -913,7 +913,7 @@ class LazyStorageKind:
 **代码解析**：
 - 轻量级标记类，仅携带 `DataType` 实例，标识该存储区存放的数据类型（F32/F16/BF16 等），供 `LazyUnpickler.persistent_load` 使用。
 
-#### LazyStorage：惰性存储句柄
+#### 7.4.1.2 LazyStorage：惰性存储句柄
 
 ```python
 # examples/convert_legacy_llama.py (第 467-469 行)
@@ -928,7 +928,7 @@ class LazyStorage:
 - `load` 是核心闭包：**捕获 `zip_file`、`dtype`、`filename`**，仅在调用时才 `seek` 并 `read` 指定字节范围。
 - 由 `LazyUnpickler.persistent_load` 创建，每个 PyTorch storage 对应一个 `LazyStorage` 实例。
 
-#### LazyUnpickler：拦截 pickle 反序列化
+#### 7.4.1.3 LazyUnpickler：拦截 pickle 反序列化
 
 ```python
 # examples/convert_legacy_llama.py (第 527-574 行)
@@ -977,7 +977,7 @@ class LazyUnpickler(pickle.Unpickler):
 - **`lazy_rebuild_tensor_v2`**：替代 `torch._utils._rebuild_tensor_v2`，将 `LazyStorage` + `storage_offset`/`size`/`stride` 组装为 `LazyTensor`。`load()` 闭包计算 `elm_count = stride[0] * size[0]`，调用 `storage.load()` 读取连续内存后 `reshape`。
 - **`find_class`**：将 `torch.Tensor`、`torch.nn.Parameter` 等类重定向到脚本内 `CLASSES` 字典（定义为空占位类），实现**完全脱离 PyTorch 运行时**的反序列化。
 
-#### LazyTensor 惰性操作链
+#### 7.4.1.4 LazyTensor 惰性操作链
 
 ```python
 # examples/convert_legacy_llama.py (第 470-488 行)
@@ -1014,9 +1014,9 @@ class LazyTensor:
 - **操作树累积**：每次调用 `astype()`/`permute_lazy()`/`part_lazy()` 都返回新的 `LazyTensor`，其 `_load` 闭包层层包装前一个 `_load`。**真正的计算图在 `write_tensor_data` → `do_item` → `load()` 时一次性展开执行**。
 - **类型安全**：`validate_conversion_to` 依据 `DataType.valid_conversions` 白名单校验，防止非法转换（如 F32→BF16 未在列表中会报错）。
 
-### 8.4.2 双格式加载器
+### 7.4.2 双格式加载器
 
-#### lazy_load_torch_file：PyTorch zip 惰性加载
+#### 7.4.2.1 lazy_load_torch_file：PyTorch zip 惰性加载
 
 ```python
 # examples/convert_legacy_llama.py (第 578-590 行)
@@ -1037,7 +1037,7 @@ def lazy_load_torch_file(outer_fp: IO[bytes], path: Path) -> ModelPlus:
 **代码解析**：
 - 打开 zip，定位唯一的 `.pkl` 元数据文件，用 `LazyUnpickler` 反序列化。**整个 state_dict 此时仅存在于 zip 内部，内存中只持有 `LazyTensor` 句柄**。
 
-#### lazy_load_safetensors_file：SafeTensors mmap 零拷贝
+#### 7.4.2.2 lazy_load_safetensors_file：SafeTensors mmap 零拷贝
 
 ```python
 # examples/convert_legacy_llama.py (第 593-610 行)
@@ -1068,9 +1068,9 @@ def lazy_load_safetensors_file(fp: IO[bytes], path: Path) -> ModelPlus:
 - `mmap` 将文件映射为只读内存视图，`byte_buf[begin:end]` 直接得到张量数据的 **memoryview 切片**，无拷贝、无额外内存分配。
 - `load()` 闭包捕获该切片，`np.frombuffer` 极其高效构造 `ndarray`（共享底层内存）。
 
-### 8.4.3 张量变换工具
+### 7.4.3 张量变换工具
 
-#### bf16_to_fp32：BF16 位运算转 FP32
+#### 7.4.3.1 bf16_to_fp32：BF16 位运算转 FP32
 
 ```python
 # examples/convert_legacy_llama.py (第 402-405 行)
@@ -1083,7 +1083,7 @@ def bf16_to_fp32(bf16_arr: np.ndarray[Any, np.dtype[np.uint16]]) -> NDArray:
 **代码解析**：
 - BF16 仅占 16 位（符号 1 位 + 指数 8 位 + 尾数 7 位），左移 16 位补零即得 FP32 位模式。纯 NumPy 位运算，**无需 PyTorch**，极快。
 
-#### UnquantizedTensor：具体张量实现
+#### 7.4.3.2 UnquantizedTensor：具体张量实现
 
 ```python
 # examples/convert_legacy_llama.py (第 411-434 行)
@@ -1117,7 +1117,7 @@ class UnquantizedTensor(Tensor):
 **代码解析**：
 - 实现 `Tensor` 抽象基类的所有方法。`astype` 内部处理 BF16→FP32 中转，`permute/part/permute_part` 直接调用同名函数操作 `ndarray`。
 
-#### load_unquantized：加载并校验
+#### 7.4.3.3 load_unquantized：加载并校验
 
 ```python
 # examples/convert_legacy_llama.py (第 440-452 行)
@@ -1137,7 +1137,7 @@ def load_unquantized(lazy_tensor: LazyTensor, expected_dtype: Any = None, conver
 **代码解析**：
 - 统一的「加载+校验」入口，`merge_sharded`、`OutputFile.do_item` 均调用此函数。`convert=True` 允许在合并分片时自动转 dtype。
 
-#### pack_experts_lazy：MoE 专家权重 3D 打包
+#### 7.4.3.4 pack_experts_lazy：MoE 专家权重 3D 打包
 
 ```python
 # examples/convert_legacy_llama.py (第 570-576 行)
@@ -1154,9 +1154,9 @@ def pack_experts_lazy(lazy_tensors: list[LazyTensor]) -> LazyTensor:
 **代码解析**：
 - 将 `n_experts` 个形状相同的 2D 专家权重堆叠为 3D 张量 `(n_experts, out_dim, in_dim)`，符合 GGUF MoE 存储格式。保持惰性，仅在最终写入时 `np.array` 堆叠。
 
-### 8.4.4 多文件模型合并
+### 7.4.4 多文件模型合并
 
-#### nth_multifile_path / find_multifile_paths：分片路径解析
+#### 7.4.4.1 nth_multifile_path / find_multifile_paths：分片路径解析
 
 ```python
 # examples/convert_legacy_llama.py (第 575-607 行)
@@ -1189,7 +1189,7 @@ def find_multifile_paths(path: Path) -> list[Path]:
 - 支持三种常见分片命名模式：`.00.pth`、`-00001-of-XXXXXX.safetensors`、`.0/.1` 后缀。
 - `find_multifile_paths` 顺序探测直到找不到，自动处理单文件与多分片混合场景。
 
-#### load_some_model / merge_multifile_models：统一加载入口
+#### 7.4.4.2 load_some_model / merge_multifile_models：统一加载入口
 
 ```python
 # examples/convert_legacy_llama.py (第 667-692 行)
@@ -1240,7 +1240,7 @@ def merge_multifile_models(models_plus: list[ModelPlus]) -> ModelPlus:
 - `load_some_model`：目录 → 按优先级 glob 找第一个模型文件 → `find_multifile_paths` 展开所有分片 → 逐个 `lazy_load_file` → `merge_multifile_models` 合并。
 - `merge_multifile_models`：HF 格式（含 `model.embed_tokens.weight`）各分片存**不同张量**，直接 `dict.update` 合并；原版 LLaMA 格式各分片存**同一张量的不同分片**，调用 `merge_sharded` 拼接。
 
-#### do_dump_model：调试用模型结构打印
+#### 7.4.4.3 do_dump_model：调试用模型结构打印
 
 ```python
 # examples/convert_legacy_llama.py (第 755-763 行)
@@ -1255,9 +1255,9 @@ def do_dump_model(model_plus: ModelPlus) -> None:
 **代码解析**：
 - `--dump`/`--dump-single` 模式调用，打印每个 `LazyTensor` 的 `shape`、`data_type`、`description`，**完全不触发磁盘读取**，秒级完成百 GB 模型结构查看。
 
-### 8.4.5 词表工厂
+### 7.4.5 词表工厂
 
-#### VocabFactory：多格式词表加载
+#### 7.4.5.1 VocabFactory：多格式词表加载
 
 ```python
 # examples/convert_legacy_llama.py (第 608-665 行)
@@ -1310,7 +1310,7 @@ class VocabFactory:
 - **工厂模式**：按 `vocab_types` 顺序尝试实例化 `SPMVocab`/`BPEVocab`/`HFFTVocab`，首个成功即返回。
 - `_create_special_vocab`：构造 `gguf.SpecialVocab`，自动从 `added_tokens.json`/`tokenizer_config.json` 解析特殊 token（bos/eos/unk/pad 等），BPE 额外加载 `merges.txt`。
 
-#### check_vocab_size：词表完整性校验
+#### 7.4.5.2 check_vocab_size：词表完整性校验
 
 ```python
 # examples/convert_legacy_llama.py (第 652-676 行)
@@ -1348,13 +1348,13 @@ def check_vocab_size(params: Params, vocab: BaseVocab, pad_vocab: bool = False) 
 
 ---
 
-## 8.5 OutputFile 与 bounded_parallel_map：写入 GGUF 的「流水线工厂」
+## 7.5 OutputFile 与 bounded_parallel_map：写入 GGUF 的「流水线工厂」
 
 > **核心概念**：`OutputFile` 将 GGUF 写入拆解为**四个严格顺序的阶段**（元数据 KV → 张量索引 → 张量数据），并通过 `bounded_parallel_map` 实现「加载+转换」与「量化」的两级流水线并发，最大程度利用 I/O 与 CPU 资源，同时严格控制内存峰值。
 
-### 8.5.1 OutputFile 核心方法
+### 7.5.1 OutputFile 核心方法
 
-#### 初始化与关闭
+#### 7.5.1.1 初始化与关闭
 
 ```python
 # examples/convert_legacy_llama.py (第 872-874 行)
@@ -1366,7 +1366,7 @@ def close(self) -> None:
     self.gguf.close()
 ```
 
-#### add_meta_model：模型来源元数据
+#### 7.5.1.2 add_meta_model：模型来源元数据
 
 ```python
 # examples/convert_legacy_llama.py (第 876-932 行)
@@ -1418,7 +1418,7 @@ def add_meta_model(self, params: Params, metadata: gguf.Metadata | None) -> None
         self.gguf.add_languages(metadata.languages)
 ```
 
-#### add_meta_arch：架构超参数
+#### 7.5.1.3 add_meta_arch：架构超参数
 
 ```python
 # examples/convert_legacy_llama.py (第 934-973 行)
@@ -1453,7 +1453,7 @@ def add_meta_arch(self, params: Params) -> None:
         self.gguf.add_file_type(params.ftype)
 ```
 
-#### extract_vocabulary_from_model / add_meta_vocab / add_meta_special_vocab
+#### 7.5.1.4 extract_vocabulary_from_model / add_meta_vocab / add_meta_special_vocab
 
 ```python
 # examples/convert_legacy_llama.py (第 975-1001 行)
@@ -1479,7 +1479,7 @@ def add_meta_special_vocab(self, svocab: gguf.SpecialVocab) -> None:
     svocab.add_to_gguf(self.gguf)
 ```
 
-#### add_tensor_info：注册张量元信息
+#### 7.5.1.5 add_tensor_info：注册张量元信息
 
 ```python
 # examples/convert_legacy_llama.py (第 1003-1009 行)
@@ -1494,7 +1494,7 @@ def add_tensor_info(self, name: str, tensor: LazyTensor) -> None:
 **代码解析**：
 - 计算张量总元素数、目标存储字节数（调用 `DataType.elements_to_bytes`）、GGML 量化类型码（`raw_dtype`），注册到 `GGUFWriter` 的张量索引表。
 
-#### 分阶段刷新：write_meta / write_tensor_info
+#### 7.5.1.6 分阶段刷新：write_meta / write_tensor_info
 
 ```python
 # examples/convert_legacy_llama.py (第 1011-1016 行)
@@ -1509,7 +1509,7 @@ def write_tensor_info(self) -> None:
 **代码解析**：
 - GGUF 格式要求：Header → Key-Value 元数据 → Tensor Info 索引 → Tensor Data 数据。**分阶段刷新**保证文件结构合法。
 
-#### write_tensor_data：流水线并发写入
+#### 7.5.1.7 write_tensor_data：流水线并发写入
 
 ```python
 # examples/convert_legacy_llama.py (第 1018-1041 行)
@@ -1551,7 +1551,7 @@ flowchart LR
   2. `maybe_do_quantize`（CPU 密集）：仅当 `ftype=MostlyQ8_0` 且 `target_dtype` 为 `QuantizedDataType` 时执行 `dt.quantize(arr)`。**切换 `ProcessPoolExecutor` 绕过 GIL**，真正利用多核加速 Q8_0 分块量化。
 - **顺序写入**：GGUF 格式要求张量数据按索引顺序写入，`bounded_parallel_map` 保证 `yield` 结果顺序与提交顺序一致。
 
-#### do_item / maybe_do_quantize：静态流水线节点
+#### 7.5.1.8 do_item / maybe_do_quantize：静态流水线节点
 
 ```python
 # examples/convert_legacy_llama.py (第 1067-1079 行)
@@ -1573,7 +1573,7 @@ def maybe_do_quantize(item: tuple[DataType, NDArray]) -> NDArray:
 - `do_item`：同步点，**首次触发完整惰性计算链**（`load()` → `astype()` → `permute()` → `part()` → `to_ggml()`），返回最终 `ndarray` 与目标 `DataType`。
 - `maybe_do_quantize`：策略模式入口，仅对量化类型调用 `quantize()`，非量化类型直接透传。
 
-#### write_vocab_only / write_all：顶层入口
+#### 7.5.1.9 write_vocab_only / write_all：顶层入口
 
 ```python
 # examples/convert_legacy_llama.py (第 1046-1065 行)
@@ -1622,9 +1622,9 @@ def write_all(
 - `write_all` 是完整转换流水线的**单一入口**：元数据 → 词表 → 张量信息 → 张量数据 → 关闭。
 - `write_vocab_only` 仅导出词表相关 KV，用于 `--vocab-only` 调试模式。
 
-### 8.5.2 并发与辅助工具
+### 7.5.2 并发与辅助工具
 
-#### bounded_parallel_map：限流并发核心
+#### 7.5.2.1 bounded_parallel_map：限流并发核心
 
 ```python
 # examples/convert_legacy_llama.py (第 633-650 行)
@@ -1667,7 +1667,7 @@ def bounded_parallel_map(func: Callable[[In], Out], iterable: Iterable[In], conc
 - **顺序保证**：`pop(0)` 保证结果按提交顺序产出，满足 GGUF 写入顺序要求。
 - **执行器切换**：`use_processpool_executor=True` 时用 `ProcessPoolExecutor`，利用多核加速 CPU 密集型量化；否则用 `ThreadPoolExecutor` 适配 I/O 密集型加载。
 
-#### per_model_weight_count_estimation：参数量估算
+#### 7.5.2.2 per_model_weight_count_estimation：参数量估算
 
 ```python
 # examples/convert_legacy_llama.py (第 482-502 行)
@@ -1693,7 +1693,7 @@ def per_model_weight_count_estimation(tensors: Iterable[tuple[str, LazyTensor]])
 **代码解析**：
 - 遍历所有张量累加参数量。**MoE 专家参数仅统计第 0 个专家**（`expert_params`），避免重复计数；其余归入 `shared_params`。用于日志输出与 `size_label` 计算。
 
-#### pick_output_type / convert_to_output_type：精度自动选择与应用
+#### 7.5.2.3 pick_output_type / convert_to_output_type：精度自动选择与应用
 
 ```python
 # examples/convert_legacy_llama.py (第 470-480 行)
@@ -1720,7 +1720,7 @@ def convert_to_output_type(model: LazyModel, output_type: GGMLFileType) -> LazyM
 - `pick_output_type`：若用户未指定 `--outtype`，按首层 `q_proj.weight` 原始精度推断（F32/BF16→AllF32，F16→MostlyF16）。
 - `convert_to_output_type`：对每个张量调用 `LazyTensor.astype(target_dtype)`，**构建惰性转换链**，不立即执行。
 
-#### default_convention_outfile / default_outfile：输出文件命名
+#### 7.5.2.4 default_convention_outfile / default_outfile：输出文件命名
 
 ```python
 # examples/convert_legacy_llama.py (第 720-736 行)
@@ -1757,11 +1757,11 @@ def default_outfile(model_paths: list[Path], file_type: GGMLFileType, expert_cou
 
 ---
 
-## 8.6 convert_image_encoder_to_gguf.py：CLIP/SigLIP 视觉编码器 —— 图像理解的「视觉神经」转换器
+## 7.6 convert_image_encoder_to_gguf.py：CLIP/SigLIP 视觉编码器 —— 图像理解的「视觉神经」转换器
 
 > **核心概念**：该脚本将 HuggingFace CLIP/SigLIP 模型（含可选的 LLaVA projector）转换为 GGUF 格式的视觉编码器（`mmproj-*.gguf`），供 `llama.cpp` 的 `mtmd` 多模态管线加载。核心在于**张量命名翻译表**（HF 长命名 → GGUF 短命名）、**三种输出形态控制**（text-only/vision-only/mmproj）以及**完整的视觉预处理元数据写入**（image_mean/std/grid_pinpoints 等）。
 
-### 8.6.1 整体流程架构
+### 7.6.1 整体流程架构
 
 ```mermaid
 flowchart TD
@@ -1782,9 +1782,9 @@ flowchart TD
     O --> P[输出 mmproj/model.gguf]
 ```
 
-### 8.6.2 辅助工具
+### 7.6.2 辅助工具
 
-#### k()：模板字符串格式化
+#### 7.6.2.1 k()：模板字符串格式化
 
 ```python
 # tools/mtmd/legacy-models/convert_image_encoder_to_gguf.py (第 25-26 行)
@@ -1795,7 +1795,7 @@ def k(raw_key: str, arch: str) -> str:
 **代码解析**：
 - 将 `"{arch}.context_length"` 等模板键格式化为 `"clip.text.context_length"` 或 `"clip.vision.context_length"`，统一元数据键名。
 
-#### bytes_to_unicode()：BPE 字节↔Unicode 映射
+#### 7.6.2.2 bytes_to_unicode()：BPE 字节↔Unicode 映射
 
 ```python
 # tools/mtmd/legacy-models/convert_image_encoder_to_gguf.py (第 75-107 行)
@@ -1824,9 +1824,9 @@ def bytes_to_unicode():
 **代码解析**：
 - 复刻 GPT-2 BPE 实现，建立 256 字节到 Unicode 字符的双射映射，避免控制字符/空白字符干扰 BPE 训练。供 `gguf.SpecialVocab` 内部使用。
 
-### 8.6.3 张量命名与过滤
+### 7.6.3 张量命名与过滤
 
-#### should_skip_tensor()：冗余张量过滤
+#### 7.6.3.1 should_skip_tensor()：冗余张量过滤
 
 ```python
 # tools/mtmd/legacy-models/convert_image_encoder_to_gguf.py (第 28-48 行)
@@ -1855,7 +1855,7 @@ def should_skip_tensor(name: str, has_text: bool, has_vision: bool, has_llava: b
 - LLaVA 模式额外跳过：`visual_projection` 与 `post_layernorm`（由独立 projector 替代）。
 - 模态开关：`has_text=False` 时跳过所有 `t.*` 张量，`has_vision=False` 时跳过所有 `v.*` 张量。
 
-#### get_tensor_name()：HF→GGUF 命名翻译表
+#### 7.6.3.2 get_tensor_name()：HF→GGUF 命名翻译表
 
 ```python
 # tools/mtmd/legacy-models/convert_image_encoder_to_gguf.py (第 50-73 行)
@@ -1893,7 +1893,7 @@ def get_tensor_name(name: str) -> str:
   - `mlp.fc1` → `ffn_down`，`mlp.fc2` → `ffn_up`
   - `embedding` → `embd`，`final` → `post`
 
-### 8.6.4 视觉特征层索引归一化
+### 7.6.4 视觉特征层索引归一化
 
 ```python
 # tools/mtmd/legacy-models/convert_image_encoder_to_gguf.py (第 210-230 行)
@@ -1930,9 +1930,9 @@ def get_non_negative_vision_feature_layers(v_hparams):
 - 转换公式：`idx >= 0 ? idx : num_hidden_layers + idx + 1`。例如 -1 → `num_hidden_layers`（最后一层输出）。
 - 返回正数索引列表，供后续裁剪 vision encoder 深度、写入 `clip.vision.feature_layer` 元数据使用。
 
-### 8.6.5 主流程与元数据写入
+### 7.6.5 主流程与元数据写入
 
-#### 三种 encoder 分支与四种输出模式
+#### 7.6.5.1 三种 encoder 分支与四种输出模式
 
 ```python
 # tools/mtmd/legacy-models/convert_image_encoder_to_gguf.py (第 109-150 行)
@@ -1954,7 +1954,7 @@ else:
 - 互斥组保证一次只选一种 encoder 实现（HF CLIP / OpenCLIP / SigLIP）。
 - 四个布尔标志控制后续写入哪些张量、元数据、以及输出文件名前缀。
 
-#### Text Encoder 超参数写入
+#### 7.6.5.2 Text Encoder 超参数写入
 
 ```python
 # tools/mtmd/legacy-models/convert_image_encoder_to_gguf.py (第 180-200 行 约)
@@ -1976,7 +1976,7 @@ if has_text_encoder:
     fout.add_token_list(tokens)
 ```
 
-#### Vision Encoder 超参数完整写入
+#### 7.6.5.3 Vision Encoder 超参数完整写入
 
 ```python
 # tools/mtmd/legacy-models/convert_image_encoder_to_gguf.py (第 202-250 行 约)
@@ -2034,7 +2034,7 @@ fout.add_bool("clip.use_gelu", v_hparams["hidden_act"] == "gelu")
 - 完整写入 CLIP/SigLIP 视觉塔所需的所有超参数与预处理配置，保证推理端 `mtmd` 能无损复现预处理流程。
 - `block_count` 根据 `feature_layers` 动态裁剪：LLaVA 默认丢弃最后一层（`num_hidden_layers - 1`），显式指定 `feature_layers` 时取最大层索引。
 
-#### LLaVA Projector 集成
+#### 7.6.5.4 LLaVA Projector 集成
 
 ```python
 # tools/mtmd/legacy-models/convert_image_encoder_to_gguf.py (第 281-313 行)
@@ -2061,7 +2061,7 @@ if has_llava_projector:
 - 根据 `feature_layers` 裁剪 vision encoder 深度，避免多算无用层。
 - Projector 权重按维度决定精度：4D 卷积、2D 线性固定 F16（GGML conv 算子限制），其余按全局 `ftype`。
 
-#### 张量遍历写入
+#### 7.6.5.5 张量遍历写入
 
 ```python
 # tools/mtmd/legacy-models/convert_image_encoder_to_gguf.py (第 315-330 行)
@@ -2101,11 +2101,11 @@ for name, data in state_dict.items():
 
 ---
 
-## 8.7 GLM-Edge 多模态：双文件协作的「分身术」
+## 7.7 GLM-Edge 多模态：双文件协作的「分身术」
 
 > **核心概念**：GLM-Edge 采用**两阶段分离+转换**架构。第一阶段（`glmedge-surgery.py`）利用 `transformers.AutoModel` 加载完整模型，按前缀物理分离出 `vision.adapter.*`（投影器）与 `vision.vit.model.vision_model.*`（SigLIP 视觉塔），保存为独立 `.pt` 文件。第二阶段（`glmedge-convert-image-encoder-to-gguf.py`）在**零 `transformers` 依赖**环境下，手工构造 `SiglipVisionModel` 加载分离权重，复用 CLIP 命名翻译表生成标准 `mmproj-*.gguf`。
 
-### 8.7.1 阶段一：glmedge-surgery.py 物理分离
+### 7.7.1 阶段一：glmedge-surgery.py 物理分离
 
 ```mermaid
 flowchart LR
@@ -2146,9 +2146,9 @@ def main():
 - **物理分离**：利用 HF `AutoModel` 加载完整模型（含自定义建模代码），按键名前缀切分出两个字典，保存为独立 `.pt` 文件。
 - **`added_tokens.json` 清空**：Mistral 类 tokenizer 依赖空 `added_tokens.json`，避免后续 LLaMA 转换器报错。
 
-### 8.7.2 阶段二：glmedge-convert-image-encoder-to-gguf.py 封装 mmproj
+### 7.7.2 阶段二：glmedge-convert-image-encoder-to-gguf.py 封装 mmproj
 
-#### 手工构造 SiglipVisionModel
+#### 7.7.2.1 手工构造 SiglipVisionModel
 
 ```python
 # tools/mtmd/legacy-models/glmedge-convert-image-encoder-to-gguf.py (第 120-124 行)
@@ -2160,7 +2160,7 @@ model.load_state_dict(torch.load(os.path.join(dir_model, "glm.clip")))
 **代码解析**：
 - 不再用 `CLIPModel.from_pretrained`，而是**手工构造 `SiglipVisionModel`** 加载第一阶段分离出的 `glm.clip` 权重，避免 HF 结构不匹配，**实现零 `transformers` 依赖**转换。
 
-#### has_glm_projector block：投影器写入
+#### 7.7.2.2 has_glm_projector block：投影器写入
 
 ```python
 # tools/mtmd/legacy-models/glmedge-convert-image-encoder-to-gguf.py (第 238-263 行)
@@ -2181,7 +2181,7 @@ if has_glm_projector:
 - `get_tensor_name()` 复用 CLIP 翻译表，额外处理 `vision.adapter.*` → `mm.*` 重命名（`name.startswith("vision.")` 分支）。
 - `projector_type` 固定写死为 `"adapter"`，区别于 LLaVA 的 `mlp/ldp/ldpv2`。
 
-#### vision_model head 过滤
+#### 7.7.2.3 vision_model head 过滤
 
 ```python
 # tools/mtmd/legacy-models/glmedge-convert-image-encoder-to-gguf.py (第 23-48 行 should_skip_tensor)
@@ -2204,7 +2204,7 @@ if name in (
 **代码解析**：
 - SigLIP 训练时附带的分类头（`head.probe/attention/mlp`）属于预训练任务专用，**推理时完全无用**，显式过滤掉，减小模型体积。
 
-### 8.7.3 为什么要两个脚本？
+### 7.7.3 为什么要两个脚本？
 
 | 维度 | 阶段一 `glmedge-surgery.py` | 阶段二 `glmedge-convert-*.py` |
 |------|----------------------------|-------------------------------|
@@ -2215,11 +2215,11 @@ if name in (
 
 ---
 
-## 8.8 llava_surgery.py 与 v2：旧版 LLaVA 投影器提取 —— 「拆弹专家」的两种武器
+## 7.8 llava_surgery.py 与 v2：旧版 LLaVA 投影器提取 —— 「拆弹专家」的两种武器
 
 > **核心概念**：LLaVA v1.5 早期模型将视觉塔（CLIP ViT）与投影器（MLP）混在 LLM checkpoint 分片中。`llava_surgery.py` (v1) 假设最后一个分片包含所有 projector 权重，**单文件「一刀切」**。`llava_surgery_v2.py` (v2) 支持 SafeTensors，实现**跨分片搜索**（`find_relevant_checkpoints`）、**增量合并 CLIP**（`clean_vision_tower_from_checkpoint`）与**幂等性保证**（`mtime` 排序 + `existing_clip` 去重）。
 
-### 8.8.1 v1：简单直接的「一刀切」
+### 7.8.1 v1：简单直接的「一刀切」
 
 ```mermaid
 flowchart LR
@@ -2250,7 +2250,7 @@ torch.save(clip, f"{args.model}/llava.clip")
 - 假设 LLaVA v1.5 单文件或最后一个分片包含所有 projector 权重，**只读最后一个分片**。
 - 命名规范化：`vision_tower.vision_tower.` → 空前缀。
 
-### 8.8.2 v2：支持 SafeTensors 的「多文件侦探」
+### 7.8.2 v2：支持 SafeTensors 的「多文件侦探」
 
 ```mermaid
 flowchart TD
@@ -2271,7 +2271,7 @@ flowchart TD
     O --> P[合并保存 llava.projector]
 ```
 
-#### 双格式加载器
+#### 7.8.2.1 双格式加载器
 
 ```python
 # tools/mtmd/legacy-models/llava_surgery_v2.py (第 8-20 行)
@@ -2292,7 +2292,7 @@ def load_model(file_path):
 **代码解析**：
 - 统一接口返回 `(tensors_dict, file_type)`，支持 `.bin` 与 `.safetensors` 无缝切换。
 
-#### 权重名匹配谓词
+#### 7.8.2.2 权重名匹配谓词
 
 ```python
 # tools/mtmd/legacy-models/llava_surgery_v2.py (第 32-50 行)
@@ -2317,7 +2317,7 @@ def is_mm_projector(weight_name):
     )
 ```
 
-#### clean_vision_tower_from_checkpoint：增量剥离 CLIP
+#### 7.8.2.3 clean_vision_tower_from_checkpoint：增量剥离 CLIP
 
 ```python
 # tools/mtmd/legacy-models/llava_surgery_v2.py (第 58-83 行)
@@ -2349,7 +2349,7 @@ def clean_vision_tower_from_checkpoint(checkpoint_path):
 - `existing_clip` 去重保证**幂等性**：多次运行不重复写入。
 - 从原分片 `del` 并保存，物理清理分片文件，节省磁盘空间。
 
-#### find_relevant_checkpoints：跨文件搜索 projector 与 newline
+#### 7.8.2.4 find_relevant_checkpoints：跨文件搜索 projector 与 newline
 
 ```python
 # tools/mtmd/legacy-models/llava_surgery_v2.py (第 85-96 行)
@@ -2371,7 +2371,7 @@ def find_relevant_checkpoints(checkpoint_paths, newline_criteria, projector):
 - 遍历所有分片，**分别找到**包含 `image_newline` 与 `mm_projector` 的分片（可能不在同一文件）。
 - `newline_criteria` / `proj_criteria` 为谓词函数，复用 `is_newline` / `is_mm_projector`。
 
-#### 主流程入口
+#### 7.8.2.5 主流程入口
 
 ```python
 # tools/mtmd/legacy-models/llava_surgery_v2.py (第 116-186 行)
@@ -2403,11 +2403,11 @@ newline_checkpoint_path, projector_checkpoint_path = find_relevant_checkpoints(c
 
 ---
 
-## 8.9 minicpmv-surgery.py 与转换器：MiniCPM-V 视觉模型 —— 「多版本兼容」的拼装工厂
+## 7.9 minicpmv-surgery.py 与转换器：MiniCPM-V 视觉模型 —— 「多版本兼容」的拼装工厂
 
 > **核心概念**：MiniCPM-V 系列历经 7 个主要版本（V-2 至 V-4.5 及其 O 系列），视觉塔架构在 **Idefics2** 与 **SigLIP** 之间切换，Resampler 结构也有多种变体。转换器通过 `minicpmv_version` 自动检测版本，**内嵌完整 SigLIP 纯 NumPy/PyTorch 复刻定义**（零 `transformers` 依赖），实现 Resampler 张量重塑（`_replace_name_resampler`）、2D 位置编码补全（`get_2d_sincos_pos_embed`）、投影器 `scale_emb` 缩放等版本差异的统一处理。
 
-### 8.9.1 minicpmv-surgery.py：第一阶段分离
+### 7.9.1 minicpmv-surgery.py：第一阶段分离
 
 ```mermaid
 flowchart LR
@@ -2452,7 +2452,7 @@ AutoTokenizer.from_pretrained(args.model).save_pretrained(f"{args.model}/model")
 - `resampler.proj` 缩放是 MiniCPM-V 2 独有的训练技巧，转换时必须还原。
 - `vpm.*` 是视觉预处理器（Idefics2 风格），与 LLaVA 的 `vision_tower` 命名本质不同：MiniCPM-V 将视觉编码器拆分为 `vpm`（预处理）+ `resampler`（投影），而 LLaVA 是 `vision_tower`（CLIP ViT）+ `mm_projector`（MLP）。
 
-### 8.9.2 七版本自动检测：minicpmv_version config switch
+### 7.9.2 七版本自动检测：minicpmv_version config switch
 
 ```python
 # tools/mtmd/legacy-models/minicpmv-convert-image-encoder-to-gguf.py (第 358-388 行)
@@ -2469,7 +2469,7 @@ elif "resampler" in config and config.get("vision_config", {}).get("model_type")
 - 七种版本对应不同的视觉塔（Idefics2 / SigLIP）与 Resampler 结构差异。
 - 硬编码默认值 + `config.json` 覆盖，兼容社区微调模型修改配置的情况。
 
-### 8.9.3 内嵌 SigLIP 纯 NumPy/PyTorch 复刻定义
+### 7.9.3 内嵌 SigLIP 纯 NumPy/PyTorch 复刻定义
 
 ```python
 # tools/mtmd/legacy-models/minicpmv-convert-image-encoder-to-gguf.py (第 99-386 行)
@@ -2507,7 +2507,7 @@ def default_flax_embed_init(tensor): variance_scaling_(tensor, mode="fan_in", di
 - 初始化策略覆盖 `trunc_normal`、`lecun_normal`、`flax_embed`，保证权重加载后数值分布与原模型一致。
 - 这是转换器能在无 HF 环境下正确加载 `minicpmv.clip` 权重的关键。
 
-### 8.9.4 Resampler 张量重塑与 2D 位置编码补全
+### 7.9.4 Resampler 张量重塑与 2D 位置编码补全
 
 ```python
 # tools/mtmd/legacy-models/minicpmv-convert-image-encoder-to-gguf.py (第 568-583 行)
@@ -2561,7 +2561,7 @@ def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False):
 - `pos_embed` 原为可学习参数，GGUF 要求显式存储，脚本用 **70×70 网格的 2D sin-cos 位置编码** 现场生成 `pos_embed_k`（`k` 代表 key/value 共享）。
 - `in_proj_weight/bias` 按 `chunk(3, dim=0)` 拆分为 `q/k/v` 三组，符合 GGUF 多头注意力张量命名。
 
-### 8.9.5 vision_model 张量重映射与 projector 写入
+### 7.9.5 vision_model 张量重映射与 projector 写入
 
 ```python
 # tools/mtmd/legacy-models/minicpmv-convert-image-encoder-to-gguf.py (第 626-633 行)
@@ -2596,13 +2596,13 @@ if has_minicpmv_projector:
 
 ---
 
-## 8.10 设计中的取舍
+## 7.10 设计中的取舍
 
-### 为什么不用统一的 convert_hf_to_gguf.py 处理所有遗留模型？
+### 7.10.1 为什么不用统一的 convert_hf_to_gguf.py 处理所有遗留模型？
 
 > `convert_hf_to_gguf.py` 依赖 HF `AutoModel`/`AutoConfig` 动态加载建模代码，要求模型已上传 HF Hub 或本地有完整建模脚本。早期 LLaMA v1/v2、GLM-Edge、LLaVA v1.5、MiniCPM-V 等模型**未标准化接入 HF Transformers**，或存在自定义模块（Resampler、vpm、adapter 等），直接用通用转换器会报错或丢失权重。专用脚本通过**手工提取、重命名、补全元数据**，绕过 HF 加载机制，实现「考古式」兼容。
 
-### 惰性加载（LazyTensor）与直接 `torch.load` 的 trade-off 是什么？
+### 7.10.2 惰性加载（LazyTensor）与直接 `torch.load` 的 trade-off 是什么？
 
 | 维度 | `torch.load` 全量加载 | `LazyTensor` 惰性加载 |
 |------|----------------------|----------------------|
@@ -2613,13 +2613,13 @@ if has_minicpmv_projector:
 
 **结论**：对于 7B 以下模型，直接 `torch.load` 更简单；7B+ 必须用惰性加载，否则 OOM。
 
-### Q8_0 量化为什么切换 `ProcessPoolExecutor`？
+### 7.10.3 Q8_0 量化为什么切换 `ProcessPoolExecutor`？
 
 - `Q8_0QuantizedDataType.quantize()` 使用纯 NumPy 向量化操作，**释放 GIL**，多线程可并行。
 - 但 Python 线程受 GIL 限制，NumPy 内部 BLAS（OpenBLAS/MKL）可能**再次获取 GIL** 或线程争用导致扩展性差。
 - `ProcessPoolExecutor` 每进程独立 GIL + 独立内存空间，**真正利用多核**，且 `bounded_parallel_map` 限流避免进程间拷贝大数组爆内存。
 
-### MiniCPM-V 转换器内嵌 SigLIP 定义 vs 依赖 `transformers`？
+### 7.10.4 MiniCPM-V 转换器内嵌 SigLIP 定义 vs 依赖 `transformers`？
 
 | 方案 | 优点 | 缺点 |
 |------|------|------|
@@ -2630,9 +2630,9 @@ if has_minicpmv_projector:
 
 ---
 
-## 8.11 动手练习
+## 7.11 动手练习
 
-### 练习 1：分析惰性加载的核心设计
+### 7.11.1 练习 1：分析惰性加载的核心设计
 阅读 `examples/convert_legacy_llama.py` 第 300-580 行，理解以下惰性加载的核心设计：
 1. `LazyTensor` 的 `_load` 回调是如何实现「只在需要时才读取磁盘」的？
 2. `LazyUnpickler.persistent_load()` 中的 `LazyStorage` 是如何按需读取 zip 内特定偏移的？
@@ -2642,7 +2642,7 @@ if has_minicpmv_projector:
 - 如果一个 70B 模型有 100 个分片，`merge_sharded()` 在不加载完整张量的情况下如何知道每个分片的形状？
 - `LazyTensor.astype()` 的惰性转换是如何在加载链上叠加多个操作的？
 
-### 练习 2：追踪 Q8_0 量化的完整路径
+### 7.11.2 练习 2：追踪 Q8_0 量化的完整路径
 阅读 `examples/convert_legacy_llama.py` 第 65-90 行和第 815-870 行，理解 Q8_0 量化的完整路径：
 1. `Q8_0QuantizedDataType.quantize()` 的分块量化算法是如何工作的？
 2. `GGMLFileType.type_for_tensor()` 如何决定每个张量的输出精度？
@@ -2652,7 +2652,7 @@ if has_minicpmv_projector:
 - 如果输入是 F16 模型但输出选择 Q8_0，`convert_to_output_type()` 与 `maybe_do_quantize()` 的调用顺序是怎样的？
 - 为什么 1D 张量（如 bias）在 `type_for_tensor()` 中强制转换为 F32？
 
-### 练习 3：对比三种多模态分离方案
+### 7.11.3 练习 3：对比三种多模态分离方案
 阅读 `tools/mtmd/legacy-models/` 下的三个手术脚本，对比它们的分离策略：
 1. `glmedge-surgery.py`：如何从 GLM 模型中分离视觉部分？
 2. `llava_surgery_v2.py`：`clean_vision_tower_from_checkpoint()` 与 `find_relevant_checkpoints()` 的协作流程是怎样的？
@@ -2662,7 +2662,7 @@ if has_minicpmv_projector:
 - 为什么 GLM-Edge 需要两个脚本协作，而 LLaVA v2 可以在一个脚本中完成？
 - MiniCPM-V 的 `vpm.*` 与 LLaVA 的 `model.vision_tower` 在命名上有何本质区别？
 
-### 练习 4：设计一个遗留模型转换的测试用例
+### 7.11.4 练习 4：设计一个遗留模型转换的测试用例
 基于本章所学，为一个假想的「LLaMA v1 + CLIP 视觉塔」遗留模型设计转换验证方案：
 1. 写出完整的转换流水线步骤（从 PyTorch checkpoint 到可用的 mmproj GGUF）
 2. 列出至少 5 个关键的「转换正确性检查点」（如：张量数量、形状、词表大小、元数据完整性）
@@ -2674,7 +2674,7 @@ if has_minicpmv_projector:
 
 ---
 
-## 8.12 本章小结
+## 7.12 本章小结
 
 这一章中我们学习了遗留模型转换工具集的核心机制与三大多模态转换方案。首先深入剖析了 `convert_legacy_llama.py` 中的惰性加载体系（`LazyTensor`/`LazyStorage`/`LazyUnpickler`）、参数三级回退猜测（`Params.guessed/loadHFTransformerJson/loadOriginalParamsJson`）、Q8_0 量化实现（`Q8_0QuantizedDataType.quantize`）、分片模型合并策略（`merge_sharded`）、限流并发流水线（`bounded_parallel_map` + `ProcessPoolExecutor`）以及 GGUF 打包全流程（`OutputFile`）。其次详细解读了 `convert_image_encoder_to_gguf.py` 的 CLIP/SigLIP 视觉编码器转换逻辑，包括三种输出形态控制、HF→GGUF 张量命名翻译表（`get_tensor_name`）、视觉特征层索引归一化（`get_non_negative_vision_feature_layers`）与 LLaVA projector 集成。接着对比了 GLM-Edge 双脚本协作（`surgery.py` 物理分离 + `convert` 封装 mmproj）、LLaVA v1/v2 两代提取器（单分片「一刀切」vs 多文件「侦探」）、MiniCPM-V 七版本自动检测与内嵌 SigLIP 纯 NumPy 复刻定义、Resampler 张量重塑（`_replace_name_resampler`）与 2D 位置编码补全（`get_2d_sincos_pos_embed`）等差异化设计。
 

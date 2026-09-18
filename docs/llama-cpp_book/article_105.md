@@ -1,6 +1,6 @@
 
 
-# 质检员的放大镜：GBNF 语法解析器如何像排版校对员一样精准核对语法细节
+# 第105章 质检员的放大镜：GBNF 语法解析器如何像排版校对员一样精准核对语法细节
 
 ## 学习目标
 
@@ -12,7 +12,7 @@
 - 理解 common_regex 的三种匹配状态（FULL/PARTIAL/NONE）与 regex_to_reversed_partial_regex 逆部分正则转换
 - 掌握 common_json_parse 的 JSON 修复能力与 healing_marker（$llama.cpp.json$）机制，覆盖截断字符串、Unicode 转义、代理对等场景
 
-## 10.6 生活类比
+## 105.1 生活类比
 
 想象 llama.cpp 的结构化生成质检体系是一家**海关+翻译局联合办公大厅**：
 
@@ -24,19 +24,19 @@
 拼图游戏：即使图案没拼完（PARTIAL），也能确认它是某个完整图案的一部分；逆部分正则就是把拼图反过来从最后一块往回看  
 文物修复师：面对残缺的 JSON 碎片，用「$llama.cpp.json$」作为隐形修补钉，把断裂处接合得天衣无缝，连 Unicode 代理对这种「双面壁画」都能补全
 
-## 10.6 GBNF 语法解析器单元测试 —— 文法解析的精确质检
+## 105.2 GBNF 语法解析器单元测试 —— 文法解析的精确质检
 
 GBNF（GGML BNF）语法解析器是 llama.cpp 用于约束模型输出的核心组件，它通过定义形式化语法规则来限制生成的文本必须符合特定结构。为了确保该解析器的正确性，项目提供了专门的单元测试文件 `tests/test-grammar-parser.cpp`，该测试不仅验证解析结果是否符合预期，还能在测试失败时自动生成可直接替换的修正代码，极大地提升了测试的可维护性和开发效率。
 
-### 质检员的放大镜：逐条核对语法细节
+### 105.2.1 质检员的放大镜：逐条核对语法细节
 
 就像排版校对员会用放大镜逐字核对印刷稿中的每个符号是否对应正确的铅字模块，GBNF 解析器的测试通过 `verify_parsing()` 函数以同样严谨的方式检验语法解析的每一个细节：它不仅核对符号表（语法条文的目录）是否完整正确，还逐条检查规则表（每条语法规则的排版）是否与预期完全一致——连规则中每个语法单元的类型和取值都不放过。
 
 一旦发现不匹配，测试不仅会指出错误位置，还会像经验丰富的排版工一样自动生成一份可以直接替换的修正稿（通过打印可直接复制的期望值代码），使得测试维护变得像更新印刷厂的排版档案一样简单高效。
 
-### 10.6.1 类型定义详解
+### 105.2.2 类型定义详解
 
-#### llama_gretype 枚举
+#### 105.2.2.1 llama_gretype 枚举
 源码路径：`tests/test-grammar-parser.cpp` - `type_str()`（10-19行）
 
 ```cpp
@@ -56,7 +56,7 @@ static const char * type_str(llama_gretype type) {
 
 这个枚举定义了 GBNF 语法解析过程中识别的基本语法元素类型。每种类型对应解析器内部规则中的一个单元，`type_str()` 函数将这些枚举值转换为可读字符串，主要用于测试失败时的调试输出，帮助开发者快速定位哪种语法构造被误解析。
 
-### 10.6.2 核心测试机制：verify_parsing
+### 105.2.3 核心测试机制：verify_parsing
 
 源码路径：`tests/test-grammar-parser.cpp` - `verify_parsing()`（21-133行）
 
@@ -175,7 +175,7 @@ static void verify_parsing(const char *grammar_bytes, const std::vector<std::pai
 
 每一步验证失败时都会打印详细的差异信息和自动生成的修正代码，这使得当语法规则演进时，测试维护变得异常简单——只需复制打印出的代码替换原有期望值即可。
 
-### 10.6.3 失败场景验证：verify_failure
+### 105.2.4 失败场景验证：verify_failure
 
 源码路径：`tests/test-grammar-parser.cpp` - `verify_failure()`（135-140行）
 
@@ -190,7 +190,7 @@ static void verify_failure(const char * grammar_bytes) {
 
 这个函数专门用于验证解析器对畸形输入的容错能力。当传入一个故意构造的格式错误 GBNF 语法（如未闭合的括号、无效的转义序列等）时，一个健壮的解析器应该无法产生任何有效规则。因此，这个测试通过断言 `result.rules.empty()` 来确认解析器在遇到错误输入时不会产生虚假结果，而是正确地返回空规则集，从而避免后续使用时基于错误语法进行匹配。
 
-### 架构图：GBNF 解析器测试流程
+### 105.2.5 架构图：GBNF 解析器测试流程
 ```mermaid
 flowchart TD
     A[输入GBNF语法字符串] --> B[llama_grammar_parser解析]
@@ -209,11 +209,11 @@ flowchart TD
     M -->|是| O[测试通过]
 ```
 
-## 10.6 GBNF 校验器工具 —— 命令行下的文本质检员
+## 105.3 GBNF 校验器工具 —— 命令行下的文本质检员
 
 在确认 GBNF 语法解析器自身正确之后，我们还需要验证它在实际使用中的表现——即给定一个语法和一段文本，它能否准确判断该文本是否符合语法规则。这是由 `tests/test-gbnf-validator.cpp` 实现的命令行工具，它模拟了实际使用场景：从文件加载语法规则和待验证的输入文本，然后逐字符检查匹配情况。
 
-### 10.6.1 命令行入口与文件处理
+### 105.3.1 命令行入口与文件处理
 
 源码路径：`tests/test-gbnf-validator.cpp` - `__main__()`（45-105行）
 
@@ -288,7 +288,7 @@ int main(int argc, char** argv) {
 
 这个流程完整地模拟了 llama.cpp 在实际推理过程中使用 GBNF 语法约束的方式：加载语法规则 → 初始化解析器 → 验证生成的token序列 → 根据匹配结果决定是否接受token。
 
-### 10.6.2 核心验证逻辑：llama_grammar_validate
+### 105.3.2 核心验证逻辑：llama_grammar_validate
 
 源码路径：`tests/test-gbnf-validator.cpp` - `llama_grammar_validate()`（8-29行）
 
@@ -338,7 +338,7 @@ static bool llama_grammar_validate(struct llama_grammar * grammar, const std::st
 
 这种设计巧妙地处理了语法的二义性：通过维护所有可能的解析状态栈，它能够正确处理具有多种匹配方式的语法规则，只有当所有可能路径都无法继续时才报告字符错误，只有当所有路径都未完成时才报告提前结束。
 
-### 10.6.3 高亮错误提示
+### 105.3.3 高亮错误提示
 
 源码路径：`tests/test-gbnf-validator.cpp` - `print_error_message()`（31-43行）
 
@@ -369,11 +369,11 @@ static void print_error_message(const std::string & input_str, size_t error_pos,
 
 这种可视化反馈对于调试语法规则或输入数据极其有用，能够一眼看到到底是哪个字符导致了匹配失败，特别是在处理长文本或包含特殊字符（如引号、括号、空格）时。
 
-## 10.6 JSON Schema 到 Grammar 转换 —— 结构化数据的语法编译器
+## 105.4 JSON Schema 到 Grammar 转换 —— 结构化数据的语法编译器
 
 JSON Schema 是一种强大的工具，用于描述JSON数据的结构、类型和约束。在llama.cpp中，我们经常需要将结构化输出需求（如JSON Schema）转换为GBNF语法，以便在模型推理过程中约束输出必须符合特定的JSON结构。这一转换过程由 `tests/test-json-schema-to-grammar.cpp` 实现，它不仅包含转换核心逻辑，还提供了全面的测试框架来验证转换的正确性。
 
-### 10.6.1 TestCase 结构：测试的契约
+### 105.4.1 TestCase 结构：测试的契约
 
 源码路径：`tests/test-json-schema-to-grammar.cpp` - `TestCase.verify()`（40-48行）
 
@@ -397,7 +397,7 @@ void verify(const std::string & actual_grammar) const {
 
 当断言失败时，它不仅会输出标准的期望/实际值对比，还会通过 `_print_failure_header()` 打印标准化的失败头信息，包括测试名称和失败的Schema，使得测试报告更加易读和定位。
 
-### 10.6.2 文件工具集
+### 105.4.2 文件工具集
 
 源码路径：`tests/test-json-schema-to-grammar.cpp` - `trim()`（14-20行）
 
@@ -423,7 +423,7 @@ static std::string trim(const std::string & source) {
 
 这些工具虽然简单，但在调试和中间结果保存时至关重要，特别是当需要检查生成的语法或保存失败案例时。
 
-### 10.6.3 common_schema_info：Schema 解析辅助
+### 105.4.3 common_schema_info：Schema 解析辅助
 
 虽然代码片段中未直接显示其实现，但 `common_schema_info` 类是JSON Schema到GBNF转换过程中的关键辅助组件，它主要负责两项核心任务：
 1. `resolve_refs()`：递归解析JSON Schema中的`$ref`引用，将外部或内部的定义内联到当前Schema中
@@ -437,7 +437,7 @@ static std::string trim(const std::string & source) {
 - 内联所有共享定义（通过$ref解析）
 - 准确判断约束结果的类型（避免将对象约束误用于字符串生成）
 
-### 10.6.4 全量测试集：test_all
+### 105.4.4 全量测试集：test_all
 
 源码路径：`tests/test-json-schema-to-grammar.cpp` - `test_all()`（85-500行）
 
@@ -523,7 +523,7 @@ static void test_all(const std::string & lang, std::function<void(const TestCase
 
 这种全面的覆盖确保了转换器能够正确处理从最基本的类型声明到复杂的嵌套对象和逻辑组合的各种真实世界Schema。
 
-### 10.6.5 main 函数：多语言交叉验证指挥
+### 105.4.5 main 函数：多语言交叉验证指挥
 
 源码路径：`tests/test-json-schema-to-grammar.cpp` - `main()`（1000-1100行）
 
@@ -570,11 +570,11 @@ main 函数承担起测试套件的总指挥角色，它执行了一个完整的
 
 这种多语言交叉验证策略是确保转换器正确性的金标准：它不仅验证单个实现是否符合预期，还确保不同语言的实现之间保持行为一致，这对于一个可能被多种语言绑定使用的库来说至关重要。
 
-## 10.6 语法与 JSON Schema 集成测试 —— 全面联动的质量防火墙
+## 105.5 语法与 JSON Schema 集成测试 —— 全面联动的质量防火墙
 
 拥有了能够验证GBNF解析器自身正确性（test-grammar-parser）和能够验证JSON Schema到GBNF转换正确性（test-json-schema-to-grammar）的两个基石之后，我们需要确保这两个能力能够正确地协同工作：即使用JSON Schema生成的GBNF语法，能够真正地用于约束实际的文本输入。这是由 `tests/test-grammar-integration.cpp` 实现的集成测试，它构建了一个完整的闭环验证：JSON Schema → GBNF 语法 → 文本匹配验证。
 
-### 10.6.1 构建与负向测试入口
+### 105.5.1 构建与负向测试入口
 
 源码路径：`tests/test-grammar-integration.cpp` - `build_grammar_with_root()`（20-22行）
 
@@ -608,7 +608,7 @@ static bool test_build_grammar_fails(const std::string & grammar_str) {
 
 这种负向测试同等重要，因为它确保了我们的解析器不仅在正确输入时能工作，而且在遇到恶意或损坏的语法时能够安全失败，而不会产生可能导致安全问题或无限循环的虚假解析结果。
 
-### 10.6.2 通用测试框架：test 函数
+### 105.5.2 通用测试框架：test 函数
 
 源码路径：`tests/test-grammar-integration.cpp` - `test()`（110-180行）
 
@@ -710,7 +710,7 @@ static void test(const std::string & test_desc, const std::string & grammar_str,
 - **自动清理**：资源得到及时释放，避免泄漏
 - **可读输出**：使用 emoji 和清晰的格式使测试进度一目了然
 
-### 10.6.3 Token 编码与多语言支持
+### 105.5.3 Token 编码与多语言支持
 
 为了在测试中能够将特殊的语法标记（如规则引用）嵌入到普通文本中进行验证，集成测试引入了一种巧妙的token编码机制：
 
@@ -845,11 +845,11 @@ static bool match_string(const std::string & input, llama_grammar * grammar) {
 
 通过这种机制，集成测试不仅能够验证简单的字符匹配，还能够验证语法的高级特性：规则引用、选择、重复等，确保生成的GBNF语法在实际使用时行为正确。
 
-### 10.6.4 覆盖场景
+### 105.5.4 覆盖场景
 
 集成测试通过一系列专门的测试函数覆盖了语法和JSON Schema转换的各种场景，每个函数都专注于一类特定的语法特性：
 
-#### 简单语法测试
+#### 105.5.4.1 简单语法测试
 源码路径：`tests/test-grammar-integration.cpp` - `test_simple_grammar()`（189-405行）
 
 这个函数验证最基础的语法构造：
@@ -860,7 +860,7 @@ static bool match_string(const std::string & input, llama_grammar * grammar) {
 
 通过这些测试，我们确认了语法解析器能够正确处理GBNF的构造块，为更复杂的特性打下基础。
 
-#### 复杂语法测试
+#### 105.5.4.2 复杂语法测试
 源码路径：`tests/test-grammar-integration.cpp` - `test_complex_grammar()`（407-490行）
 
 这个函数深入验证语法的组合能力：
@@ -871,7 +871,7 @@ static bool match_string(const std::string & input, llama_grammar * grammar) {
 
 这些测试确认了语法解析器能够正确处理规则之间的组合和嵌套，这对于将复杂的JSON Schema转换为可用的GBNF语法至关重要。
 
-#### 特殊字符测试
+#### 105.5.4.3 特殊字符测试
 源码路径：`tests/test-grammar-integration.cpp` - `test_special_chars()`（492-510行）
 
 这个函数专注于验证语法对非ASCII和特殊符号的处理：
@@ -881,7 +881,7 @@ static bool match_string(const std::string & input, llama_grammar * grammar) {
 
 在现代应用中，能够正确处理Unicode字符对于支持国际化输入和输出至关重要，这个测试确认了我们的语法解析器在这方面的能力。
 
-#### 量词测试
+#### 105.5.4.4 量词测试
 源码路径：`tests/test-grammar-integration.cpp` - `test_quantifiers()`（512-634行）
 
 这个函数验证语法的重复能力，覆盖了所有基本量词：
@@ -894,7 +894,7 @@ static bool match_string(const std::string & input, llama_grammar * grammar) {
 
 特别地，它还测试了量词的组合使用，如 `a*b+` 或 `(ab){2,4}`，确保在复杂模式中量词行为正确。
 
-#### 错误处理测试
+#### 105.5.4.5 错误处理测试
 一组专门的测试函数验证了解析器对各种畸形语法的容错能力：
 - `test_failure_missing_root()`：当语法缺少定义的根规则时应失败
 - `test_failure_missing_reference()`：当语法引用未定义的规则时应失败
@@ -904,7 +904,7 @@ static bool match_string(const std::string & input, llama_grammar * grammar) {
 
 这些负向测试同样重要，因为它们确保了当遇到错误或恶意输入时，解析器能够安全地失败，而不会产生可能导致安全问题或不正确行为的虚假解析结果。
 
-#### JSON Schema 集成测试
+#### 105.5.4.6 JSON Schema 集成测试
 源码路径：`tests/test-grammar-integration.cpp` - `test_json_schema()`（747-1077行）
 
 这是集成测试的巅峰部分，它验证了从JSON Schema到实际文本匹配的完整闭环：
@@ -924,13 +924,13 @@ static bool match_string(const std::string & input, llama_grammar * grammar) {
 
 通过这一系列测试，我们确认了当用户提供一个JSON Schema来约束模型的结构化输出时，转换后的GBNF语法确实能够正确地接受符合Schema的JSON并拒绝不符合的JSON，从而为实际的结构化生成提供了可靠的基础。
 
-## 10.6 LLGuidance 采样约束测试 —— 语法与采样的协奏曲
+## 105.6 LLGuidance 采样约束测试 —— 语法与采样的协奏曲
 
 llguidance 是 llama.cpp 中一个创新的特性，它允许将JSON Schema直接用于约束模型的token采样过程，而不需要先显式转换为GBNF语法。这通过在采样器链中插入一个特殊的llguidance采样器来实现，该采样器能够实时地根据JSON Schema（或Lark语法）来掩码不合法的token，使得它们的logit被设为负值（从而在softmax后概率接近零）。
 
 `tests/test-grammar-llguidance.cpp` 文件专门测试这一功能，它验证了llguidance采样器如何与JSON Schema和Lark语法协同工作，以及它如何在采样器链中正确地与其他采样器（如分布采样器）协作。
 
-### 10.6.1 llguidance 集成接口
+### 105.6.1 llguidance 集成接口
 
 源码路径：`tests/test-grammar-llguidance.cpp` - `__main__()`（1075-1148行）
 
@@ -961,7 +961,7 @@ main函数的结构与其他测试文件相似：它负责设置测试环境（�
 
 这与纯粹的语法测试（如test-grammar-integration）不同，后者只需要语法对象本身，而不需要实际的词汇表，因为它直接操作token ID而不是通过文本。
 
-### 10.6.2 match_string 的采样视角
+### 105.6.2 match_string 的采样视角
 
 源码路径：`tests/test-grammar-llguidance.cpp` - `match_string()`（11-38行）
 
@@ -1019,7 +1019,7 @@ static bool match_string(const std::string & input, llama_sampler * grammar) {
 
 与纯语法测试不同，这个方法不直接操作语法状态栈，而是通过观察采样器对logit的影响来间接验证语法约束：如果一个token被语法允许，其logit应保持非负；如果被禁止，其logit应被设为负值。
 
-### 10.6.3 测试框架：test 函数
+### 105.6.3 测试框架：test 函数
 
 源码路径：`tests/test-grammar-llguidance.cpp` - `test()`（40-82行）
 
@@ -1074,7 +1074,7 @@ static void test(const std::string & test_desc, const std::string & grammar_str,
 
 这种设计使得llguidance测试能够复用与语法集成测试相同的测试数据结构和验证流程，而只需更换底层的验证机制（语法栈操作 vs 采样器logit修改）。
 
-### 10.6.4 llguidance 的不同验证模式
+### 105.6.4 llguidance 的不同验证模式
 
 llguidance采样器支持两种输入格式，这由其初始化函数的第二个参数决定：
 - 当第二个参数是 `"lark"` 时，它期望输入是纯Lark语法
@@ -1106,24 +1106,24 @@ static void test_schema(const std::string & test_desc, const std::string & schem
 
 后者尤其有用，因为它避免了显式的Schema到GBNF的转换步骤，减少了潜出错点，并且可以受益于llguidance的一些优化（如增量更新）。
 
-### 10.6.5 覆盖场景
+### 105.6.5 覆盖场景
 
 与语法集成测试类似，llguidance测试也通过一系列专门函数覆盖了各种语法场景：
 
-#### 基础和复杂语法测试
+#### 105.6.5.1 基础和复杂语法测试
 - `test_simple_grammar()`：验证基本的数值约束（如最小/最大值）和简单表达式
 - `test_complex_grammar()`：验证复杂的算术表达式语法，包括变量、函数调用和括号嵌套
 
-#### 特殊字符和量词测试
+#### 105.6.5.2 特殊字符和量词测试
 - `test_special_chars()`：验证特殊符号如点号和Unicode字符的处理
 - `test_quantifiers()`：验证量词（如`*`、`+`、`?`、`{n,m}`）的行为
 
-#### JSON Schema 测试
+#### 105.6.5.3 JSON Schema 测试
 - `test_json_schema()`：验证从JSON Schema到实际token接受/拒绝的完整闭环，覆盖对象属性、数组限制、正则模式等所有主要特性
 
 这些测试确认了llguidance采样器能够正确处理与语法集成测试相同的特性范围，只是验证视角不同：不是通过检查语法栈是否能推进，而是通过观察采样器是否将不合法token的logit设为负值。
 
-#### 确定采样验证：one_hot
+#### 105.6.5.4 确定采样验证：one_hot
 源码路径：`tests/test-grammar-llguidance.cpp` - `one_hot()`（1082-1090行）
 
 ```cpp
@@ -1148,7 +1148,7 @@ static void one_hot(llama_token_data_array & tok_arr, llama_token selected) {
 
 这为验证语法约束提供了一种精确的手段：不是仅仅检查某个token是否被禁止（通过负logit），而是主动测试在给定分布下采样器是否会选择它。
 
-#### 多采样器链测试
+#### 105.6.5.5 多采样器链测试
 源码路径：`tests/test-grammar-llguidance.cpp` - `test_sampler_chain()`（1092-1120行）
 
 ```cpp
@@ -1179,13 +1179,13 @@ static void test_sampler_chain(void) {
 
 通过这个测试，我们确认了llguidance采样器在采样器链中不仅能够正确地进行约束，而且能够与其他采样器正确协作：它的禁止决策是最终的，而允许的决策则会被后续采样器进一步处理。
 
-## 10.6 正则匹配与部分匹配测试 —— 模式匹配的双面刃
+## 105.7 正则匹配与部分匹配测试 —— 模式匹配的双面刃
 
 虽然GBNF是llama.cpp中约束模型输出的主要机制，但正则表达式在某些场景下仍然有其用武之地，特别是在需要简单的模式匹配时。llama.cpp提供了`common_regex`接口来支持基本的正则操作，而`tests/test-regex-partial.cpp`专门测试这一接口的部分匹配能力。
 
 部分匹配是一个重要的概念，特别是在流式处理或交互式应用中：我们可能还没有收到完整的输入，但根据已经收到的前缀，我们想知道它是否可能是一个有效匹配的开始。例如，如果我们正在匹配模式`abcdef`，那么当我们只收到`abc`时，我们应该能够知道这是一个部分匹配（虽然还不完整，但有望完成）。
 
-### 10.6.1 common_regex 搜索测试
+### 105.7.1 common_regex 搜索测试
 
 源码路径：`tests/test-regex-partial.cpp` - `test_regex()`（38-172行）
 
@@ -1264,7 +1264,7 @@ static void test_regex() {
 
 通过这些测试，我们确认了`common_regex`不仅能够正确地进行完全匹配和不匹配的判断，而且能够精确地报告部分匹配的程度和位置，这对于在llama.cpp中实现流式输入处理或交互式约束提供了重要的能力。
 
-### 10.6.2 逆部分正则转换
+### 105.7.2 逆部分正则转换
 
 在某些场景下，我们可能需要从右向左进行部分匹配：例如，我们想知道一个字符串的后缀是否可能是某个模式的完成。这正是`regex_to_reversed_partial_regex()`函数所解决的问题。
 
@@ -1608,13 +1608,13 @@ S匹配R 当且仅当 S存在一个后缀T，使得T匹配P
 
 通过这一系列测试，我们确认了`regex_to_reversed_partial_regex()`函数能够正确地将各种正则表达式转换为它们的逆部分匹配版本，覆盖了基本字符、量词、字符类、分组和选择等主要正则构造。
 
-## 10.6 JSON 修复测试 —— 残缺数据的愈合艺术
+## 105.8 JSON 修复测试 —— 残缺数据的愈合艺术
 
 在实际应用中，尤其是在网络传输或流式处理过程中，我们经常遇到不完整的JSON数据：可能是因为传输中断，或者因为我们正在实时接收数据而尚未收到完整的对象。为了在这些情况下仍然能够从部分数据中提取有用信息，llama.cpp提供了`common_json_parse`函数，它具有JSON修复能力：当遇到截断的JSON时，它不会简单地失败，而是尝试通过在断点处插入一个特殊标记来使JSON变得完整且可解析。
 
 `tests/test-json-partial.cpp` 文件专门测试这一功能，它验证了在各种截断场景下（如截断的对象、数组、字符串、Unicode序列等），解析器能否正确地插入修复标记并产生有效的JSON输出。
 
-### 10.6.1 核心测试函数：test_json_healing
+### 105.8.1 核心测试函数：test_json_healing
 
 源码路径：`tests/test-json-partial.cpp` - `test_json_healing()`（18-194行）
 
@@ -1895,7 +1895,7 @@ static void test_json_healing() {
 
 通过这种逐字符的前缀截断测试（`parse_all`），我们能够确保修复器在输入数据的每一个可能的中间状态下都能表现得合理：要么产生一个有效的JSON（并标明它是如何被修复的），要么以一种可预测和安全的方式失败。
 
-### 10.6.2 断言工具
+### 105.8.2 断言工具
 
 源码路径：`tests/test-json-partial.cpp` - `assert_equals()`（8-16行）
 
@@ -1924,7 +1924,7 @@ template <class T> static void assert_equals(const T & expected, const T & actua
 
 这种精确的断言机制确保了测试的可靠性：只有当所有条件都精确匹配时，测试才会通过；任何偏差都会被立即检测到并报告。
 
-## 10.6 本章小结
+## 105.9 本章小结
 
 在这一章中，我们深入探讨了 llama.cpp 中用于确保结构化生成正确性的测试体系，这一体系就像一家精密的质检中心，确保从语法定义到实际输出的每一个环节都能可靠地工作。首先，我们了解了GBNF语法解析器自身的单元测试（test-grammar-parser），它不仅验证解析结果是否符合预期，还能在失败时自动生成修正代码，极大地提升了测试的可维护性。其次，我们检验了GBNF校验器（test-gbnf-validator）如何能够精确地逐字符验证输入文本是否符合语法规则，并通过ANSI高亮直观地定位错误位置。接着，我们探索了JSON Schema到GBNF转换器的测试框架（test-json-schema-to-grammar），它通过全面的测试用例覆盖了从基本类型到复杂对象和逻辑组合的所有JSON Schema特性，并采用多语言交叉验证确保转换器在不同语言实现间行为一致。然后，我们研究了语法与JSON Schema的集成测试（test-grammar-integration），它构建了一个完整的闭环验证：将JSON Schema转换为GBNF语法，然后用该语法验证实际的文本输入是否匹配，确保从结构化需求到实际约束的全链路正确。随后，我们考察了llguidance采样约束测试（test-grammar-llguidance），它验证了如何将JSON Schema或Lark语法直接用于约束模型的token采样过程，通过观察logit修改来间接确认语法约束的作用，并测试了其在采样器链中的正确协作行为。之后，我们分析了正则部分匹配测试（test-regex-partial），它确认了common_regex接口不仅能够进行完全匹配和不匹配判断，还能够精确报告部分匹配的程度和位置，这对于流式处理中的输入验证至关重要。最后，我们审视了JSON修复测试（test-json-partial），它展示了如何在遇到不完整JSON数据时智能地插入修复标记（如$llama.cpp.json$）以产生可解析结果，特别是对Unicode代理对的自动补全处理，确保了在实际的网络或流式场景中能够健壮地处理断裂数据。
 

@@ -2,7 +2,7 @@
 
 
 
-# 第81章 server_models 调度中枢 —— 多模型实例的「列车调度室」
+# 第82章 server_models 调度中枢 —— 多模型实例的「列车调度室」
 
 ## 学习目标
 
@@ -17,13 +17,13 @@
 - 掌握线程同步原语（mutex、condition_variable、atomic）在多进程管理中的应用
 - 理解预设合并优先级与启动参数渲染机制
 
-## 81.1 生活类比
+## 82.1 生活类比
 
 想象 llama-server 的模型管理系统是一家**大型智能火车站的调度中心**：**server_models** = 列车调度总台（统一指挥所有车次的进出站）；**server_model_meta** = 每趟列车的「车牌档案」（记录着车型号、当前状态、停靠站台、最后发车时间）；**LRU 淘汰机制** = 站台容量管理（站台满了？让最久没发车的列车先回库休息）；**spawn 子进程** = 列车出站（调度台启动新车次，分配专属轨道 port，并派监控员跟车）；**双监控线程** = 随车安全员（一人看日志汇总车况，一人盯紧急制动信号，超时未归就强制拖回）；**pipe_t 管道** = 列车与调度中心的「专用对讲机」（流式传输实况，一喊停就断线）；**HTTP 代理转发** = 中转售票窗口（乘客在总服务台买票，后台自动转给具体车次窗口处理）；**状态机 UNLOADED/LOADING/LOADED/SLEEPING** = 列车状态（车库待命/正在出库/运行中/临时休眠）；**命令协议（READY/SLEEP/EXIT）** = 列车与调度台的「暗号」（标准应答信号，确保双方状态同步）。就像调度中心需要精确控制每趟列车的进出时间、防止站台拥堵，server_models 通过互斥锁和条件变量确保多线程环境下模型加载、卸载、状态迁移互不干扰，实现高并发下的稳定调度。
 
 ---
 
-## 81.2 源码地图
+## 82.2 源码地图
 
 ```text
 tools/server/server-models.h
@@ -127,9 +127,9 @@ tools/server/server-models.cpp
 
 ---
 
-## 81.3 核心数据结构：server_model_status 与 server_model_meta —— 模型状态的「交通灯」与「身份证」
+## 82.3 核心数据结构：server_model_status 与 server_model_meta —— 模型状态的「交通灯」与「身份证」
 
-### 81.3.1 server_model_status - 模型状态枚举「交通灯」
+### 82.3.1 server_model_status - 模型状态枚举「交通灯」
 
 模型状态机只有四种状态，类比列车的四种运行态，所有调度决策均基于此状态流转。源码路径：`tools/server/server-models.h` 第15-21行。
 
@@ -146,7 +146,7 @@ enum server_model_status {
 
 ---
 
-### 81.3.2 server_model_meta - 模型元数据「身份证」
+### 82.3.2 server_model_meta - 模型元数据「身份证」
 
 每个模型实例的完整档案，包含静态配置与动态运行时信息。源码路径：`tools/server/server-models.h` 第47-67行。
 
@@ -185,7 +185,7 @@ struct server_model_meta {
 
 ---
 
-### 81.3.3 server_model_meta::update_args - 渲染启动参数「发车指令单」
+### 82.3.3 server_model_meta::update_args - 渲染启动参数「发车指令单」
 
 将预设模板实例化为最终命令行参数，注入运行时动态值（host、port、alias）。源码路径：`tools/server/server-models.cpp` 第127-134行。
 
@@ -206,7 +206,7 @@ void server_model_meta::update_args(common_preset_context & ctx_preset, std::str
 
 ---
 
-### 81.3.4 server_model_status_to_string / server_model_status_from_string - 状态序列化「信号灯翻译官」
+### 82.3.4 server_model_status_to_string / server_model_status_from_string - 状态序列化「信号灯翻译官」
 
 提供枚举与字符串的双向转换，用于 HTTP API 响应与配置解析。源码路径：`tools/server/server-models.h` 第23-45行。
 
@@ -234,9 +234,9 @@ static std::string server_model_status_to_string(server_model_status status) {
 
 ---
 
-## 81.4 server_models 调度中枢：构造与预设加载 —— 调度台的「开站准备」与「建档入库」
+## 82.4 server_models 调度中枢：构造与预设加载 —— 调度台的「开站准备」与「建档入库」
 
-### 81.4.1 server_models::server_models - 构造函数「开站仪式」
+### 82.4.1 server_models::server_models - 构造函数「开站仪式」
 
 初始化预设上下文、收集环境变量、定位可执行文件路径，启动模型加载流程。源码路径：`tools/server/server-models.cpp` 第140-159行。
 
@@ -267,7 +267,7 @@ server_models::server_models(
 
 ---
 
-### 81.4.2 server_models::load_models - 三源合并策略「三源合并建档」
+### 82.4.2 server_models::load_models - 三源合并策略「三源合并建档」
 
 从缓存、本地目录、INI 文件三源加载预设，层层叠加，最后注入 `base_preset` 生成最终配置。源码路径：`tools/server/server-models.cpp` 第222-343行。
 
@@ -335,7 +335,7 @@ void server_models::load_models() {
 
 ---
 
-### 81.4.3 server_models::add_model - 注册新模型「核发车牌」
+### 82.4.3 server_models::add_model - 注册新模型「核发车牌」
 
 解析预设中的 alias/tags，三层冲突检测，渲染参数，构造实例放入映射表。源码路径：`tools/server/server-models.cpp` 第161-221行。
 
@@ -405,11 +405,11 @@ void server_models::add_model(server_model_meta && meta) {
 
 ---
 
-## 81.5 线程安全的状态查询与更新 —— 调度大厅的「查询柜台」与「广播系统」
+## 82.5 线程安全的状态查询与更新 —— 调度大厅的「查询柜台」与「广播系统」
 
 所有对 `mapping` 的读写均受 `std::mutex` 保护，状态变更后通过 `condition_variable` 广播通知等待者。这一组方法构成了调度中心对外提供查询服务和内部状态同步的基础设施。
 
-### 81.5.1 server_models::has_model - 存在性检查（支持别名）「查车牌」
+### 82.5.1 server_models::has_model - 存在性检查（支持别名）「查车牌」
 
 源码路径：`tools/server/server-models.cpp` 第356-366行。
 
@@ -432,7 +432,7 @@ bool server_models::has_model(const std::string & name) {
 
 ---
 
-### 81.5.2 server_models::get_meta - 获取元数据副本（支持别名）「取档案副本」
+### 82.5.2 server_models::get_meta - 获取元数据副本（支持别名）「取档案副本」
 
 源码路径：`tools/server/server-models.cpp` 第368-381行。
 
@@ -456,7 +456,7 @@ std::optional<server_model_meta> server_models::get_meta(const std::string & nam
 
 ---
 
-### 81.5.3 server_models::get_all_meta - 获取所有模型元数据快照「全量档案快照」
+### 82.5.3 server_models::get_all_meta - 获取所有模型元数据快照「全量档案快照」
 
 源码路径：`tools/server/server-models.cpp` 第418-427行。
 
@@ -476,7 +476,7 @@ std::vector<server_model_meta> server_models::get_all_meta() {
 
 ---
 
-### 81.5.4 server_models::update_meta - 线程安全更新元数据并通知「更新档案并广播」
+### 82.5.4 server_models::update_meta - 线程安全更新元数据并通知「更新档案并广播」
 
 源码路径：`tools/server/server-models.cpp` 第346-354行。
 
@@ -495,9 +495,9 @@ void server_models::update_meta(const std::string & name, const server_model_met
 
 ---
 
-## 81.6 子进程生命周期管理 —— 列车的「出站、监控、回库、清场」
+## 82.6 子进程生命周期管理 —— 列车的「出站、监控、回库、清场」
 
-### 81.6.1 server_models::load - 三步走加载「列车出站」
+### 82.6.1 server_models::load - 三步走加载「列车出站」
 
 **核心流程**：LRU预检 → 双重检查并发上限 → 分配端口 → Spawn子进程 → 启动双监控线程。源码路径：`tools/server/server-models.cpp` 第463-597行。
 
@@ -673,7 +673,7 @@ void server_models::load(const std::string & name) {
 
 ---
 
-### 81.6.2 server_models::unload - 优雅停止信号「发车回库」
+### 82.6.2 server_models::unload - 优雅停止信号「发车回库」
 
 不直接杀进程，而是发送停止信号，由管理线程负责后续流程。源码路径：`tools/server/server-models.cpp` 第599-612行。
 
@@ -698,7 +698,7 @@ void server_models::unload(const std::string & name) {
 
 ---
 
-### 81.6.3 server_models::unload_all - 全量停止「全站清场」
+### 82.6.3 server_models::unload_all - 全量停止「全站清场」
 
 遍历所有运行中模型发送停止信号，将管理线程移出映射表后再 `join`，避免死锁。源码路径：`tools/server/server-models.cpp` 第614-632行。
 
@@ -729,7 +729,7 @@ void server_models::unload_all() {
 
 ---
 
-### 81.6.4 server_models::unload_lru - LRU淘汰「最久未用先走」
+### 82.6.4 server_models::unload_lru - LRU淘汰「最久未用先走」
 
 当活跃模型数达到 `models_max` 上限，自动淘汰最久未使用的实例。源码路径：`tools/server/server-models.cpp` 第429-462行。
 
@@ -771,7 +771,7 @@ void server_models::unload_lru() {
 
 ---
 
-### 81.6.5 server_models::wait_until_loading_finished - 阻塞等待加载完成「等发车确认」
+### 82.6.5 server_models::wait_until_loading_finished - 阻塞等待加载完成「等发车确认」
 
 源码路径：`tools/server/server-models.cpp` 第646-656行。
 
@@ -792,7 +792,7 @@ void server_models::wait_until_loading_finished(const std::string & name) {
 
 ---
 
-### 81.6.6 server_models::ensure_model_ready - 确保模型就绪（自动加载+阻塞等待）「保障发车」
+### 82.6.6 server_models::ensure_model_ready - 确保模型就绪（自动加载+阻塞等待）「保障发车」
 
 路由层调用此方法保证模型可服务，内部结合自动加载与阻塞等待。源码路径：`tools/server/server-models.cpp` 第658-690行。
 
@@ -829,7 +829,7 @@ bool server_models::ensure_model_ready(const std::string & name) {
 
 ---
 
-### 81.6.7 server_models::update_status - 统一状态更新入口「状态变更广播台」
+### 82.6.7 server_models::update_status - 统一状态更新入口「状态变更广播台」
 
 源码路径：`tools/server/server-models.cpp` 第634-644行。
 
@@ -850,7 +850,7 @@ void server_models::update_status(const std::string & name, server_model_status 
 
 ---
 
-### 81.6.8 server_models::proxy_request - HTTP代理转发入口「中转售票」
+### 82.6.8 server_models::proxy_request - HTTP代理转发入口「中转售票」
 
 创建 `server_http_proxy` 对象转发请求到子进程，POST 请求更新 `last_used` 触发 LRU 刷新。源码路径：`tools/server/server-models.cpp` 第692-718行。
 
@@ -892,11 +892,11 @@ server_http_res_ptr server_models::proxy_request(const server_http_req & req, co
 
 ---
 
-## 81.7 子进程自我感知与通信协议 —— 列车与调度台的「暗号联络」
+## 82.7 子进程自我感知与通信协议 —— 列车与调度台的「暗号联络」
 
 父子进程通过**标准输出/标准输入**传递文本命令，零依赖、跨平台、易调试。
 
-### 81.7.1 server_models::is_child_server - 子进程身份识别「查员工证」
+### 82.7.1 server_models::is_child_server - 子进程身份识别「查员工证」
 
 源码路径：`tools/server/server-models.cpp` 第720-723行。
 
@@ -911,7 +911,7 @@ bool server_models::is_child_server() {
 
 ---
 
-### 81.7.2 server_models::setup_child_server - 子进程初始化「上车报到」
+### 82.7.2 server_models::setup_child_server - 子进程初始化「上车报到」
 
 启动时发送 `READY` 信号，启动监控线程阻塞读取 `stdin` 等待 `EXIT` 命令或 EOF。源码路径：`tools/server/server-models.cpp` 第725-753行。
 
@@ -952,7 +952,7 @@ std::thread server_models::setup_child_server(const std::function<void(int)> & s
 
 ---
 
-### 81.7.3 server_models::notify_router_sleeping_state - 睡眠/唤醒通知「报备休眠」
+### 82.7.3 server_models::notify_router_sleeping_state - 睡眠/唤醒通知「报备休眠」
 
 源码路径：`tools/server/server-models.cpp` 第755-762行。
 
@@ -970,9 +970,9 @@ void server_models::notify_router_sleeping_state(bool is_sleeping) {
 
 ---
 
-## 81.8 HTTP 代理转发与流式管道 —— 中转窗口与专用对讲机
+## 82.8 HTTP 代理转发与流式管道 —— 中转窗口与专用对讲机
 
-### 81.8.1 pipe_t - 线程安全流式管道「专用对讲机」
+### 82.8.1 pipe_t - 线程安全流式管道「专用对讲机」
 
 生产者-消费者模式，支持 EOF 检测、主动取消、broken pipe 语义。源码路径：`tools/server/server-models.cpp` 第1058-1091行。
 
@@ -1031,7 +1031,7 @@ struct pipe_t {
 
 ---
 
-### 81.8.2 server_http_proxy - 异步代理转发器「中转售票窗口」
+### 82.8.2 server_http_proxy - 异步代理转发器「中转售票窗口」
 
 构造时即发起异步请求，通过 `pipe_t` 回传响应头和流式 body。源码路径：`tools/server/server-models.cpp` 第1108-1182行。
 
@@ -1122,7 +1122,7 @@ server_http_proxy(const std::string & method, const std::string & scheme,
 
 ---
 
-### 81.8.3 请求头过滤与大小写归一化「过滤干扰信号」
+### 82.8.3 请求头过滤与大小写归一化「过滤干扰信号」
 
 防止头部回环和 CORS 污染。源码路径：`tools/server/server-models.cpp` 第1093-1106行。
 
@@ -1151,9 +1151,9 @@ static bool should_strip_proxy_header(const std::string & header_name) {
 
 ---
 
-## 81.9 路由 REST 端点 —— 对外的「调度总台」
+## 82.9 路由 REST 端点 —— 对外的「调度总台」
 
-### 81.9.1 server_models_routes::init_routes - 路由注册分发「柜台分流」
+### 82.9.1 server_models_routes::init_routes - 路由注册分发「柜台分流」
 
 以 Lambda 注册五个核心端点。源码路径：`tools/server/server-models.cpp` 第765-867行。
 
@@ -1266,7 +1266,7 @@ void server_models_routes::init_routes() {
 
 ---
 
-### 81.9.2 router_validate_model - 模型验证与自动加载决策「安检闸机」
+### 82.9.2 router_validate_model - 模型验证与自动加载决策「安检闸机」
 
 前置检查：别名解析、存在性、运行状态、autoload 决策。源码路径：`tools/server/server-models.cpp` 第780-800行。
 
@@ -1299,7 +1299,7 @@ static bool router_validate_model(std::string & name, server_models & models, bo
 
 ---
 
-### 81.9.3 is_autoload - 解析自动加载参数「读取自动购票设置」
+### 82.9.3 is_autoload - 解析自动加载参数「读取自动购票设置」
 
 优先读取请求参数 `autoload`，缺省回退到服务器全局配置。源码路径：`tools/server/server-models.cpp` 第802-810行。
 
@@ -1318,7 +1318,7 @@ static bool is_autoload(const common_params & params, const server_http_req & re
 
 ---
 
-### 81.9.4 res_ok / res_err - 统一响应格式化「标准回单」
+### 82.9.4 res_ok / res_err - 统一响应格式化「标准回单」
 
 源码路径：`tools/server/server-models.cpp` 第768-778行。
 
@@ -1338,9 +1338,9 @@ static void res_err(std::unique_ptr<server_http_res> & res, const json & error_d
 
 ---
 
-## 81.10 平台兼容与工具函数 —— 跨平台的「幕后保障组」
+## 82.10 平台兼容与工具函数 —— 跨平台的「幕后保障组」
 
-### 81.10.1 get_server_exec_path - 跨平台获取可执行路径「定位调度指挥车」
+### 82.10.1 get_server_exec_path - 跨平台获取可执行路径「定位调度指挥车」
 
 Windows 用 `GetModuleFileNameW`，macOS 用 `_NSGetExecutablePath` 两次调用，Linux 读 `/proc/self/exe`。源码路径：`tools/server/server-models.cpp` 第51-86行。
 
@@ -1388,7 +1388,7 @@ static std::filesystem::path get_server_exec_path() {
 
 ---
 
-### 81.10.2 get_environment / wide_to_utf8 - 环境变量与编码转换「收集环境情报」
+### 82.10.2 get_environment / wide_to_utf8 - 环境变量与编码转换「收集环境情报」
 
 Windows 环境变量为宽字符块，需逐项转 UTF-8。源码路径：`tools/server/server-models.cpp` 第103-145行。
 
@@ -1428,7 +1428,7 @@ static std::vector<std::string> get_environment() {
 
 ---
 
-### 81.10.3 get_free_port - 空闲端口分配「动态分配站台号」
+### 82.10.3 get_free_port - 空闲端口分配「动态分配站台号」
 
 `bind(0)` 让内核自动分配，`getsockname` 取回端口，立即关闭释放。源码路径：`tools/server/server-models.cpp` 第383-417行。
 
@@ -1486,7 +1486,7 @@ static int get_free_port() {
 
 ---
 
-### 81.10.4 to_char_ptr_array - vector<string> 转 argv 数组「转换指令单格式」
+### 82.10.4 to_char_ptr_array - vector<string> 转 argv 数组「转换指令单格式」
 
 源码路径：`tools/server/server-models.cpp` 第427-435行。
 
@@ -1506,7 +1506,7 @@ static std::vector<char *> to_char_ptr_array(const std::vector<std::string> & ve
 
 ---
 
-### 81.10.5 unset_reserved_args - 清理保留参数「防配置污染」
+### 82.10.5 unset_reserved_args - 清理保留参数「防配置污染」
 
 移除路由器级参数（SSL、API Key、模型目录、并发限制、预设路径、autoload 开关），`unset_model_args=true` 时额外清理模型级参数。源码路径：`tools/server/server-models.cpp` 第88-101行。
 
@@ -1531,7 +1531,7 @@ static void unset_reserved_args(common_preset & preset, bool unset_model_args) {
 
 ---
 
-### 81.10.6 to_lower_copy - 字符串转小写「统一大小写」
+### 82.10.6 to_lower_copy - 字符串转小写「统一大小写」
 
 源码路径：`tools/server/server-models.cpp` 第1093-1097行。
 
@@ -1547,7 +1547,7 @@ static std::string to_lower_copy(const std::string & value) {
 
 ---
 
-### 81.10.7 should_strip_proxy_header - 代理响应头过滤判断「过滤干扰头」
+### 82.10.7 should_strip_proxy_header - 代理响应头过滤判断「过滤干扰头」
 
 源码路径：`tools/server/server-models.cpp` 第1099-1106行。
 
@@ -1570,7 +1570,7 @@ static bool should_strip_proxy_header(const std::string & header_name) {
 
 ---
 
-## 81.11 设计中的取舍 —— 为什么这样设计？
+## 82.11 设计中的取舍 —— 为什么这样设计？
 
 **为什么父子进程通信用 stdio 而非共享内存/gRPC？**
 控制面消息极少（仅 READY/SLEEP/EXIT），stdio 完全够用，符合“零依赖”理念。共享内存需要平台特定 API 增加复杂度，gRPC 需引入 Protobuf/grpc 库增大体积，而 stdio 天然跨平台、调试时直接看日志可见命令流、实现极简。
@@ -1598,45 +1598,45 @@ Socket API 差异（`SOCKET` vs `int`、`closesocket` vs `close`、`socklen_t` v
 
 ---
 
-## 81.12 动手练习
+## 82.12 动手练习
 
-### 练习 1：LRU 淘汰策略深度分析
+### 82.12.1 练习 1：LRU 淘汰策略深度分析
 阅读 `unload_lru()` 与 `load()` 代码，回答：
 1. `unload_lru()` 如何找到「最久未使用」模型？为何用 `ggml_time_ms()`？
 2. `load()` 为何在锁内二次检查 `count_active >= models_max`？防止什么并发问题？
 3. 两线程同时 `load()` 不同模型且已达 `models_max`，描述时序与结果。
 
-### 练习 2：子进程生命周期与双线程监控
+### 82.12.2 练习 2：子进程生命周期与双线程监控
 阅读 `load()` 中 `log_thread` 与 `stopping_thread`，回答：
 1. `log_thread` 如何识别 READY/SLEEP 信号？通过什么通道发送？
 2. `stopping_thread` 退出条件有哪些？为何用 `wait_for` 循环而非一次性等待？
 3. 子进程崩溃时，`stopping_thread` 如何检测并处理？`subprocess_alive` 作用？
 
-### 练习 3：HTTP代理与流式管道实现
+### 82.12.3 练习 3：HTTP代理与流式管道实现
 阅读 `server_http_proxy` 与 `pipe_t`，回答：
 1. `pipe_t::read()` 如何实现取消机制？`should_stop` 何时被调用？
 2. `should_strip_proxy_header` 过滤哪些头？为何过滤 CORS 头？
 3. 500ms `poll_interval` 对慢响应有何影响？如何优化为事件驱动？
 
-### 练习 4：预设合并与优先级
+### 82.12.4 练习 4：预设合并与优先级
 阅读 `load_models()` 与 `common/preset.h` 的 `cascade`/`merge`，回答：
 1. 三源（cached、local、custom INI）合并优先级？同名模型 cached 与 local 谁生效？
 2. `base_preset` 何时注入？优先级相对模型特定预设高还是低？
 3. `unset_reserved_args` 清理哪些参数？为何不能传给子进程？
 
-### 练习 5：跨平台兼容层实践
+### 82.12.5 练习 5：跨平台兼容层实践
 阅读 `get_server_exec_path`、`get_environment`、`get_free_port`，回答：
 1. Windows/Linux 获取可执行路径本质不同？macOS 为何两次调用 `_NSGetExecutablePath`？
 2. Windows 环境变量为何宽字符？`wide_to_utf8` 失败返回什么？
 3. `get_free_port` 端口何时真正释放？高并发是否可能冲突？
 
-### 练习 6：模型路由与自动加载
+### 82.12.6 练习 6：模型路由与自动加载
 阅读 `router_validate_model` 与 `is_autoload`，回答：
 1. 如何处理模型别名？为何解析为规范名？
 2. `is_autoload` 默认行为？请求参数如何覆盖全局配置？
 3. `autoload=false` 且模型未加载时，返回什么错误？HTTP 状态码？
 
-### 练习 7：线程同步与条件变量实战
+### 82.12.7 练习 7：线程同步与条件变量实战
 阅读所有 `mutex`/`condition_variable` 使用位置，回答：
 1. `update_meta` 为何 `cv.notify_all()`？无通知会怎样？
 2. `wait_until_loading_finished` 等待条件？为何 lambda 捕获 `this` 和 `name`？
@@ -1644,7 +1644,7 @@ Socket API 差异（`SOCKET` vs `int`、`closesocket` vs `close`、`socklen_t` v
 
 ---
 
-## 81.13 本章小结
+## 82.13 本章小结
 
 本章深入剖析了 llama-server 的模型调度核心——`server_models` 类及其协作组件。首先我们理解了模型元数据 `server_model_meta` 与四态状态机 `server_model_status` 的设计，它们是调度决策的基础。其次我们详细追踪了 `load_models()` 的三源预设合并策略（缓存→本地→INI→CLI），以及 `add_model()` 的多层冲突检测机制。接着我们重点分析了 `load()` 的“三步走”加载流程：LRU 预检、端口分配、子进程 Spawn，以及双监控线程（日志转发+状态识别、停止监控+超时强杀）的精妙协作。然后我们探讨了卸载流程的优雅退出信号机制、LRU 淘汰的完整实现、就绪等待与自动加载的阻塞同步原语。随后我们剖析了父子进程通信协议（READY/SLEEP/EXIT）、HTTP 代理转发器 `server_http_proxy` 的异步流式设计、核心数据通道 `pipe_t` 的生产者-消费者实现与取消机制。最后我们梳理了路由 REST 端点的注册与分发逻辑、模型验证与自动加载决策、跨平台兼容层（可执行路径、环境变量、端口分配）的封装细节，以及预设合并优先级、保留参数清理等工程实用技巧。
 

@@ -2,7 +2,7 @@
 
 
 
-# 第24章 模型量化系统：精度与体积的「瘦身车间」
+# 第23章 模型量化系统：精度与体积的「瘦身车间」
 
 ## 学习目标
 
@@ -17,11 +17,11 @@
 - 掌握 quantize_state_impl 的状态管理（计数器、正则模式编译、共享嵌入检测）
 - 理解 GGUF 文件占位-回填机制与最终元数据写入的协同
 
-## 24.1 生活类比
+## 23.1 生活类比
 
 想象 llama.cpp 的量化系统是一家**模型改造工厂的「瘦身车间」**。原始模型权重如同刚出炉的钢坯——沉重、笨拙，却蕴含着全部的知识精华。量化的任务就是把这些钢坯「瘦身」成轻便的成品，同时尽可能保留原有的强度（精度）。在这个车间里，**张量分类（tensor_category）** 就是入厂前按品类分拣：Q 类零件、V 类零件、FFN 类零件、装饰件各自走不同的产线。`tensor_name_match_token_embd` 与 `tensor_name_match_output_weight` 是车间门口的「身份证核验机」，精确识别嵌入与输出两类特殊零件，因为它们关乎模型的「嘴巴」与「耳朵」，容不得半点马虎。`tensor_allows_quantization` 则是安检门：太小的零件、特殊材质、稀有型号一律不改造，原样通过。`llama_tensor_get_type` 是工艺工程师：根据零件类型、所在楼层、客户订单（ftype）决定用什么工艺。注意力 V 升级到 Q5_K，就像关键轴承精度不能省，宁可多花点材料也要保住精度。MXFP4_MOE 分流则是 MoE 专家是「大件」，用专用工艺；其他零件走标准线。imatrix 是「零件重要性地图」，告诉工厂哪些角落误差容忍度更低。`tensor_type_fallback` 是紧急预案：原工艺不匹配时切换到备用方案（Q2_K → Q4_0）。layer_info / use_more_bits 是楼层优先级：底层、顶层、每 3 层的关键层要重点打磨。prune_layers + remap_layer 是「楼层拆除施工」，先标记要拆的，再给剩余楼层重新编号。占位 + 回填则是先搭脚手架（meta_size 零字节），施工完成后再补上竣工图纸。quantize_state_impl 构造函数是车间开工准备会：一次性把客户定制规则（正则覆盖）编好，避免每次返工。外部接口（llama_ext）是工厂的「对外接待窗口」：第三方无需进厂（加载真实权重）就能委托加工。就像优秀的工厂经理需要在精度、体积、速度之间精妙平衡，llama.cpp 的量化系统也需要为每张张量找到最合适的精度档位。
 
-## 24.2 源码地图
+## 23.2 源码地图
 
 ```
 src/llama-quant.cpp
@@ -92,9 +92,9 @@ src/llama-ext.h
 
 ---
 
-## 24.3 源码解析单元1：张量分类与可量化判定 —— 量化策略的「分流闸门」
+## 23.3 源码解析单元1：张量分类与可量化判定 —— 量化策略的「分流闸门」
 
-### 24.3.1 模块依赖图
+### 23.3.1 模块依赖图
 
 ```mermaid
 flowchart TD
@@ -123,7 +123,7 @@ flowchart TD
     V -- 否 --> X[OTHER]
 ```
 
-### 24.3.2 tensor_name_match_token_embd()：识别嵌入张量（精确匹配）
+### 23.3.2 tensor_name_match_token_embd()：识别嵌入张量（精确匹配）
 
 ```cpp
 // src/llama-quant.cpp (第 109-112 行)
@@ -134,7 +134,7 @@ static bool tensor_name_match_token_embd(const char * tensor_name) {
 ```
 这段代码实现了对嵌入层权重张量的精确识别。与后文 `tensor_get_category` 使用 `find` 子串匹配不同，这里必须精确匹配，因为嵌入层名称在不同架构中高度一致，且不应误匹配到其他包含 "token_embd" 子串的张量。在「瘦身车间」里，这是门口的「身份证核验机」，精确识别嵌入这类特殊零件，因为它们关乎模型的「耳朵」，容不得半点马虎。
 
-### 24.3.3 tensor_name_match_output_weight()：识别输出张量（精确匹配）
+### 23.3.3 tensor_name_match_output_weight()：识别输出张量（精确匹配）
 
 ```cpp
 // src/llama-quant.cpp (第 114-116 行)
@@ -144,7 +144,7 @@ static bool tensor_name_match_output_weight(const char * tensor_name) {
 ```
 输出层权重往往与嵌入层共享权重（tied embeddings），因此也需要精确识别，以便在量化策略中联动处理。这是车间另一台「身份证核验机」，守护模型的「嘴巴」。
 
-### 24.3.4 tensor_get_category()：字符串匹配 → 类别映射
+### 23.3.4 tensor_get_category()：字符串匹配 → 类别映射
 
 ```cpp
 // src/llama-quant.cpp (第 119-145 行)
@@ -187,7 +187,7 @@ static tensor_category tensor_get_category(const std::string & tensor_name) {
 ```
 这段代码将张量名称字符串映射为枚举类别，是后续所有量化策略分发的基础。顺序至关重要：`attn_qkv` 与 `attn_kv_b` 必须优先于单独的 Q/K/V 判断，否则组合张量会被错误归类。在「瘦身车间」里，这就是「按品类分拣」的传送带，Q 类、V 类、FFN 类零件各自走向不同的产线。
 
-### 24.3.5 category_is_attn_v()：V 类敏感张量判定
+### 23.3.5 category_is_attn_v()：V 类敏感张量判定
 
 ```cpp
 // src/llama-quant.cpp (第 147-151 行)
@@ -199,7 +199,7 @@ static bool category_is_attn_v(tensor_category cat) {
 ```
 这段代码定义了一个简单的谓词函数，用于在量化策略中快速识别「高价值」张量。注意力 V 相关张量在量化时对精度最敏感，通常需要保留更多比特或使用更高精度的量化格式。在车间里，这些是「关键轴承」，精度不能省。
 
-### 24.3.6 可量化判定流程图
+### 23.3.6 可量化判定流程图
 
 ```mermaid
 flowchart TD
@@ -222,7 +222,7 @@ flowchart TD
     J -- 否 --> K[返回 true]
 ```
 
-### 24.3.7 tensor_allows_quantization()：可量化的多条件检查
+### 23.3.7 tensor_allows_quantization()：可量化的多条件检查
 
 ```cpp
 // src/llama-quant.cpp (第 285-335 行)
@@ -283,7 +283,7 @@ static bool tensor_allows_quantization(const llama_model_quantize_params * param
 ```
 这段代码实现了一个**决策树**：从维度、名称后缀开始，层层剔除不应量化的张量。设计哲学是「宁可不量化，不可错量化」——保留列表覆盖了所有已知敏感或收益极小的张量。在「瘦身车间」里，这是「安检门」：太小的零件（altup/laurel）、特殊材质（norm/位置嵌入）、稀有型号（RWKV time_mix、Mamba conv1d）一律不改造，原样通过。
 
-### 24.3.8 llama_tensor_dequantize_impl()：任意类型→F32 的多线程反量化入口
+### 23.3.8 llama_tensor_dequantize_impl()：任意类型→F32 的多线程反量化入口
 
 ```cpp
 // src/llama-quant.cpp (第 220-281 行)
@@ -360,7 +360,7 @@ static void llama_tensor_dequantize_impl(
 ```
 这段代码实现了**通用的反量化入口**，支持 F16/BF16 与所有量化格式到 FP32 的转换，并通过块级划分实现多线程并行。`no_init<float>` 避免了不必要的零初始化开销。在车间里，这是「还原熔炉」，把各种压缩格式的零件还原成统一的 FP32 「熔融原料」，方便后续重铸。
 
-### 24.3.9 llama_ftype_get_default_type()：FTYPE 与默认类型映射
+### 23.3.9 llama_ftype_get_default_type()：FTYPE 与默认类型映射
 
 ```cpp
 // src/llama-quant.cpp (第 655-705 行)
@@ -407,9 +407,9 @@ ggml_type llama_ftype_get_default_type(llama_ftype ftype) {
 
 ---
 
-## 24.4 源码解析单元2：核心量化类型选择 —— 智能选择每张量的精度档位
+## 23.4 源码解析单元2：核心量化类型选择 —— 智能选择每张量的精度档位
 
-### 24.4.1 策略分发流程图
+### 23.4.1 策略分发流程图
 
 ```mermaid
 flowchart TD
@@ -439,7 +439,7 @@ flowchart TD
     S --> X[ATTENTION_OUTPUT/QKV/FFN_GATE/UP 各自策略]
 ```
 
-### 24.4.2 llama_tensor_get_type_impl()：综合策略中枢
+### 23.4.2 llama_tensor_get_type_impl()：综合策略中枢
 
 ```cpp
 // src/llama-quant.cpp (第 378-558 行)
@@ -676,7 +676,7 @@ static ggml_type llama_tensor_get_type_impl(quantize_state_impl & qs, ggml_type 
 ```
 这段代码是**量化策略的大脑**，将张量类别、层位置、模型规模（GQA、专家数、70B）、文件类型（ftype）、imatrix 可用性等多维信息融合，输出每个张量的最佳量化类型。设计体现了「差异化、分层感知、架构自适应」三大原则。在「瘦身车间」里，这是「工艺工程师」：根据零件类型、所在楼层、客户订单决定用什么工艺。注意力 V 升级到 Q5_K，就像关键轴承精度不能省；MXFP4_MOE 分流则是 MoE 专家是「大件」，用专用工艺；imatrix 是「零件重要性地图」；layer_info / use_more_bits 是楼层优先级：底层、顶层、每 3 层的关键层要重点打磨。
 
-### 24.4.3 三级决策链流程图
+### 23.4.3 三级决策链流程图
 
 ```mermaid
 flowchart TD
@@ -693,7 +693,7 @@ flowchart TD
     K --> L[返回最终类型]
 ```
 
-### 24.4.4 llama_tensor_get_type()：外层包装与手动覆盖
+### 23.4.4 llama_tensor_get_type()：外层包装与手动覆盖
 
 ```cpp
 // src/llama-quant.cpp (第 562-602 行)
@@ -739,7 +739,7 @@ static ggml_type llama_tensor_get_type(quantize_state_impl & qs, const llama_mod
 ```
 这段代码实现了**三级决策链**：不可量化保底 → 用户显式指定 → 手动正则覆盖 → 智能策略 → 形状兼容性回退。正则模式在 `quantize_state_impl` 构造时预编译，避免每张量重复编译开销。在车间里，这是「三级审批」：安检门挡住不改造件 → 客户定制订单优先 → 车间主任特批工艺 → 工艺工程师标准工艺 → 紧急预案兼容形状。
 
-### 24.4.5 tensor_type_fallback()：形状不兼容时的自动降级
+### 23.4.5 tensor_type_fallback()：形状不兼容时的自动降级
 
 ```cpp
 // src/llama-quant.cpp (第 339-374 行)
@@ -787,9 +787,9 @@ static ggml_type tensor_type_fallback(quantize_state_impl & qs, const ggml_tenso
 
 ---
 
-## 24.5 源码解析单元3：重要性矩阵与 imatrix 需求判定 —— 精度敏感的「温度计」
+## 23.5 源码解析单元3：重要性矩阵与 imatrix 需求判定 —— 精度敏感的「温度计」
 
-### 24.5.1 imatrix 校验与切片逻辑时序图
+### 23.5.1 imatrix 校验与切片逻辑时序图
 
 ```mermaid
 sequenceDiagram
@@ -821,7 +821,7 @@ sequenceDiagram
     end
 ```
 
-### 24.5.2 tensor_requires_imatrix()：低比特量化的前置条件
+### 23.5.2 tensor_requires_imatrix()：低比特量化的前置条件
 
 ```cpp
 // src/llama-quant.cpp (第 671-685 行)
@@ -848,9 +848,9 @@ static bool tensor_requires_imatrix(const char * tensor_name, const ggml_type ds
 
 ---
 
-## 24.6 源码解析单元4：层裁剪与重映射 —— 灵活重组模型层结构
+## 23.6 源码解析单元4：层裁剪与重映射 —— 灵活重组模型层结构
 
-### 24.6.1 层重命名前后对比图
+### 23.6.1 层重命名前后对比图
 
 ```mermaid
 graph LR
@@ -880,7 +880,7 @@ graph LR
     L5 -.-> L5n
 ```
 
-### 24.6.2 remap_layer()：层号提取与重编号
+### 23.6.2 remap_layer()：层号提取与重编号
 
 ```cpp
 // src/llama-quant.cpp (第 55-82 行)
@@ -914,7 +914,7 @@ static std::string remap_layer(const std::string & orig_name, const std::vector<
 ```
 这段代码实现了**层裁剪后的张量重命名**：被裁剪层的张量直接丢弃，剩余层按顺序重新编号为 0,1,2...，保证输出模型层号连续。在车间里，这是「楼层拆除施工」：先标记要拆的楼层（prune_list），再给剩余楼层重新编号。
 
-### 24.6.3 remap_imatrix()：imatrix 反向映射
+### 23.6.3 remap_imatrix()：imatrix 反向映射
 
 ```cpp
 // src/llama-quant.cpp (第 84-105 行)
@@ -943,9 +943,9 @@ static std::string remap_imatrix(const std::string & orig_name, const std::map<i
 
 ---
 
-## 24.7 源码解析单元5：量化执行与多线程调度 —— 大规模权重的「并行瘦身流水线」
+## 23.7 源码解析单元5：量化执行与多线程调度 —— 大规模权重的「并行瘦身流水线」
 
-### 24.7.1 多线程量化流水线与专家切片并行图
+### 23.7.1 多线程量化流水线与专家切片并行图
 
 ```mermaid
 flowchart TD
@@ -968,7 +968,7 @@ flowchart TD
     H --> O[返回总 new_size]
 ```
 
-### 24.7.2 llama_tensor_quantize_impl()：多线程量化执行器
+### 23.7.2 llama_tensor_quantize_impl()：多线程量化执行器
 
 ```cpp
 // src/llama-quant.cpp (第 608-667 行)
@@ -1026,7 +1026,7 @@ static size_t llama_tensor_quantize_impl(enum ggml_type new_type, const float * 
 ```
 这段代码实现了**行级并行量化**：以 `chunk_size`（默认 ≥ 32*512 元素）为粒度动态分配任务，避免负载不均。每行量化后立即校验，保证数值正确性。在车间里，这是「并行流水线」：将大零件切成小段，多台机床同时加工，每段加工完即刻质检。
 
-### 24.7.3 专家独立量化与工作缓冲区复用
+### 23.7.3 专家独立量化与工作缓冲区复用
 
 在主驱动 main loop 中：
 ```cpp
@@ -1043,9 +1043,9 @@ for (int64_t i03 = 0; i03 < tensor->ne[2]; ++i03) {
 
 ---
 
-## 24.8 源码解析单元6：主量化驱动与 GGUF 输出 —— 量化任务的「总指挥」
+## 23.8 源码解析单元6：主量化驱动与 GGUF 输出 —— 量化任务的「总指挥」
 
-### 24.8.1 主流程双循环流程图
+### 23.8.1 主流程双循环流程图
 
 ```mermaid
 flowchart TD
@@ -1080,7 +1080,7 @@ flowchart TD
     Z --> AA[输出统计: 原始/量化大小 BPW fallback]
 ```
 
-### 24.8.2 占位-回填时序图
+### 23.8.2 占位-回填时序图
 
 ```mermaid
 sequenceDiagram
@@ -1103,7 +1103,7 @@ sequenceDiagram
     Main->>File: close
 ```
 
-### 24.8.3 llama_model_quantize_impl()：全流程编排
+### 23.8.3 llama_model_quantize_impl()：全流程编排
 
 ```cpp
 // src/llama-quant.cpp (第 833-1162 行)
@@ -1160,7 +1160,7 @@ static void llama_model_quantize_impl(const std::string & fname_inp, const std::
    - 结果写入：`gguf_set_tensor_type` 更新元数据类型，`gguf_set_tensor_data` 登记数据指针，`fout.write` 写数据，`zeros` 写 padding 对齐。
 9. **收尾**：`close_ofstream` 回填最后分片元数据，输出原始/量化大小、BPW、fallback 统计。
 
-### 24.8.4 zeros()：文件占位符写入
+### 23.8.4 zeros()：文件占位符写入
 
 ```cpp
 // src/llama-quant.cpp (第 48-53 行)
@@ -1173,7 +1173,7 @@ static void zeros(std::ofstream & file, size_t n) {
 ```
 逐字节写入 `n` 个零字节。用于在文件开头预留 `meta_size` 字节的占位符，待量化完成后通过 `seekp(0)` 回填实际元数据。单字节写入虽慢，但 `meta_size` 通常仅几百 KB，开销可忽略。在车间里，这是「先搭脚手架（meta_size 零字节），施工完成后再补上竣工图纸」。
 
-### 24.8.5 占位-回填机制
+### 23.8.5 占位-回填机制
 
 ```cpp
 // new_ofstream 闭包 (第 1075-1095 行)
@@ -1198,7 +1198,7 @@ auto close_ofstream = [&]() {
 ```
 **原理**：GGUF 文件头（元数据）大小在张量全部添加完毕前无法确定。采用「先占位、后回填」：打开文件时写入 `meta_size` 个零字节占位；所有张量处理完毕后，`seekp(0)` 回到文件开头，序列化最终元数据覆盖占位符。这是流式写入大文件的经典模式。
 
-### 24.8.6 init_quantize_state_counters()：计数器初始化
+### 23.8.6 init_quantize_state_counters()：计数器初始化
 
 ```cpp
 // src/llama-quant.cpp (第 809-823 行)
@@ -1220,9 +1220,9 @@ static void init_quantize_state_counters(quantize_state_impl & qs, std::vector<t
 
 ---
 
-## 24.9 源码解析单元7：外部工具接口 —— 让「第三方」也能调动量化能力
+## 23.9 源码解析单元7：外部工具接口 —— 让「第三方」也能调动量化能力
 
-### 24.9.1 外部接口调用关系图
+### 23.9.1 外部接口调用关系图
 
 ```mermaid
 classDiagram
@@ -1250,7 +1250,7 @@ classDiagram
     llama_quant_tensor_allows_quantization ..> quantize_state_impl : 转发判定
 ```
 
-### 24.9.2 quantize_state_impl 构造函数：预编译正则模式
+### 23.9.2 quantize_state_impl 构造函数：预编译正则模式
 
 ```cpp
 // src/llama-quant.cpp (第 197-205 行)
@@ -1266,7 +1266,7 @@ quantize_state_impl(const llama_model & model, const llama_model_quantize_params
 ```
 **一次性编译**：避免在 `llama_tensor_get_type` 中为每个张量重复编译正则，显著降低开销。在车间里，这是「开工准备会」：一次性把客户定制规则（正则覆盖）编好，避免每次返工。
 
-### 24.9.3 llama_quant_init() / llama_quant_free()：RAII 句柄
+### 23.9.3 llama_quant_init() / llama_quant_free()：RAII 句柄
 
 ```cpp
 // src/llama-quant.cpp (第 1205-1213 行)
@@ -1280,7 +1280,7 @@ void llama_quant_free(quantize_state_impl * qs) {
 ```
 标准的 C 风格 RAII 接口：`init` 在堆上构造状态对象返回不透明指针，`free` 负责析构。外部工具通过这对接口管理量化状态生命周期。在车间里，这是「对外接待窗口」的开关。
 
-### 24.9.4 llama_quant_model_from_metadata()：Mock 模型构造
+### 23.9.4 llama_quant_model_from_metadata()：Mock 模型构造
 
 ```cpp
 // src/llama-quant.cpp (第 1215-1234 行)
@@ -1306,7 +1306,7 @@ llama_model * llama_quant_model_from_metadata(const llama_quant_model_desc * des
 ```
 创建默认参数的 `llama_model`，填充架构、超参数。**仅推断 LLM_TYPE_70B**：Llama 80 层且 GQA 判定为 70B 类型，触发 70B 专属量化优化。**无真实权重**：仅用于 `llama_quant_compute_types` 等离线类型计算场景，**不能**用于实际量化。在车间里，这是「根据图纸造的模型」，只能用来试算工艺，不能真正下料加工。
 
-### 24.9.5 llama_quant_tensor_allows_quantization()：可量化判定导出
+### 23.9.5 llama_quant_tensor_allows_quantization()：可量化判定导出
 
 ```cpp
 // src/llama-quant.cpp (第 1237-1240 行)
@@ -1316,7 +1316,7 @@ bool llama_quant_tensor_allows_quantization(const quantize_state_impl * qs, cons
 ```
 直接转发内部判定函数，供外部工具在不执行完整量化流程时预判张量是否会被量化。
 
-### 24.9.6 llama_quant_compute_types()：批量类型预计算
+### 23.9.6 llama_quant_compute_types()：批量类型预计算
 
 ```cpp
 // src/llama-quant.cpp (第 1243-1278 行)
@@ -1356,7 +1356,7 @@ void llama_quant_compute_types(
 ```
 **重置计数器**：确保多次调用互不干扰（如对比不同 ftype 的类型分配）。从张量指针数组提取名称构建 metadata，初始化计数器与类别，复制参数并覆盖 ftype，逐张量调用 `llama_tensor_get_type` 计算目标类型。这让外部工具能**在不加载真实权重、不创建 GGUF 文件**的情况下，快速预测给定 ftype 下每个张量的量化类型分配，用于测试、基准对比、策略调优。在车间里，这是「不进厂（加载真实权重）就能委托加工」的接待窗口。
 
-### 24.9.7 llama-ext.h：对外暴露的接口声明
+### 23.9.7 llama-ext.h：对外暴露的接口声明
 
 ```cpp
 // src/llama-ext.h (第 5-60 行)
@@ -1372,7 +1372,7 @@ LLAMA_API void llama_quant_compute_types(quantize_state_impl * qs, llama_ftype f
 
 ---
 
-## 24.10 设计中的取舍
+## 23.10 设计中的取舍
 
 为什么不用统一的量化类型，而要按张量类别差异化？统一量化实现简单，但忽略了不同张量对模型精度的贡献差异。注意力 V、输出层、嵌入层对下游任务精度影响巨大，而 FFN 中间层、部分注意力投影容忍度较高。llama.cpp 采用分层差异化策略：关键张量保高精度（Q5_K/Q6_K/Q8_0），非关键张量激进压缩（Q2_K/IQ3_XXS），在同等模型体积下最大化精度保持。这是「精度预算」的最优分配问题。在车间里，关键轴承用高精度钢材，普通支架用普通材料，同等成本下整车性能最优。
 
@@ -1384,9 +1384,9 @@ tensor_type_fallback 降级到 F16 而非报错的考量？极少数张量（如
 
 ---
 
-## 24.11 动手练习
+## 23.11 动手练习
 
-### 练习 1：阅读张量分类与可量化判定源码
+### 23.11.1 练习 1：阅读张量分类与可量化判定源码
 阅读 `src/llama-quant.cpp` 第 84-150 行与第 266-325 行，理解以下函数：
 1. `tensor_name_match_token_embd()` - 精确字符串匹配
 2. `tensor_name_match_output_weight()` - 精确字符串匹配
@@ -1399,7 +1399,7 @@ tensor_type_fallback 降级到 F16 而非报错的考量？极少数张量（如
 - `tensor_allows_quantization` 的保留列表中，`altup`/`laurel`/`sam.*` 分别是哪些模型特有的张量？
 - 为什么 `ffn_gate_inp.weight` 不参与量化？（提示：它在 MoE 中扮演什么角色？）
 
-### 练习 2：追踪量化类型选择策略
+### 23.11.2 练习 2：追踪量化类型选择策略
 阅读 `src/llama-quant.cpp` 第 376-560 行的 `llama_tensor_get_type_impl()` 函数，理解以下场景：
 1. 共享嵌入（OUTPUT + TOKEN_EMBD 联动）的处理逻辑
 2. MXFP4_MOE 分流：2D 张量与 3D 张量的不同处理
@@ -1411,7 +1411,7 @@ tensor_type_fallback 降级到 F16 而非报错的考量？极少数张量（如
 - `use_more_bits(i_layer, n_layers)` 的判定规则是什么？为什么首尾 1/8 的层需要更多比特？
 - 70B 模型的 `n_gqa` 通常是多少？将 attn_v 从 Q4_K 升级到 Q5_K 会增加多少模型体积？
 
-### 练习 3：理解 imatrix 校验与缺失处理
+### 23.11.3 练习 3：理解 imatrix 校验与缺失处理
 阅读 `src/llama-quant.cpp` 第 620-640 行（`tensor_requires_imatrix`）以及第 1000-1060 行的 imatrix 校验逻辑：
 
 **回答问题**：
@@ -1419,7 +1419,7 @@ tensor_type_fallback 降级到 F16 而非报错的考量？极少数张量（如
 - 当 imatrix 张量大小与目标张量 ne[0]*ne[2] 不一致时，`token_embd` 与其他张量的处理策略有何不同？
 - 3D 专家张量（ne[2]>1）如何按 ne[2] 切片使用独立的 imatrix 子数组？
 
-### 练习 4：模拟主量化驱动的完整流程
+### 23.11.4 练习 4：模拟主量化驱动的完整流程
 阅读 `src/llama-quant.cpp` 第 733-1184 行的 `llama_model_quantize_impl()` 函数：
 1. 画出主循环的流程图（preliminary loop → main loop）
 2. 找出 dry_run 模式与正常模式的分叉点
@@ -1430,7 +1430,7 @@ tensor_type_fallback 降级到 F16 而非报错的考量？极少数张量（如
 - 写出 GGUF 时，`gguf_set_tensor_data` 与 `fout.write` 的顺序是怎样的？为什么必须先设置 tensor data 再写文件？
 - `params->keep_split` 模式下，如何处理多文件输出与 n_split 计算？
 
-### 练习 5：设计自定义张量类型覆盖规则
+### 23.11.5 练习 5：设计自定义张量类型覆盖规则
 阅读 `src/llama-quant.cpp` 第 565-600 行（`llama_tensor_get_type` 外层包装）以及第 153-175 行（`quantize_state_impl` 构造函数）：
 
 **回答问题**：
@@ -1440,7 +1440,7 @@ tensor_type_fallback 降级到 F16 而非报错的考量？极少数张量（如
 
 **动手建议**：尝试在源码中打印 `tensor_type_patterns` 的内容，观察其与 tensor 名称的匹配过程。
 
-### 练习 6：使用外部工具接口进行测试
+### 23.11.6 练习 6：使用外部工具接口进行测试
 阅读 `src/llama-ext.h` 与 `src/llama-quant.cpp` 第 1231-1306 行的外部工具接口：
 
 **回答问题**：
@@ -1449,7 +1449,7 @@ tensor_type_fallback 降级到 F16 而非报错的考量？极少数张量（如
 - 在不加载真实权重的情况下，如何利用这些接口验证某个 ftype 对特定张量的类型分配？
 - `llama_quant_compute_types` 为何在内部重置计数器？这一设计有什么好处？
 
-### 练习 7：理解 GGUF 占位-回填机制
+### 23.11.7 练习 7：理解 GGUF 占位-回填机制
 阅读 `src/llama-quant.cpp` 第 1075-1095 行的 `new_ofstream()` 与 `close_ofstream()` 闭包函数：
 
 **回答问题**：
@@ -1459,7 +1459,7 @@ tensor_type_fallback 降级到 F16 而非报错的考量？极少数张量（如
 
 ---
 
-## 24.12 本章小结
+## 23.12 本章小结
 
 这一章中我们深入剖析了 llama.cpp 量化子系统的核心实现。首先我们了解了**张量分类体系**（`tensor_category` 11 类）与**精确识别函数**（`tensor_name_match_token_embd/output_weight`），它们是后续所有策略的基石。其次我们详细阅读了**可量化判定逻辑**（`tensor_allows_quantization`），它通过维度检查、名称后缀匹配、保留列表三重过滤，构建了「宁可不量化，不可错量化」的安全防线。接着我们探索了**核心类型选择引擎**（`llama_tensor_get_type_impl`），它综合张量类别、层位置、模型架构（GQA、专家数、70B）、文件类型、imatrix 可用性等多维信息，实现了差异化、分层感知、架构自适应的精度分配策略。我们还分析了**类型回退机制**（`tensor_type_fallback`）如何处理形状不兼容、**imatrix 需求判定**（`tensor_requires_imatrix`）如何守护低比特量化质量、**层裁剪重映射**（`remap_layer/imatrix`）如何灵活重组模型结构。在执行层面，我们看到了**多线程量化执行器**（`llama_tensor_quantize_impl`）按行分块并行、专家独立量化、校验互锁的工程细节，以及缓冲区复用（in-place/view）带来的内存优化。最后我们追踪了**主驱动流程**（`llama_model_quantize_impl`）从加载、预演、实战到写出的全链路，特别是 GGUF **占位-回填机制**实现了流式大文件写入，并理解了**外部工具接口**（`llama-ext.h`）如何以 RAII 风格暴露量化能力供第三方复用。
 

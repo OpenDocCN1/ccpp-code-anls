@@ -1,6 +1,6 @@
 
 
-# GGUF 的物流集装箱哲学 —— 统一模型分发的「世界语」
+# 第56章 GGUF 的物流集装箱哲学 —— 统一模型分发的「世界语」
 
 ## 学习目标
 
@@ -14,11 +14,11 @@
 - 掌握量化接口（quantize/dequantize）与Lazy张量的交互机制
 - 熟悉SpecialVocab对多种分词器格式的统一处理
 
-## 57.1 生活类比
+## 56.1 生活类比
 
 想象 GGUF 是一个国际航运的标准集装箱体系。无论箱子里装的是 Llama、Qwen 还是 Gemma，箱子的外形、锁扣、吊装孔都遵循统一的 ISO 标准，港口（推理引擎）可以无缝吊装。GGUF 格式就是大模型世界的集装箱尺寸规范，它定义了二进制布局、元数据键名和张量排列规则，让不同架构的模型都能装进同一个“箱子”。gguf-py 则是这个集装箱的海关，Writer 是装箱流水线，Reader 是海关查验机，constants.py 是 HS 编码词典，tensor_mapping.py 是多语言翻译官，而 metadata.py 和 vocab.py 则分别负责报关单和语言通行证的办理。整个常量体系就像集装箱上的标牌、锁扣和条形码，为模型世界提供了一套统一的“术语表”和“坐标系”。
 
-## 57.2 源码地图
+## 56.2 源码地图
 
 ```
 README.md
@@ -212,11 +212,11 @@ gguf-py/examples/writer.py
 └── __main__                   # 示例入口
 ```
 
-## 57.3 GGUF 的物流集装箱哲学 —— 统一模型分发的「世界语」
+## 56.3 GGUF 的物流集装箱哲学 —— 统一模型分发的「世界语」
 
 大模型世界早期就像没有标准集装箱的码头：PyTorch、Safetensors、HuggingFace 格式各自为政，装卸（加载）效率低下且易出错。GGUF（GPT-Generated Unified Format）定义了标准化的“集装箱尺寸”（二进制布局）和“装箱单”（元数据），让任何模型都能装进统一的“箱子”里跨平台运输。在 llama.cpp 生态中，GGUF 是唯一的“官方货运标准”，从 CPU 到 CUDA 再到 Metal，所有后端都只认这个格式。gguf-py 是 Python 世界的 GGUF 海关，负责“打包”（Writer）和“开箱”（Reader）。通过 `__init__.py` 的星号导入，它将 constants、reader、writer 等子模块聚合成统一的命名空间，就像海关大厅的各个服务窗口。这种设计让转换脚本（如 convert_hf_to_gguf.py）无需关心底层二进制细节，只需调用高层 API 即可完成“报关”。
 
-### 57.3.1 __init__.py：星号导入聚合层 —— 海关大厅的服务窗口
+### 56.3.1 __init__.py：星号导入聚合层 —— 海关大厅的服务窗口
 
 源码路径：`gguf-py/gguf/__init__.py` - `__main__`（1-9 行）
 
@@ -235,9 +235,9 @@ from .metadata import *       # Metadata 数据类
 
 这段代码通过星号导入将 constants、reader、writer 等子模块聚合成统一的 gguf 命名空间，让转换脚本无需关心底层二进制细节即可调用高层 API。就像海关大厅的各个服务窗口统一对外提供服务，上层应用只需 `import gguf` 即可访问所有核心功能。
 
-## 57.4 代码地图速览 —— 拆解 GGUF 的「海关架构」
+## 56.4 代码地图速览 —— 拆解 GGUF 的「海关架构」
 
-### 57.4.1 基础常量：GGUF_MAGIC 与版本号 —— 集装箱的身份证号
+### 56.4.1 基础常量：GGUF_MAGIC 与版本号 —— 集装箱的身份证号
 
 源码路径：`gguf-py/gguf/constants.py` - `__main__`（1-20 行）
 
@@ -250,7 +250,7 @@ GGML_QUANT_VERSION     = 2           # 量化格式版本号，区分量化算�
 
 这些常量是读写双方的“外交官”，确保文件头校验和版本协商有一致的语言。`GGUF_MAGIC` 为 `0x46554747`（即 ASCII "GGUF"），Reader 在打开文件时首先读取前 4 字节进行校验，防止误读非 GGUF 文件。
 
-### 57.4.2 Keys 类族：元数据键名容器 —— 装箱单的标准字段名
+### 56.4.2 Keys 类族：元数据键名容器 —— 装箱单的标准字段名
 
 源码路径：`gguf-py/gguf/constants.py` - `Keys.General`（26-116 行）
 
@@ -272,7 +272,7 @@ class Keys:
 
 `Keys` 类族为所有 GGUF 元数据提供了标准字段名，`LLM`、`Attention`、`Rope`、`Tokenizer` 等嵌套类覆盖了从超参数到分词器配置的全部属性。例如 `Keys.LLM.VOCAB_SIZE = "{arch}.vocab_size"` 使用 `{arch}` 占位符，在写入时会自动展开为 `llama.vocab_size` 或 `qwen.vocab_size`，实现了跨架构的键名复用。
 
-### 57.4.3 枚举类：数据世界的“度量衡” —— 统一的编号系统
+### 56.4.3 枚举类：数据世界的“度量衡” —— 统一的编号系统
 
 源码路径：`gguf-py/gguf/constants.py` - `MODEL_ARCH`（379-500 行）
 
@@ -311,7 +311,7 @@ class GGMLQuantizationType(IntEnum):
 
 这些枚举为模型架构、量化类型、值类型等提供了统一的编号系统，是 gguf-py 与 C 端 ggml 通信的“共同语言”。枚举值直接写入 GGUF 文件，保证跨语言一致性。
 
-### 57.4.4 模块依赖图 —— 海关内部的业务流向
+### 56.4.4 模块依赖图 —— 海关内部的业务流向
 
 ```mermaid
 graph TD
@@ -337,9 +337,9 @@ graph TD
 
 依赖图展示了 `constants.py` 作为核心基石，所有模块均依赖其枚举与键名定义；`metadata.py` 依赖 `tensor_mapping.py` 与 `vocab.py` 完成元数据到 Writer 的转写。
 
-## 57.5 快速上手 —— 第一次「开箱」与「装箱」实操
+## 56.5 快速上手 —— 第一次「开箱」与「装箱」实操
 
-### 57.5.1 read_gguf_file()：像查验货物一样检查 GGUF
+### 56.5.1 read_gguf_file()：像查验货物一样检查 GGUF
 
 源码路径：`gguf-py/examples/reader.py` - `read_gguf_file()`（11-39 行）
 
@@ -370,7 +370,7 @@ def read_gguf_file(gguf_file_path):
 
 这段代码展示了 GGUFReader 的基本用法：字段和张量信息在初始化时已解析完成，访问 `reader.fields` 和 `reader.tensors` 即可获得全部元数据。`field.parts[field.data[0]]` 取出字段的第一个数据分片作为展示值。
 
-### 57.5.2 writer_example()：五步走完「打包」流程
+### 56.5.2 writer_example()：五步走完「打包」流程
 
 源码路径：`gguf-py/examples/writer.py` - `writer_example()`（11-36 行）
 
@@ -404,9 +404,9 @@ def writer_example() -> None:
 
 这段代码演示了 GGUFWriter 的完整生命周期：初始化 → 添加元数据 → 注册张量 → 按顺序写入 → 关闭，状态机确保每一步都按规范执行。
 
-## 57.6 GGUFReader 深度拆解 —— 二进制文件的「无影灯」解析术
+## 56.6 GGUFReader 深度拆解 —— 二进制文件的「无影灯」解析术
 
-### 57.6.1 GGUFReader.__init__()：内存映射与魔数校验 —— 开箱前的身份核验
+### 56.6.1 GGUFReader.__init__()：内存映射与魔数校验 —— 开箱前的身份核验
 
 源码路径：`gguf-py/gguf/gguf_reader.py` - `GGUFReader.__init__()`（129-177 行）
 
@@ -468,7 +468,7 @@ def __init__(self, path: os.PathLike[str] | str, mode: Literal['r', 'r+', 'c'] =
 
 这段代码通过 `np.memmap` 将文件映射到虚拟内存，避免一次性加载大文件；通过魔数和版本号校验文件合法性，并自动检测字节序。`byte_order='S'` 表示字节序需交换，后续读取会自动调整。解析完 KV 与张量元信息后，还会读取 `general.alignment` 字段校验对齐值，并在必要时跳过填充字节，使张量数据区从对齐边界开始。
 
-### 57.6.2 GGUFReader._get()：内存映射读取指定类型数据 —— 底层读取原语
+### 56.6.2 GGUFReader._get()：内存映射读取指定类型数据 —— 底层读取原语
 
 源码路径：`gguf-py/gguf/gguf_reader.py` - `GGUFReader._get()`（189-194 行）
 
@@ -485,7 +485,7 @@ def _get(
 
 `_get()` 是 Reader 内部最底层的读取方法，它从 `np.memmap` 切片中读取指定偏移量、类型和数量的数据，并根据 `byte_order` 或 `override_order` 调整字节序。魔数校验时传入 `override_order='<'` 强制小端读取，确保不受文件实际字节序影响。
 
-### 57.6.3 GGUFReader._push_field()：字段入册与去重检查 —— 登记货物清单
+### 56.6.3 GGUFReader._push_field()：字段入册与去重检查 —— 登记货物清单
 
 源码路径：`gguf-py/gguf/gguf_reader.py` - `GGUFReader._push_field()`（197-203 行）
 
@@ -504,7 +504,7 @@ def _push_field(self, field: ReaderField, skip_sum: bool = False) -> int:
 
 `_push_field()` 将解析出的 `ReaderField` 注册到 `self.fields` 字典中，并返回字段数据的总字节数，用于偏移量累加。它内置了去重检查，防止同一个键名重复出现。
 
-### 57.6.4 GGUFReader._get_str()：读取变长字符串 —— 解码装箱单上的文字
+### 56.6.4 GGUFReader._get_str()：读取变长字符串 —— 解码装箱单上的文字
 
 源码路径：`gguf-py/gguf/gguf_reader.py` - `GGUFReader._get_str()`（205-206 行）
 
@@ -516,7 +516,7 @@ def _get_str(self, offset: int) -> tuple[npt.NDArray[np.uint64], npt.NDArray[np.
 
 GGUF 中的字符串由 8 字节无符号整数长度前缀和紧随其后的 UTF-8 字节序列组成。`_get_str()` 先读取长度，再按长度读取字符串字节，返回长度数组和字节数组。
 
-### 57.6.5 GGUFReader._get_field_parts()：字段解析流水线 —— 处理标量、字符串与数组
+### 56.6.5 GGUFReader._get_field_parts()：字段解析流水线 —— 处理标量、字符串与数组
 
 源码路径：`gguf-py/gguf/gguf_reader.py` - `GGUFReader._get_field_parts()`（208-229 行）
 
@@ -564,7 +564,7 @@ def _get_field_parts(
 
 这段代码递归解析 GGUF 的复合类型，支持字符串、标量和数组，是构建 `ReaderField` 的核心。数组类型包含元素类型（uint32）、长度（uint64）和递归解析的元素数据。
 
-### 57.6.6 GGUFReader._build_fields()：解析 KV 元数据 —— 批量录入装箱单条目
+### 56.6.6 GGUFReader._build_fields()：解析 KV 元数据 —— 批量录入装箱单条目
 
 源码路径：`gguf-py/gguf/gguf_reader.py` - `GGUFReader._build_fields()`（253-268 行）
 
@@ -593,7 +593,7 @@ def _build_fields(self, offs: int, count: int) -> int:
 
 `_build_fields()` 循环调用 `_get_field_parts()`，逐个解析 KV 对的键名、值类型和值数据，并将每个字段注册到 `self.fields` 中。键名存储为 UTF-8 字符串，值通过递归解析支持嵌套数组。
 
-### 57.6.7 GGUFReader._get_tensor_info_field()：解析单个张量元信息 —— 记录货物规格
+### 56.6.7 GGUFReader._get_tensor_info_field()：解析单个张量元信息 —— 记录货物规格
 
 源码路径：`gguf-py/gguf/gguf_reader.py` - `GGUFReader._get_tensor_info_field()`（231-251 行）
 
@@ -631,7 +631,7 @@ def _get_tensor_info_field(self, orig_offs: int) -> ReaderField:
 
 该方法解析单个张量的元信息字段，包括名称、维度数量、维度数组、数据类型和数据偏移量，返回一个 `ReaderField` 对象。维度数组使用 `np.uint64` 存储，支持大张量。
 
-### 57.6.8 GGUFReader._build_tensor_info()：批量解析张量信息 —— 汇总所有货物清单
+### 56.6.8 GGUFReader._build_tensor_info()：批量解析张量信息 —— 汇总所有货物清单
 
 源码路径：`gguf-py/gguf/gguf_reader.py` - `GGUFReader._build_tensor_info()`（270-275 行）
 
@@ -647,7 +647,7 @@ def _build_tensor_info(self, offs: int, count: int) -> tuple[int, list[ReaderFie
 
 `_build_tensor_info()` 循环调用 `_get_tensor_info_field()`，解析所有张量的元信息字段，返回偏移量和 `ReaderField` 列表。
 
-### 57.6.9 GGUFReader.get_field() / get_tensor()：查询接口 —— 查验特定货物
+### 56.6.9 GGUFReader.get_field() / get_tensor()：查询接口 —— 查验特定货物
 
 源码路径：`gguf-py/gguf/gguf_reader.py` - `GGUFReader.get_field()` / `get_tensor()`（181-186 行）
 
@@ -661,7 +661,7 @@ def get_tensor(self, idx: int) -> ReaderTensor:
 
 `get_field()` 根据键名获取元数据字段，返回 `ReaderField` 对象或 `None`；`get_tensor()` 根据索引获取张量对象。
 
-### 57.6.10 ReaderField.contents()：提取字段实际值 —— 从装箱单取出实物
+### 56.6.10 ReaderField.contents()：提取字段实际值 —— 从装箱单取出实物
 
 源码路径：`gguf-py/gguf/gguf_reader.py` - `ReaderField.contents()`（71-111 行）
 
@@ -697,11 +697,11 @@ def contents(self, index_or_slice: int | slice = slice(None)) -> Any:
 
 `contents()` 从字段的 parts 中提取实际值，根据字段类型（字符串、数组、标量）进行差异化解码，支持索引和切片操作。对于数组类型，`self.data` 存储的是元素在 `parts` 中的索引位置。
 
-### 57.6.11 ReaderField 与 ReaderTensor 数据结构 —— 海关档案卡片
+### 56.6.11 ReaderField 与 ReaderTensor 数据结构 —— 海关档案卡片
 
 `ReaderField` 是一个命名元组，包含字段的偏移量、名称、数据分片、数据索引和类型信息，是 GGUF 元数据的内存表示。`ReaderTensor` 同样是一个命名元组，包含张量的名称、量化类型、形状、元素数量、字节数、数据偏移量、数据内容及其对应的字段信息，是 GGUF 张量信息的内存表示。两者共同构成了 GGUFReader 的核心数据模型。
 
-### 57.6.12 GGUFReader._build_tensors()：张量信息重建 —— 将规格单转为可访问对象
+### 56.6.12 GGUFReader._build_tensors()：张量信息重建 —— 将规格单转为可访问对象
 
 源码路径：`gguf-py/gguf/gguf_reader.py` - `GGUFReader._build_tensors()`（277-325 行）
 
@@ -765,9 +765,9 @@ def _build_tensors(self, start_offs: int, fields: list[ReaderField]) -> None:
 
 这段代码将张量元数据转化为 `ReaderTensor` 对象，根据 `ggml_type` 决定 `item_type`，并对量化类型调用 `quant_shape_to_byte_shape()` 计算实际字节形状。非量化类型直接按元素数量读取，量化类型按字节数读取并重塑形状。
 
-## 57.7 GGUFWriter 核心机制 —— 装箱流水线的「智能调度中心」
+## 56.7 GGUFWriter 核心机制 —— 装箱流水线的「智能调度中心」
 
-### 57.7.1 WriterState 与 open_output_file()：状态机与文件生命周期 —— 严格的装箱工序
+### 56.7.1 WriterState 与 open_output_file()：状态机与文件生命周期 —— 严格的装箱工序
 
 源码路径：`gguf-py/gguf/gguf_writer.py` - `WriterState` 与 `open_output_file()`（300-313 行）
 
@@ -795,7 +795,7 @@ def open_output_file(self, path=None):
 
 `WriterState` 枚举严格定义了写入顺序：NO_FILE → EMPTY → HEADER → KV_DATA → TI_DATA → WEIGHTS，防止生成损坏的“集装箱”。`open_output_file()` 在首次调用时打开文件句柄，支持分片写入。
 
-### 57.7.2 write_header_to_file() / write_kv_data_to_file() / write_ti_data_to_file()：封存三步曲 —— 按规范落笔
+### 56.7.2 write_header_to_file() / write_kv_data_to_file() / write_ti_data_to_file()：封存三步曲 —— 按规范落笔
 
 源码路径：`gguf-py/gguf/gguf_writer.py` - `write_header_to_file()` / `write_kv_data_to_file()` / `write_ti_data_to_file()`（344-402 行）
 
@@ -854,7 +854,7 @@ def write_ti_data_to_file(self):
 
 这三步严格按照 GGUF 二进制布局顺序写入：先写魔数/版本/张量数/KV 数，再序列化 KV 对，最后写入张量元信息区。`write_header_to_file()` 在写入头之前会检查分片要求、断言文件句柄与分片数一致，并调用 `add_shard_kv_data()` 写入分片序号/总数等 KV；`write_ti_data_to_file` 中维度按逆序写入（`n_dims - 1 - j`），符合 GGUF 规范。
 
-### 57.7.3 add_tensor_info() 与 add_tensor()：张量与权重的分治策略 —— 分离清单与实物
+### 56.7.3 add_tensor_info() 与 add_tensor()：张量与权重的分治策略 —— 分离清单与实物
 
 源码路径：`gguf-py/gguf/gguf_writer.py` - `add_tensor_info()` 与 `add_tensor()`（456-514 行）
 
@@ -901,7 +901,7 @@ def add_tensor(self, name, tensor, raw_shape=None, raw_dtype=None, tensor_endian
 
 `add_tensor_info()` 仅注册元数据（形状、类型、名称），`add_tensor()` 处理实际数据，支持临时文件缓冲和字节序转换。临时文件模式下，张量数据先写入内存溢出临时文件，最后由 `write_tensors_to_file()` 统一拷贝到目标文件。
 
-### 57.7.4 GGUFWriter.add_* 方法族：模型属性配置全家桶 —— 一站式填单服务
+### 56.7.4 GGUFWriter.add_* 方法族：模型属性配置全家桶 —— 一站式填单服务
 
 GGUFWriter 提供了超过 100 个 `add_*` 方法，覆盖了从基础类型到模型超参数的几乎所有配置。以下按类别列举部分关键方法：
 
@@ -943,9 +943,9 @@ GGUFWriter 提供了超过 100 个 `add_*` 方法，覆盖了从基础类型到�
 
 这些方法内部都调用 `add_key_value()`，将键值对添加到 `self.kv_data` 列表中，实现了模型属性的统一配置。
 
-## 57.8 量化引擎与懒加载 —— 字节压缩的「魔术空间」
+## 56.8 量化引擎与懒加载 —— 字节压缩的「魔术空间」
 
-### 57.8.1 quant_shape_to_byte_shape()：形状转换的数学基础 —— 压缩后的尺寸计算
+### 56.8.1 quant_shape_to_byte_shape()：形状转换的数学基础 —— 压缩后的尺寸计算
 
 源码路径：`gguf-py/gguf/quants.py` - `quant_shape_to_byte_shape()`（17-21 行）
 
@@ -959,7 +959,7 @@ def quant_shape_to_byte_shape(shape, quant_type):
 
 该函数根据量化类型的块大小（如 Q4_0 的 32）和类型大小（如 18），将逻辑形状转换为物理字节形状。例如形状 `(4096, 4096)` 的 F32 张量量化为 Q4_0 后，最后一维变为 `4096 // 32 * 18 = 2304` 字节。
 
-### 57.8.2 __Quant.__init_subclass__()：基类与注册工厂 —— 量化算法的自动登记
+### 56.8.2 __Quant.__init_subclass__()：基类与注册工厂 —— 量化算法的自动登记
 
 源码路径：`gguf-py/gguf/quants.py` - `__Quant.__init_subclass__()`（156-166 行）
 
@@ -977,7 +977,7 @@ def __init_subclass__(cls, qtype: GGMLQuantizationType) -> None:
 
 `__init_subclass__` 在子类定义时自动执行，将 Q4_0、Q8_0 等量化类注册到 `_type_traits` 字典，并包装惰性张量支持。`LazyNumpyTensor._wrap_fn` 将数组量化方法包装为支持延迟计算的版本。
 
-### 57.8.3 Q4_0.quantize_blocks()：经典量化实现 —— 对称量化的核心逻辑
+### 56.8.3 Q4_0.quantize_blocks()：经典量化实现 —— 对称量化的核心逻辑
 
 源码路径：`gguf-py/gguf/quants.py` - `Q4_0.quantize_blocks()`（295-309 行）
 
@@ -999,9 +999,9 @@ def quantize_blocks(cls, blocks):
 
 Q4_0 采用对称量化，基于块内绝对最大值计算缩放因子 `d`，将 32 个浮点数压缩为 2 字节缩放因子 + 16 字节 4-bit 整数。`np.trunc(x + 8.5)` 实现向远离零方向舍入，随后打包高低 4 位到一个字节。
 
-## 57.9 元数据启发式提取 —— 从模型卡到「身份档案」
+## 56.9 元数据启发式提取 —— 从模型卡到「身份档案」
 
-### 57.9.1 Metadata.load()：多源加载流水线 —— 汇总各方情报
+### 56.9.1 Metadata.load()：多源加载流水线 —— 汇总各方情报
 
 源码路径：`gguf-py/gguf/metadata.py` - `Metadata.load()`（155-238 行）
 
@@ -1030,7 +1030,7 @@ def load(metadata_override_path=None, model_path=None, model_name=None, total_pa
 
 `Metadata.load()` 按优先级合并模型卡（README.md YAML）、HF 配置（config.json）、生成配置（generation_config.json）和用户覆盖 JSON，实现元数据的自动提取。启发式逻辑会从模型 ID、目录名等推断 basename、finetune、version、size_label。
 
-### 57.9.2 Metadata.get_model_id_components()：模型 ID 解构算法 —— 从名字里挖信息
+### 56.9.2 Metadata.get_model_id_components()：模型 ID 解构算法 —— 从名字里挖信息
 
 源码路径：`gguf-py/gguf/metadata.py` - `Metadata.get_model_id_components()`（326-421 行）
 
@@ -1053,9 +1053,9 @@ def get_model_id_components(model_id=None, total_params=0):
 
 该算法将模型 ID（如 `Mixtral-8x7B-Instruct-v0.1`）自动拆解为组织、基名、微调类型、版本和尺寸标签，为元数据提供结构化信息。正则表达式识别 `v0.1` 版本、`7B` 尺寸、`Instruct` 微调等模式。
 
-## 57.10 多源词表整合 —— 分词器的「巴别塔」
+## 56.10 多源词表整合 —— 分词器的「巴别塔」
 
-### 57.10.1 SpecialVocab：特殊 Token 的中央枢纽 —— 统一管理 BOS/EOS/聊天模板
+### 56.10.1 SpecialVocab：特殊 Token 的中央枢纽 —— 统一管理 BOS/EOS/聊天模板
 
 源码路径：`gguf-py/gguf/vocab.py` - `SpecialVocab.__init__()` 与 `_load()`（35-55、86-89 行）
 
@@ -1082,7 +1082,7 @@ def _load(self, path):
 
 `SpecialVocab` 管理 BOS/EOS/UNK 等特殊 token 的 ID 和聊天模板，通过 `_load()` 依次尝试 tokenizer.json、config.json 和 merges.txt。`_try_load_from_tokenizer_json` 解析 post_processor 中的 RobertaProcessing/TemplateProcessing，自动推断 add_bos/add_eos/add_sep 标志。
 
-### 57.10.2 BpeVocab 与 SentencePieceVocab —— 两大分词流派的适配器
+### 56.10.2 BpeVocab 与 SentencePieceVocab —— 两大分词流派的适配器
 
 源码路径：`gguf-py/gguf/vocab.py` - `BpeVocab.__init__()`（283-324 行）
 
@@ -1125,9 +1125,9 @@ def __init__(self, base_path):
 
 `SentencePieceVocab` 使用 `sentencepiece` 库加载 `.model` 文件，通过 `IdToPiece`、`GetScore`、`IsUnknown` 等方法提取 token 信息，支持 UNKNOWN/CONTROL/UNUSED/BYTE 等类型判断。
 
-## 57.11 张量映射与远程工具 —— 跨框架的「翻译官」与「无人机」
+## 56.11 张量映射与远程工具 —— 跨框架的「翻译官」与「无人机」
 
-### 57.11.1 TensorNameMap：命名标准化引擎 —— 多语言翻译官
+### 56.11.1 TensorNameMap：命名标准化引擎 —— 多语言翻译官
 
 源码路径：`gguf-py/gguf/tensor_mapping.py` - `TensorNameMap.__init__()`（1709-1724 行）
 
@@ -1156,7 +1156,7 @@ def __init__(self, arch, n_blocks):
 
 `TensorNameMap` 根据模型架构和层数，将模板如 `blk.{bid}.attn_q.weight` 展开为具体名称，建立 HuggingFace 原始名到 GGUF 标准名的映射。`mappings_cfg` 处理静态张量（如 `token_embd`），`block_mappings_cfg` 处理逐层张量（如 `attn_q`），`arch_block_mappings_cfg` 提供架构特有的块映射覆盖。
 
-### 57.11.2 SafetensorRemote.get_list_tensors_hf_model()：远程读取 —— 无人机吊运货物
+### 56.11.2 SafetensorRemote.get_list_tensors_hf_model()：远程读取 —— 无人机吊运货物
 
 源码路径：`gguf-py/gguf/utility.py` - `SafetensorRemote.get_list_tensors_hf_model()`（95-129 行）
 
@@ -1190,7 +1190,7 @@ def get_list_tensors_hf_model(cls, model_id):
 
 `SafetensorRemote` 通过 HTTP Range 请求从 HuggingFace 远程读取 safetensors 元数据与权重，无需下载完整文件，就像用无人机吊运货物。`get_metadata()` 只读取前 5MB 解析头部，`get_data_by_range()` 按需获取张量字节。
 
-## 57.12 设计中的取舍
+## 56.12 设计中的取舍
 
 - **为什么使用枚举而不是字符串常量？**  
   枚举为模型架构、量化类型等提供了类型安全的编号系统，避免魔法字符串导致的拼写错误，同时便于 C 端 ggml 与 Python 端 gguf-py 之间通过整数 ID 进行高效通信。在大型项目中，字符串常量容易因拼写不一致而引发隐蔽的 bug，而枚举在编译期和运行期都能提供更强的约束。此外，枚举值可以序列化为整数，使得 GGUF 文件中的类型字段紧凑且跨语言兼容，这对于 C/C++ 后端的 ggml 库至关重要。
@@ -1216,7 +1216,7 @@ def get_list_tensors_hf_model(cls, model_id):
 - **远程读取为何选择 HTTP Range 而非下载整个文件？**  
   safetensors 格式将元数据放在文件头（前几 MB），张量数据紧随其后。Range 请求可仅下载头部解析元数据，按需下载特定张量，极大降低带宽与延迟。这对于转换脚本在 CI/CD 或资源受限环境下运行尤为重要。
 
-## 57.13 动手练习
+## 56.13 动手练习
 
 - 阅读 `gguf-py/gguf/gguf_reader.py` 第129-177行（`__init__`方法）与第231-251行（`_get_tensor_info_field`），回答以下问题：
   1. 文件头如何检测字节序？如果文件是Big-Endian而主机是Little-Endian，`self.byte_order`会被设置为什么？
@@ -1252,7 +1252,7 @@ def get_list_tensors_hf_model(cls, model_id):
   3. 在`TemplateProcessing`类型处理器中，代码如何检测并警告未知的 leading/trailing special tokens？
   4. 使用`SpecialVocab`加载一个包含`merges.txt`的目录，观察`_try_load_merges_txt`如何解析并去重合并规则
 
-## 57.14 本章小结
+## 56.14 本章小结
 
 这一章中我们深入 GGUF 格式的常量定义层，理解了它如何构成整个生态的“术语表”和“坐标系”。首先，我们看到 `constants.py` 中的 `Keys` 类族和枚举类为模型元数据、架构、量化类型提供了标准字段名和编号系统；其次，`gguf_reader.py` 和 `gguf_writer.py` 分别通过内存映射和状态机实现了二进制文件的“开箱”与“装箱”；接着，`quants.py` 的量化引擎和 `tensor_mapping.py` 的名称映射器完成了权重压缩与跨框架翻译；然后，`metadata.py` 和 `vocab.py` 分别从模型卡和分词器中自动提取身份信息与语言系统；最后，`utility.py` 的远程读取工具让模型加载无需下载完整文件。这些模块共同构成了 GGUF 格式的完整“海关”体系，让任何模型都能被标准化地打包、运输和开箱。
 

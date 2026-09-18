@@ -1,6 +1,6 @@
 
 
-# 性能时光机：基于SQLite/Git的跨提交性能对比机制
+# 第109章 性能时光机：基于SQLite/Git的跨提交性能对比机制
 
 想象你是一位数据中心的质量控制总监，想象你有一台可以穿越代码历史的时光机，能够对比不同历史时期的生产效率报表。scripts/compare-llama-bench.py就是这台时光机的核心控制面板：它通过抽象基类统一基准数据处理接口，支持llama-bench与test-backend-ops双模式，同时集成GitPython实现基于Git历史的自动父提交查找与精细哈希管理。内置的_builds_init构建初始化与_check_keys数据完整性校验机制，强制要求核心字段如build_commit、test_time、avg_ts等存在。通过抽象方法builds_timestamp与get_rows定义数据访问契约，子类需实现具体存储逻辑。辅助方法get_commit_name与get_all_parent_hexsha8s支持人类可读名称与完整提交链查询，为跨提交性能对比提供了强大的历史追溯能力。
 
@@ -8,7 +8,7 @@
 
 ---
 
-### LlamaBenchData.__init__()：基类初始化与Git仓库绑定
+### 109.0.1 LlamaBenchData.__init__()：基类初始化与Git仓库绑定
 
 **源码路径**：`scripts/compare-llama-bench.py` - `LlamaBenchData`（291-300行）
 
@@ -33,7 +33,7 @@ def __init__(self, tool: str = "llama-bench"):
 
 ---
 
-### LlamaBenchData._builds_init()：初始化构建长度参数
+### 109.0.2 LlamaBenchData._builds_init()：初始化构建长度参数
 
 **源码路径**：`scripts/compare-llama-bench.py` - `LlamaBenchData`（302-303行）
 
@@ -46,7 +46,7 @@ def _builds_init(self):
 
 ---
 
-### LlamaBenchData._check_keys()：数据完整性校验
+### 109.0.3 LlamaBenchData._check_keys()：数据完整性校验
 
 **源码路径**：`scripts/compare-llama-bench.py` - `LlamaBenchData`（305-308行）
 
@@ -62,7 +62,7 @@ def _check_keys(self, keys: set) -> Optional[set]:
 
 ---
 
-### LlamaBenchData.find_parent_in_data()：Git历史父提交追溯
+### 109.0.4 LlamaBenchData.find_parent_in_data()：Git历史父提交追溯
 
 **源码路径**：`scripts/compare-llama-bench.py` - `LlamaBenchData.find_parent_in_data()`（310-322行）
 
@@ -92,7 +92,7 @@ def find_parent_in_data(self, commit: git.Commit) -> Optional[str]:
 
 ---
 
-### LlamaBenchData.get_all_parent_hexsha8s()：递归获取提交的所有父提交哈希值
+### 109.0.5 LlamaBenchData.get_all_parent_hexsha8s()：递归获取提交的所有父提交哈希值
 
 **源码路径**：`scripts/compare-llama-bench.py` - `LlamaBenchData.get_all_parent_hexsha8s()`（324-337行）
 
@@ -114,7 +114,7 @@ def get_all_parent_hexsha8s(self, commit: git.Commit) -> Sequence[str]:
 
 ---
 
-### LlamaBenchData.get_commit_name()：根据提交哈希查找可读的提交名称
+### 109.0.6 LlamaBenchData.get_commit_name()：根据提交哈希查找可读的提交名称
 
 **源码路径**：`scripts/compare-llama-bench.py` - `LlamaBenchData.get_commit_name()`（339-347行）
 
@@ -136,7 +136,7 @@ def get_commit_name(self, hexsha8: str) -> str:
 
 ---
 
-### LlamaBenchData.get_commit_hexsha8()：根据可读名称查找提交哈希
+### 109.0.7 LlamaBenchData.get_commit_hexsha8()：根据可读名称查找提交哈希
 
 **源码路径**：`scripts/compare-llama-bench.py` - `LlamaBenchData.get_commit_hexsha8()`（349-363行）
 
@@ -165,7 +165,7 @@ def get_commit_hexsha8(self, name: str) -> Optional[str]:
 
 ---
 
-### LlamaBenchData.builds_timestamp()：抽象方法，按时间戳排序获取构建信息
+### 109.0.8 LlamaBenchData.builds_timestamp()：抽象方法，按时间戳排序获取构建信息
 
 **源码路径**：`scripts/compare-llama-bench.py` - `LlamaBenchData.builds_timestamp()`（365-367行）
 
@@ -179,7 +179,7 @@ def builds_timestamp(self, reverse: bool = False) -> Union[Iterator[tuple], Sequ
 
 ---
 
-### LlamaBenchData.get_rows()：数据查询抽象接口
+### 109.0.9 LlamaBenchData.get_rows()：数据查询抽象接口
 
 **源码路径**：`scripts/compare-llama-bench.py` - `LlamaBenchData.get_rows()`（369-378行）
 
@@ -202,7 +202,7 @@ def get_rows(self, properties: list[str], hexsha8_baseline: str, hexsha8_compare
 
 ---
 
-### LlamaBenchDataSQLite3.__init__()：创建 SQLite 内存数据库连接并创建对应工具的表结构
+### 109.0.10 LlamaBenchDataSQLite3.__init__()：创建 SQLite 内存数据库连接并创建对应工具的表结构
 
 **源码路径**：`scripts/compare-llama-bench.py` - `LlamaBenchDataSQLite3.__init__()`（401-417行）
 
@@ -232,7 +232,7 @@ def __init__(self, tool: str = "llama-bench"):
 
 ---
 
-### LlamaBenchDataSQLite3._builds_init()：从数据库读取构建列表，统一提交哈希长度
+### 109.0.11 LlamaBenchDataSQLite3._builds_init()：从数据库读取构建列表，统一提交哈希长度
 
 **源码路径**：`scripts/compare-llama-bench.py` - `LlamaBenchDataSQLite3._builds_init()`（419-430行）
 
@@ -256,7 +256,7 @@ def _builds_init(self):
 
 ---
 
-### LlamaBenchDataSQLite3.builds_timestamp()：从数据库获取按时间戳排序的构建列表
+### 109.0.12 LlamaBenchDataSQLite3.builds_timestamp()：从数据库获取按时间戳排序的构建列表
 
 **源码路径**：`scripts/compare-llama-bench.py` - `LlamaBenchDataSQLite3.builds_timestamp()`（432-435行）
 
@@ -271,7 +271,7 @@ def builds_timestamp(self, reverse: bool = False) -> Union[Iterator[tuple], Sequ
 
 ---
 
-### LlamaBenchDataSQLite3.get_rows()：根据工具类型分派到对应的行数据查询方法
+### 109.0.13 LlamaBenchDataSQLite3.get_rows()：根据工具类型分派到对应的行数据查询方法
 
 **源码路径**：`scripts/compare-llama-bench.py` - `LlamaBenchDataSQLite3.get_rows()`（437-443行）
 
@@ -289,7 +289,7 @@ def get_rows(self, properties: list[str], hexsha8_baseline: str, hexsha8_compare
 
 ---
 
-### LlamaBenchDataSQLite3._get_rows_llama_bench()：llama-bench SQL聚合查询
+### 109.0.14 LlamaBenchDataSQLite3._get_rows_llama_bench()：llama-bench SQL聚合查询
 
 **源码路径**：`scripts/compare-llama-bench.py` - `LlamaBenchDataSQLite3._get_rows_llama_bench()`（445-452行）
 
@@ -317,7 +317,7 @@ def _get_rows_llama_bench(self, properties: list[str], hexsha8_baseline: str, he
 
 ---
 
-### LlamaBenchDataSQLite3._get_rows_test_backend_ops()：test-backend-ops SQL聚合查询
+### 109.0.15 LlamaBenchDataSQLite3._get_rows_test_backend_ops()：test-backend-ops SQL聚合查询
 
 **源码路径**：`scripts/compare-llama-bench.py` - `LlamaBenchDataSQLite3._get_rows_test_backend_ops()`（454-464行）
 
@@ -346,7 +346,7 @@ def _get_rows_test_backend_ops(self, properties: list[str], hexsha8_baseline: st
 
 ---
 
-### LlamaBenchDataSQLite3File.__init__()：连接 SQLite 文件数据库，检测表结构并选择正确的工具类型
+### 109.0.16 LlamaBenchDataSQLite3File.__init__()：连接 SQLite 文件数据库，检测表结构并选择正确的工具类型
 
 **源码路径**：`scripts/compare-llama-bench.py` - `LlamaBenchDataSQLite3File.__init__()`（470-499行）
 
@@ -392,7 +392,7 @@ def __init__(self, data_file: str, tool: Any):
 
 ---
 
-### LlamaBenchDataSQLite3File.valid_format()：检查 SQLite 文件是否有效
+### 109.0.17 LlamaBenchDataSQLite3File.valid_format()：检查 SQLite 文件是否有效
 
 **源码路径**：`scripts/compare-llama-bench.py` - `LlamaBenchDataSQLite3File.valid_format()`（501-513行）
 
@@ -417,7 +417,7 @@ def valid_format(data_file: str) -> bool:
 
 ---
 
-### LlamaBenchDataJSONL.__init__()：读取 JSONL 文件，解析每一行 JSON 数据并存入数据库
+### 109.0.18 LlamaBenchDataJSONL.__init__()：读取 JSONL 文件，解析每一行 JSON 数据并存入数据库
 
 **源码路径**：`scripts/compare-llama-bench.py` - `LlamaBenchDataJSONL.__init__()`（519-535行）
 
@@ -447,7 +447,7 @@ def __init__(self, data_file: str, tool: str = "llama-bench"):
 
 ---
 
-### LlamaBenchDataJSONL.valid_format()：检查 JSONL 文件格式是否有效
+### 109.0.19 LlamaBenchDataJSONL.valid_format()：检查 JSONL 文件格式是否有效
 
 **源码路径**：`scripts/compare-llama-bench.py` - `LlamaBenchDataJSONL.valid_format()`（537-547行）
 
@@ -470,7 +470,7 @@ def valid_format(data_file: str) -> bool:
 
 ---
 
-### LlamaBenchDataJSON.__init__()：读取多个 JSON 文件，解析每个条目并存入数据库
+### 109.0.20 LlamaBenchDataJSON.__init__()：读取多个 JSON 文件，解析每个条目并存入数据库
 
 **源码路径**：`scripts/compare-llama-bench.py` - `LlamaBenchDataJSON.__init__()`（553-571行）
 
@@ -501,7 +501,7 @@ def __init__(self, data_files: list[str], tool: str = "llama-bench"):
 
 ---
 
-### LlamaBenchDataJSON.valid_format()：检查 JSON 文件格式是否有效
+### 109.0.21 LlamaBenchDataJSON.valid_format()：检查 JSON 文件格式是否有效
 
 **源码路径**：`scripts/compare-llama-bench.py` - `LlamaBenchDataJSON.valid_format()`（573-586行）
 
@@ -526,7 +526,7 @@ def valid_format(data_files: list[str]) -> bool:
 
 ---
 
-### LlamaBenchDataCSV.__init__()：读取多个 CSV 文件，解析每行数据并存入数据库
+### 109.0.22 LlamaBenchDataCSV.__init__()：读取多个 CSV 文件，解析每行数据并存入数据库
 
 **源码路径**：`scripts/compare-llama-bench.py` - `LlamaBenchDataCSV.__init__()`（592-610行）
 
@@ -557,7 +557,7 @@ def __init__(self, data_files: list[str], tool: str = "llama-bench"):
 
 ---
 
-### LlamaBenchDataCSV.valid_format()：检查 CSV 文件格式是否有效
+### 109.0.23 LlamaBenchDataCSV.valid_format()：检查 CSV 文件格式是否有效
 
 **源码路径**：`scripts/compare-llama-bench.py` - `LlamaBenchDataCSV.valid_format()`（612-626行）
 

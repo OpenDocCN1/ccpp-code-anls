@@ -1,6 +1,6 @@
 
 
-# 第21章 采样系统 —— 从指挥官契约到GPU加速的全链路解析
+# 第20章 采样系统 —— 从指挥官契约到GPU加速的全链路解析
 
 ## 学习目标
 
@@ -16,11 +16,11 @@
 - 掌握采样器的 clone/reset/free 生命周期管理以及 ring_buffer 等辅助数据结构
 - 理解 empty 采样器作为占位符的设计哲学以及后端支持检测机制
 
-## 21.1 生活类比
+## 20.1 生活类比
 
 在 LLM 的 token 选择过程中，我们可以把它想象成一个乐团指挥选拔下一位乐手的过程。所有候选乐手的试奏评分就是 logits，尚未归一化的偏好分数。贪心采样就像指挥只看分数最高的乐手，虽然稳定但缺乏变化。分布采样（Dist）则像是按试奏评分的高低概率抽签决定，多样但有时会爆冷。Top-K 和 Top-P 策略像是限定选拔范围，让指挥只关注头部候选。Min-P 则是按最高分比例定门槛，把远低于冠军的乐手直接淘汰。Typical 采样按典型性选人，偏离分布熵的「怪才」会被淘汰。Temperature 就像演出氛围调节：温度低时指挥冷静精准，接近贪心；温度高时则热烈奔放。Temp-Ext 更进一步，根据已有分布的熵自动调节温度，让氛围变化更细腻。XTC 采样像是随机禁用最高音，故意剔除一些高分乐手，打破同质化。Mirostat 和 adaptive_p 则像自适应裁判，根据观众反应实时调整选拔尺度。Penalties 和 DRY 是反重复纪律委员，已经登台的乐手要降权，避免连续重复。Logit Bias 是 VIP 通道，用户可以为某些 token 加减分强制出场。Infill 是填空专用，在文本中间补全时会主动抑制 EOS 并合并共享前缀的 token。Grammar 是语法警察，只允许符合 BNF 文法的 token 通过。采样链则是流水线指挥链，每个采样器只负责一道工序，先温度、再 Top-K、再 Top-P，依次传递。后端采样（backend_apply）则让 GPU 当指挥，用 GGML 计算图直接在 GPU 上完成 softmax、cumsum、argmax 等操作，避免 CPU/GPU 数据来回搬运。ring_buffer 就像最近 N 次登台记录，用定长滚动窗口记录最近 penalty_last_n 个 token，老数据自动滚出。Z-算法（DRY）则是重复片段扫描仪，用 O(N) 时间找出末尾序列在历史中最早出现的最长匹配。桶排序 + partial_sort 是快速分类筛子，先用 128 个桶粗分，再用 partial_sort 在桶内细排，节省排序时间。empty 采样器是指挥休息位，当某个采样策略不需要时（如 k<=0、temp=1），安排一个什么都不做的乐手保留位置，确保流水线不被打乱。clone、free、reset、name 则是乐团的复制、解散、复位、点名，每个采样器都支持复制以生成相同状态的副本、安全释放内存、恢复初始状态、以及查询自己的身份。
 
-## 21.2 源码地图
+## 20.2 源码地图
 
 ```text
 src/
@@ -92,11 +92,11 @@ src/
         └── llama_perf_sampler
 ```
 
-## 21.3 采样器接口与生命周期 —— 设计统一的「指挥官契约」
+## 20.3 采样器接口与生命周期 —— 设计统一的「指挥官契约」
 
 在 llama.cpp 的采样系统中，采样器的种类繁多，从简单的贪心采样到复杂的 DRY 去重，它们的行为差异巨大。为了统一管理这些采样器，llama.cpp 设计了 `llama_sampler_i` 虚函数表，将采样器的公共操作抽象为一组标准钩子。这样，上层代码只需要面对一个统一的 `llama_sampler` 句柄，而无需关心具体是哪种采样器。此外，当某些采样参数不合法时（如 k<=0），构造函数会返回一个空采样器（Empty Sampler），它在采样链中充当占位符，确保流水线结构不被打乱。这种设计极大地简化了采样链的组合与管理。
 
-### 21.3.1 `llama_sampler_i`：采样器的虚函数表契约
+### 20.3.1 `llama_sampler_i`：采样器的虚函数表契约
 
 C++ 中实现多态通常有两种方式：虚函数表和模板。llama.cpp 选择虚函数表，主要是因为采样器的类型在运行时才能确定（例如根据用户参数动态创建），而模板要求编译时类型已知。此外，虚函数表允许我们在统一的接口下，动态地组合不同的采样器，形成采样链。每个采样器只需要实现自己的 `apply`、`accept`、`reset` 等函数，而无需关心链的调度逻辑。这就像乐团中每个乐手只需专注于自己的演奏，指挥（采样链）负责协调整体。
 
@@ -130,7 +130,7 @@ struct llama_sampler_i {
 
 这段代码定义了采样器必须实现的 10 个钩子，其中 `apply` 是核心，其他钩子用于状态管理和后端加速。通过这个虚函数表，llama.cpp 可以以统一的方式调用任意采样器，实现了多态。每个钩子对应乐团指挥流程中的一个环节：`name` 是点名，`apply` 是演奏，`accept` 是录取，`reset` 是复排，`clone` 是组建分团，`free` 是解散，后端四件套则是「GPU 特快通道」。
 
-### 21.3.2 空采样器：占位符的艺术
+### 20.3.2 空采样器：占位符的艺术
 
 空采样器是 llama.cpp 中的一种特殊采样器，它的所有方法都是 no-op。当用户配置的采样参数不合法时（例如 top-k 的 k<=0，或者 temperature 等于 1.0），构造函数不会返回 nullptr，而是返回一个空采样器，其名称以 '?' 开头（如 '?top-k'）。这样，采样链中始终保留着固定数量的采样器位置，无需动态调整链的长度，也避免了空指针检查的复杂性。空采样器的存在使得采样链的组合就像乐团中的「休息位」，虽然不发声，但保证了整体结构的完整。
 
@@ -181,7 +181,7 @@ flowchart TD
 
 图 21.1 空采样器作为占位符保证链结构稳定
 
-### 21.3.3 公共 API：init/apply/accept/reset/clone/free
+### 20.3.3 公共 API：init/apply/accept/reset/clone/free
 
 公共 API 是采样器与外界交互的唯一入口，它封装了虚函数表的调用细节。`llama_sampler_init` 是统一的构造函数，接收 iface + ctx，返回堆上的 sampler；`apply` 必现，`accept/reset/clone/free` 都可以为 null（用 `if (smpl->iface->xxx)` 防御）；`name` 查询走 `smpl->iface->name(smpl)`，让 ctx 自己决定如何报告身份。
 
@@ -243,11 +243,11 @@ struct llama_sampler * llama_sampler_clone(const struct llama_sampler * smpl) {
 
 克隆函数首先尝试调用具体采样器的 clone 钩子，如果采样器没有上下文，则创建一个浅拷贝，否则断言失败。这种设计保证了采样器可以被安全地复制，用于多线程或状态保存。在 10 个钩子中，`apply` 必须实现（断言保证），`name` 通常实现，`accept/reset/clone/free/后端四件套` 可以为空（通过 if 判空防御），空采样器即将所有可选钩子置为 no-op。
 
-## 21.4 采样器链：链式调度的「流水线指挥官」
+## 20.4 采样器链：链式调度的「流水线指挥官」
 
 在实际推理中，单一的采样器往往无法满足复杂的需求。例如，我们可能希望先应用温度缩放，再进行 Top-K 截断，最后用 Top-P 进行核采样。llama.cpp 的采样链（Sampler Chain）正是为此而生：它就像一列火车，每个采样器是一个车厢，按顺序对候选 token 数组进行变换。链的调度逻辑简单而高效：依次调用每个子采样器的 apply 函数，直到遇到后端采样器为止。此外，链还负责时间统计、后端短路、以及子采样器的动态增删。
 
-### 21.4.1 链的数据结构与时间统计
+### 20.4.1 链的数据结构与时间统计
 
 采样链的设计源于「组合优于继承」的原则。每个采样器只关心自己的 logits 变换，例如温度采样器只负责除以温度，Top-K 采样器只负责截断到 k 个候选。通过将这些采样器串联起来，我们可以像搭积木一样构建出任意复杂的采样策略。更重要的是，链的存在使得后端加速成为可能：当链中的某个采样器支持 GPU 后端时，链可以自动跳过后续的 CPU 采样器，直接在 GPU 上完成整个采样过程，避免 CPU 和 GPU 之间的数据传输。
 
@@ -324,7 +324,7 @@ static void llama_sampler_chain_apply(struct llama_sampler * smpl, llama_token_d
 
 这是采样链的核心调度函数，它按顺序应用每个子采样器，并通过 `is_backend` 标志实现 CPU/GPU 路径的互斥，同时利用 `time_meas` 自动累计耗时。`time_meas` 是一个 RAII 计时器，构造时记录开始时间，析构时累加到 `chain->t_sample_us`，实现了零侵入的性能统计。
 
-### 21.4.2 链的辅助操作与主入口
+### 20.4.2 链的辅助操作与主入口
 
 链的辅助操作包括子采样器的增删查、克隆与释放，以及主入口 `llama_sampler_sample`。`chain_add` 将采样器追加到链尾，`chain_get` 按索引访问，`chain_remove` 弹出指定采样器。`chain_clone` 深拷贝所有子采样器，`chain_free` 逐个释放后删除链。`llama_sampler_sample` 是采样系统的总入口，它负责从上下文中提取候选数据，调用采样链进行变换，并返回最终选中的 token。
 
@@ -436,11 +436,11 @@ sequenceDiagram
 
 图 21.3 采样总入口时序图：后端短路与 CPU 兜底
 
-## 21.5 基础采样器：贪心、Dist、Top-K、Top-P、Min-P —— 选 token 的「基本招式」
+## 20.5 基础采样器：贪心、Dist、Top-K、Top-P、Min-P —— 选 token 的「基本招式」
 
 基础采样器是采样系统的「基本招式」，它们直接对 logits 或概率进行变换，是构建复杂采样策略的基石。贪心采样永远选择概率最高的 token，简单但缺乏多样性；分布采样（Dist）按概率分布随机选择，引入随机性；Top-K 和 Top-P 通过截断候选集来控制多样性；Min-P 则以最大概率为基准设定阈值。这些采样器的实现都依赖于高效的排序和搜索算法，例如桶排序和 partial_sort。
 
-### 21.5.1 llama_sampler_greedy_apply：线性扫描实现贪心选 token
+### 20.5.1 llama_sampler_greedy_apply：线性扫描实现贪心选 token
 
 贪心采样是所有采样器中最简单的一种：它线性扫描候选数组，找到 logit 最大的 token，直接设为 selected。实现极简，但缺乏多样性，常用于确定性测试场景。后端实现则使用 `ggml_argmax` 算子直接选出最大下标。
 
@@ -461,7 +461,7 @@ static void llama_sampler_greedy_apply(struct llama_sampler * /*smpl*/, llama_to
 
 贪心采样的实现非常简单，它只是线性扫描找到 argmax，时间复杂度 O(n)。后端实现则使用 ggml_argmax 算子在 GPU 上并行完成。
 
-### 21.5.2 llama_sampler_dist_apply：单遍遍历完成 softmax 与采样
+### 20.5.2 llama_sampler_dist_apply：单遍遍历完成 softmax 与采样
 
 分布采样将 logits 转换为概率分布，然后使用随机数选择一个 token。为了提高效率，它在单遍遍历中同时完成采样和归一化，并使用 double 精度随机数以保证可复现性。
 
@@ -546,7 +546,7 @@ flowchart LR
 
 图 21.4 分布采样单遍流程：softmax + 采样 + 归一化一次完成
 
-### 21.5.3 llama_sampler_top_k_impl：partial_sort 截断 Top-K
+### 20.5.3 llama_sampler_top_k_impl：partial_sort 截断 Top-K
 
 Top-K 采样通过 `partial_sort` 截断到 k 个最高 logit 的候选，当 k<=0 时返回空采样器。
 
@@ -570,7 +570,7 @@ static void llama_sampler_top_k_impl(llama_token_data_array * cur_p, int32_t k) 
 
 Top-K 采样的核心实现，它通过 partial_sort 截断到 k 个候选，k<=0 时退化为空采样器。
 
-### 21.5.4 llama_sampler_top_p_apply：累积概率截断 + 桶排序启发式
+### 20.5.4 llama_sampler_top_p_apply：累积概率截断 + 桶排序启发式
 
 Top-P 采样则按累积概率达到 p 时截断，当候选数组未排序且较大时，先用 256 个候选的桶排序作为启发式，避免全局排序。
 
@@ -653,7 +653,7 @@ flowchart TD
 
 图 21.5 Top-P 自适应排序策略：小规模全排、大规模桶排启发式
 
-### 21.5.5 llama_sampler_min_p_apply：相对最大 logit 阈值 + 快速线性扫描
+### 20.5.5 llama_sampler_min_p_apply：相对最大 logit 阈值 + 快速线性扫描
 
 Min-P 采样以最大 logit 为基准设定阈值（`max_logit + log(p)`），过滤掉所有低于该阈值的 token。对未排序数组做了快速线性扫描的优化路径，如果失败才回退到排序路径。
 
@@ -732,7 +732,7 @@ flowchart TD
 
 图 21.6 Min-P 双路径策略：线性扫描优先，失败回退排序
 
-### 21.5.6 llama_token_data_array_partial_sort：128 桶桶排序 + partial_sort 混合
+### 20.5.6 llama_token_data_array_partial_sort：128 桶桶排序 + partial_sort 混合
 
 这是这些采样器的性能基础：先用 128 个桶将候选 logit 粗略分类，再对每个桶内部进行排序，最后一个桶使用 partial_sort 只排序前 npartial 个元素。
 
@@ -809,11 +809,11 @@ flowchart LR
 
 图 21.7 桶排序+partial_sort 混合算法流程
 
-## 21.6 温度、Typical、XTC：调节「生成多样性」的旋钮
+## 20.6 温度、Typical、XTC：调节「生成多样性」的旋钮
 
 温度采样就像一个「温度计」，通过除以温度参数来缩放 logits：温度低时分布尖锐，接近贪心；温度高时分布均匀，鼓励探索。Temp-Ext 更进一步，根据当前分布的熵动态调整温度区间。Typical 采样则按「偏离熵」排序截断，保留与分布熵最接近的 token。XTC 采样以一定概率随机剔除高频 token，打破同质化。
 
-### 21.6.1 llama_sampler_temp_impl：温度缩放与 argmax 退化
+### 20.6.1 llama_sampler_temp_impl：温度缩放与 argmax 退化
 
 `llama_sampler_temp_impl` 把所有 logit 除以 temp，当 temp<=0 时退化为 argmax（等价于贪心），但保留为独立采样器；当 temp=1.0 时是恒等变换，返回空采样器节省开销。
 
@@ -846,7 +846,7 @@ static void llama_sampler_temp_impl(llama_token_data_array * cur_p, float temp) 
 
 温度采样的核心实现，它通过除以温度来调整 logits 的分布，温度 <= 0 时退化为 argmax。
 
-### 21.6.2 llama_sampler_temp_ext_apply：基于熵的动态温度
+### 20.6.2 llama_sampler_temp_ext_apply：基于熵的动态温度
 
 Temp-Ext 基于熵的动态温度：熵高时用 max_temp 鼓励探索，熵低时用 min_temp 收紧。后端实现完全用 GGML 算子图：soft_max → log → mul → sum → scale → exp → div。
 
@@ -912,7 +912,7 @@ flowchart TD
 
 图 21.8 Temp-Ext 动态温度计算流程
 
-### 21.6.3 llama_sampler_typical_apply：偏离熵距离排序截断
+### 20.6.3 llama_sampler_typical_apply：偏离熵距离排序截断
 
 Typical 采样（仅 CPU）用 `|(-log p) - H|` 作为偏离熵的距离排序截断，保留「最典型」的 token。
 
@@ -983,7 +983,7 @@ static void llama_sampler_typical_apply(struct llama_sampler * smpl, llama_token
 
 Typical 采样的实现，它通过计算每个 token 的偏离熵距离来排序截断，只保留「最典型」的候选。
 
-### 21.6.4 llama_sample_xtc_apply：随机剔除高频 token 打破同质化
+### 20.6.4 llama_sample_xtc_apply：随机剔除高频 token 打破同质化
 
 XTC 采样以一定概率随机剔除累积概率首次低于 threshold 的高频 token，鼓励模型跳出重复模式。
 
@@ -1027,11 +1027,11 @@ static void llama_sample_xtc_apply(struct llama_sampler * smpl, llama_token_data
 
 XTC 采样的实现，它以一定概率随机剔除累积概率超过 threshold 的高频 token，从而打破同质化。
 
-## 21.7 Mirostat 与 adaptive_p：自适应「目标惊奇度」算法
+## 20.7 Mirostat 与 adaptive_p：自适应「目标惊奇度」算法
 
 Mirostat 是一种自适应采样算法，它通过维护一个内部状态 μ（目标惊奇度）来动态调整采样的多样性。Mirostat v1 用 s_hat 估计动态 top-k，v2 则直接按 μ 截断 surprise。Adaptive-P 则通过 EMA 跟踪历史被选 token 的概率，动态调整目标概率，并用二次函数形变 logit 靠近目标。
 
-### 21.7.1 llama_sampler_mirostat_apply：s_hat 估计动态 Top-K
+### 20.7.1 llama_sampler_mirostat_apply：s_hat 估计动态 Top-K
 
 Mirostat v1 用前 m 个 token 的 log(p_i/p_{i+1}) 估计分布的「熵衰减斜率」s_hat，然后基于 s_hat 和目标惊奇度 τ 反推 k 值，再用 Top-K 裁剪。采样后根据观测到的实际惊奇度调整 μ。v2 则把所有 surprise > μ 的 token 直接砍掉，重新 softmax 后采样，无需 m 参数，更简洁。两个版本的 reset 都把 μ 初始化为 `2.0f*tau`。
 
@@ -1069,7 +1069,7 @@ static void llama_sampler_mirostat_apply(struct llama_sampler * smpl, llama_toke
 
 Mirostat v1 的实现，它通过 s_hat 估计动态 top-k，并基于观测惊奇度与目标 τ 的误差来更新内部状态 μ。`sum_ti_bi / sum_ti_sq` 是最小二乘法拟合斜率的结果。
 
-### 21.7.2 llama_sampler_mirostat_v2_apply：按 μ 截断 surprise
+### 20.7.2 llama_sampler_mirostat_v2_apply：按 μ 截断 surprise
 
 Mirostat v2 的实现，它直接按 μ 截断 surprise 过高的 token，无需 m 参数，算法更简洁。
 
@@ -1097,7 +1097,7 @@ static void llama_sampler_mirostat_v2_apply(struct llama_sampler * smpl, llama_t
 }
 ```
 
-### 21.7.3 llama_sampler_adaptive_p_apply：EMA 跟踪 + 二次函数形变
+### 20.7.3 llama_sampler_adaptive_p_apply：EMA 跟踪 + 二次函数形变
 
 Adaptive-P 用 EMA 跟踪历史被选 token 的原始概率，动态调整目标概率。当实际概率普遍高于目标时收紧目标，反之放宽。通过二次函数把偏离目标的位置 logit 调低，靠近目标的位置保持高分。pending_token 机制保证只有真正被接受的 token 才更新 EMA。
 
@@ -1143,11 +1143,11 @@ flowchart TD
 
 图 21.9 Adaptive-P 二次形变与 EMA 更新机制
 
-## 21.8 重复惩罚：Penalties、DRY 与 Top-N-Sigma —— 抑制重复的「纪律委员」
+## 20.8 重复惩罚：Penalties、DRY 与 Top-N-Sigma —— 抑制重复的「纪律委员」
 
 重复是 LLM 生成中常见的问题，llama.cpp 提供了多种重复抑制算法。Penalties 通过环形缓冲区记录最近 N 个 token，并按重复次数、频率和存在性分别施加惩罚。DRY（Don't Repeat Yourself）则用 Z-算法找出所有重复后缀，并根据序列断裂符（seq_breakers）防止过度抑制。Top-N-Sigma 基于标准差截断，保留高于均值一定标准差的 token。
 
-### 21.8.1 llama_sampler_penalties_apply：三件套惩罚 + 环形缓冲区
+### 20.8.1 llama_sampler_penalties_apply：三件套惩罚 + 环形缓冲区
 
 Penalties 采样器用 `ring_buffer<llama_token>` 保存最近 penalty_last_n 个 token，用哈希表 `token_count` 统计窗口内每个 token 的出现次数。repeat 惩罚对正负 logit 分别用除法和乘法（避免负 logit 反向放大），freq 按出现次数扣减 logit，present 出现即扣固定值。
 
@@ -1217,7 +1217,7 @@ flowchart LR
 
 图 21.10 环形缓冲区 push_back 逻辑：满时覆盖最旧
 
-### 21.8.2 llama_sampler_dry_apply：Z-算法 + seq_breakers 指数惩罚
+### 20.8.2 llama_sampler_dry_apply：Z-算法 + seq_breakers 指数惩罚
 
 DRY 采样器用 Z-算法在 O(N) 时间内找出最近 N 个 token 中的所有重复后缀，seq_breakers 序列断裂符阻止过度抑制（如句号、换行）。用 `pow(dry_base, repeat_len)` 计算指数级惩罚，并用 `max_exponent` 防 float 溢出。
 
@@ -1379,7 +1379,7 @@ const T & rat(size_t i) const {
 
 `rat(i)` 反向索引实现：`rat(0)` 是最后插入的元素，`rat(1)` 是倒数第二个。DRY 算法大量使用 `rat` 从后向前遍历历史记录。
 
-### 21.8.3 llama_sampler_top_n_sigma_apply：Z-score 风格截断
+### 20.8.3 llama_sampler_top_n_sigma_apply：Z-score 风格截断
 
 Top-N-Sigma 采样计算所有非 -INF logit 的均值和标准差，保留 max - n*std 以上的 token，剔除离群低值，类似 Z-score 异常检测的思路。
 
@@ -1423,11 +1423,11 @@ static void llama_sampler_top_n_sigma_apply(struct llama_sampler * smpl, llama_t
 
 Top-N-Sigma 采样的实现，它通过 Z-score 风格的阈值截断，保留高于均值一定标准差的 token。
 
-## 21.9 Logit Bias、Infill 与 Grammar：直接干预 logit 的「特权通道」
+## 20.9 Logit Bias、Infill 与 Grammar：直接干预 logit 的「特权通道」
 
 某些采样策略需要直接修改 logits，而不是通过概率变换。Logit Bias 允许用户为指定 token 加减分；Infill 专为 Fill-in-the-Middle 任务设计，抑制 EOG 并合并共享前缀的 token；Grammar 则委托 `llama_grammar_apply_impl` 把非法 token 设为 -INF，实现语法约束。
 
-### 21.9.1 llama_sampler_logit_bias_apply：直接修改 logit + 后端 set_rows
+### 20.9.1 llama_sampler_logit_bias_apply：直接修改 logit + 后端 set_rows
 
 Logit Bias 采样器直接修改对应 token 的 logit：`logit += bias`。优化策略是先处理 idx==id 的简单情况，剩下的放进 to_search 二次扫描。后端实现用 `ggml_set_rows` 把 bias 写入指定位置，再 `ggml_add` 叠加。
 
@@ -1463,7 +1463,7 @@ static void llama_sampler_logit_bias_apply(struct llama_sampler * smpl, llama_to
 
 Logit Bias 采样的实现，它直接修改对应 token 的 logit，先用快速路径处理一一对应的情况，再用搜索路径处理自定义偏置。
 
-### 21.9.2 llama_sampler_infill_apply：EOG 抑制 + 共享前缀合并
+### 20.9.2 llama_sampler_infill_apply：EOG 抑制 + 共享前缀合并
 
 Infill 采样专为 Fill-in-the-Middle 任务设计：当 EOG token 概率过高时强制采样 EOG；用 token piece 字符串前缀合并策略把共享前缀的多 token 合并为高概率项；双重 thold 过滤保留足够多候选。
 
@@ -1523,7 +1523,7 @@ static void llama_sampler_infill_apply(struct llama_sampler * smpl, llama_token_
 
 Infill 采样的实现，它通过 EOG 比例抑制、共享前缀合并和双重阈值过滤，专为代码填充等任务设计。
 
-### 21.9.3 llama_sampler_grammar_apply：委托 grammar_impl 把非法 token 设 -INF
+### 20.9.3 llama_sampler_grammar_apply：委托 grammar_impl 把非法 token 设 -INF
 
 Grammar 采样委托 `llama_grammar_apply_impl` 修改 logit：把不合法 token 设为 -INF。lazy 模式支持 trigger_words/trigger_patterns 延迟激活。reset 时会重新初始化 grammar 对象（保留 trigger 配置），clone 在 ctx 为空时创建空实例再填充状态。
 
@@ -1541,11 +1541,11 @@ static void llama_sampler_grammar_apply(struct llama_sampler * smpl, llama_token
 
 Grammar 采样的实现，它将非法 token 的 logit 设为 -INF，从而约束模型输出符合指定的 BNF 文法。
 
-## 21.10 采样器后端支持与性能统计 —— 让 GPU 也能当「指挥官」
+## 20.10 采样器后端支持与性能统计 —— 让 GPU 也能当「指挥官」
 
 采样器的后端支持机制允许将采样操作映射为 GGML 计算图算子，从而在 GPU 上执行。`llama_sampler_backend_support` 函数通过构造一个虚拟的 GGML 图来探测后端的算子支持情况，支持的采样器名字会带 `+` 前缀（如 `+top-k`），不支持的带 `-`（如 `-top-p`）。采样链通过 `is_backend` 标志实现 CPU/GPU 路径的互斥。性能统计则通过 `llama_perf_sampler` 读取链的 `t_sample_us` 和 `n_sample` 字段，返回采样耗时和次数。
 
-### 21.10.1 llama_sampler_backend_support：Dummy 图探测算子支持
+### 20.10.1 llama_sampler_backend_support：Dummy 图探测算子支持
 
 ```mermaid
 flowchart TD
@@ -1640,7 +1640,7 @@ const char * get_name() {
 
 `llama_sampler_backend` 基类的 `get_name` 在 `is_init=false` 时返回原始名，初始化后返回 `+name`（支持）或 `-name`（不支持），极大方便了调试。
 
-### 21.10.2 llama_perf_sampler：读取链统计字段
+### 20.10.2 llama_perf_sampler：读取链统计字段
 
 ```cpp
 // 源码路径：src/llama-sampler.cpp - llama_perf_sampler()（3806-3818行）
@@ -1660,7 +1660,7 @@ struct llama_perf_sampler_data llama_perf_sampler(const struct llama_sampler * c
 
 性能统计接口的实现，它从采样链中读取累计的采样耗时和次数，返回结构化数据供上层展示。
 
-### 21.10.3 get_rng_seed：统一的种子处理
+### 20.10.3 get_rng_seed：统一的种子处理
 
 ```cpp
 // 源码路径：src/llama-sampler.cpp - get_rng_seed()（349-362行）
@@ -1682,7 +1682,7 @@ static uint32_t get_rng_seed(uint32_t seed) {
 
 统一处理 `LLAMA_DEFAULT_SEED`，自动用 system_clock 或 random_device 生成种子，保证随机性来源的一致性。
 
-## 21.11 设计中的取舍
+## 20.11 设计中的取舍
 
 **问：为什么在采样器设计中选择虚函数表而不是模板？**
 
@@ -1712,7 +1712,7 @@ static uint32_t get_rng_seed(uint32_t seed) {
 
 答：手写 `ring_buffer` 避免了 std::deque 的分段存储和迭代器开销，提供了连续的内存布局和 O(1) 的 `rat(i)` 反向随机访问，这对 DRY 算法的 Z-算法至关重要。`clear()` 只重置计数器不释放内存，避免了频繁采样时的内存分配/释放开销，符合推理时的高性能要求。
 
-## 21.12 动手练习
+## 20.12 动手练习
 
 - 阅读采样器接口与空采样器
   - 阅读 `src/llama-sampler.cpp` 中以下代码段：
@@ -1854,7 +1854,7 @@ static uint32_t get_rng_seed(uint32_t seed) {
     - `grammar_clone` 在 ctx 为空时调用 `init_grammar_impl(..., nullptr, ...)` 是为什么？
     - grammar 在链中通常放在哪个位置？为什么？
 
-## 21.13 本章小结
+## 20.13 本章小结
 
 这一章中，我们深入探讨了 llama.cpp 的采样系统，它就像乐团指挥选拔乐手的过程。首先，我们学习了采样器的统一接口 `llama_sampler_i`，它通过虚函数表定义了 10 个钩子，使得各种采样器可以统一管理。空采样器作为占位符，保证了采样链的稳定性。采样链就像流水线指挥链，按顺序调度各个采样器，并支持后端短路和时间统计。基础采样器如贪心、分布、Top-K、Top-P、Min-P 提供了基本的 token 选择策略，而桶排序和 partial_sort 则提供了高效的排序支持。温度、Typical、XTC 调节生成的多样性，Mirostat 和 adaptive_p 实现了自适应的目标惊奇度。重复惩罚（Penalties、DRY、Top-N-Sigma）有效抑制了重复生成。Logit Bias、Infill 和 Grammar 则提供了直接干预 logit 的特权通道。最后，后端采样支持让 GPU 也能执行采样，性能统计则帮助我们分析采样耗时。
 

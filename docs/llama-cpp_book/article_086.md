@@ -2,7 +2,7 @@
 
 
 
-# 第87章 Agent 服务端工具系统 —— LLM 动手能力的「工具箱与安检门」
+# 第86章 Agent 服务端工具系统 —— LLM 动手能力的「工具箱与安检门」
 
 ## 学习目标
 
@@ -13,11 +13,11 @@
 - 掌握 server_tools 注册表的可插拔架构与 HTTP 端点暴露机制
 - 能基于 server_tool 基类开发自定义 Agent 工具并注册到工具生态
 
-## 87.1 生活类比
+## 86.1 生活类比
 
 想象 llama-server 的 Agent 工具系统是一家全能装修公司的工具箱体系：server_tool 基类 = 工具的统一安全认证标准（就像电动工具都必须有 3C 认证），规定每件工具必须有「说明书」（get_definition）和「使用开关」；permission_write = 工具上的红黄标签：绿色标签（read_file / grep_search）是测量工具，随便用；红色标签（write_file / exec_shell）是电钻切割机，必须业主签字确认；只读三剑客 = 装修前的勘察装备：read_file 是望远镜（看指定行范围）、glob_search 是金属探测器（找文件位置）、grep_search 是显微镜（搜细节内容）；写操作三件套 = 施工装备梯度：write_file 是推土机（整体重建）、edit_file 是手术刀（精准行编辑）、apply_diff 是专业焊枪（处理复杂补丁）；exec_shell_command = 租借的大型机械，不仅要红色标签，还要操作时限时（超时 60 秒）、限载（10 MB 输出），完工后强制熄火；server_tools 注册表 = 公司的工具调度室：tool 清单在册（vector 管理），按需启用（enabled_tools），对外服务窗口统一接单（handle_post），按单派工（invoke 按名分发）。正如装修公司不会让学徒直接操作切割机，llama.cpp 通过权限分层与 HTTP 确认机制，确保 LLM 的每一次「动手」都在安全围栏之内。
 
-## 87.2 源码地图
+## 86.2 源码地图
 
 tools/server/server-tools.h
 ├── server_tool                   # 工具抽象基类（通用契约）
@@ -72,11 +72,11 @@ tools/server/server-tools.cpp
     ├── server_tools::setup()     # 按 enabled_tools 过滤 + 注册 GET/POST
     └── server_tools::invoke()    # 按名查找 → 调用 → 统一错误处理
 
-## 87.3 server_tool：工具的「工具宪法与执行入口」 —— Agent 能力的抽象接口
+## 86.3 server_tool：工具的「工具宪法与执行入口」 —— Agent 能力的抽象接口
 
 这一节我们深入 server_tool 抽象基类，它是整个 Agent 工具系统的「宪法」。正如装修公司要求所有工具必须通过 3C 认证，server_tool 强制所有具体工具（读文件、写文件、执行命令等）遵守它定义的三大契约：get_definition()、invoke()、to_json()。通过这种面向接口编程，llama.cpp 实现了工具系统的高内聚、低耦合与可插拔扩展。
 
-### 87.3.1 server_tool 类定义：工具通用契约的基因图谱
+### 86.3.1 server_tool 类定义：工具通用契约的基因图谱
 
 **类型即图纸**：先看 server_tool 的类定义，它是所有工具的「基因图谱」。
 
@@ -110,15 +110,15 @@ public:
 
 这段代码定义了 Agent 工具的「通用契约」：每个工具必须能描述自己（get_definition）、能执行自己（invoke）、能序列化自己。正如装修工具都要贴上合格证标签，permission_write 布尔标记构建了最简权限模型——只读工具自由调用，写操作工具需用户确认。
 
-### 87.3.2 server_tool::get_definition() 纯虚函数：生成工具说明书的契约
+### 86.3.2 server_tool::get_definition() 纯虚函数：生成工具说明书的契约
 
 `get_definition()` 是纯虚函数，强制每个派生类必须返回符合 OpenAI Function Calling 规范的 JSON Schema。它是 LLM 理解「有哪些工具、怎么调用」的唯一来源。基类不提供默认实现，确保每个工具都必须显式声明自己的参数结构、描述与必填字段，正如每件电动工具都必须附带详细的使用说明书。
 
-### 87.3.3 server_tool::invoke(json) 纯虚函数：统一执行入口的契约
+### 86.3.3 server_tool::invoke(json) 纯虚函数：统一执行入口的契约
 
 `invoke(json params)` 是纯虚函数，统一了所有工具的调用签名：输入 JSON 参数，输出 JSON 结果。这种设计让 server_tools 注册表无需关心具体工具类型，只需按名分发即可。正如装修公司的调度员只需知道工具编号就能派工，无需懂每件工具的内部结构。错误处理约定为返回包含 "error" 字段的 JSON，成功时按工具语义返回结构化数据。
 
-### 87.3.4 server_tool::to_json()：基类元数据序列化实现
+### 86.3.4 server_tool::to_json()：基类元数据序列化实现
 
 基类提供了 to_json() 的默认实现，派生类无需重写即可获得元数据序列化能力。
 
@@ -137,7 +137,7 @@ json server_tool::to_json() {
 
 这段代码实现了工具元数据的标准化序列化，确保 /tools 接口返回统一结构，前端可直接渲染工具列表。该实现位于 `__main__` 全局基础设施区域（第 1-183 行）的末尾，与前文的 `run_process()`、`to_cstr_vec()` 等基础设施函数毗邻。正如工具调度室的登记册，只记录工具的名称、展示名与是否需特殊许可三要素。
 
-### 87.3.5 server_tools::tools 成员变量：工具实例的所有权容器
+### 86.3.5 server_tools::tools 成员变量：工具实例的所有权容器
 
 `server_tools` 类内部使用 `std::vector<std::unique_ptr<server_tool>> tools` 管理所有工具实例的生命周期。unique_ptr 保证所有权唯一、异常安全、自动释放，避免内存泄漏。vector 保持工具注册顺序，配合线性查找的 invoke() 分发机制，工具数量少时极简高效。正如调度室的工具架，每个位置放一件工具，用完自动归位。
 
@@ -164,15 +164,15 @@ classDiagram
 
 此图展示 `server_tool` 七大派生类的继承体系，所有具体工具均继承自抽象基类，实现三大核心契约。
 
-## 87.4 只读工具三剑客：read_file / glob_search / grep_search —— 信息检索的「侦察兵」
+## 86.4 只读工具三剑客：read_file / glob_search / grep_search —— 信息检索的「侦察兵」
 
 这三个工具共同构成 Agent 的「信息收集三剑客」，permission_write = false，属于安全只读操作，LLM 可自由调用无需用户确认。正如装修前的勘察装备，它们帮助 LLM 在动手前充分了解现场情况。
 
-### 87.4.1 server_tool_read_file：文件内容的安全读取
+### 86.4.1 server_tool_read_file：文件内容的安全读取
 
 read_file 支持指定行范围读取，避免一次性加载超大文件撑爆上下文；可选行号前缀，便于 LLM 定位代码位置。正如望远镜只看指定窗口，不必吞下整座大楼。
 
-#### 87.4.1.1 server_tool_read_file 构造函数：初始化工具身份与只读标记
+#### 86.4.1.1 server_tool_read_file 构造函数：初始化工具身份与只读标记
 
 源码路径：`tools/server/server-tools.cpp` - `server_tool_read_file`（第 184-189 行）
 
@@ -185,7 +185,7 @@ server_tool_read_file() {
 }
 ```
 
-#### 87.4.1.2 server_tool_read_file::get_definition()：生成 JSON Schema 说明书
+#### 86.4.1.2 server_tool_read_file::get_definition()：生成 JSON Schema 说明书
 
 源码路径：`tools/server/server-tools.cpp` - `server_tool_read_file::get_definition()`（第 191-210 行）
 
@@ -216,7 +216,7 @@ json get_definition() override {
 
 这段代码定义了 read_file 的完整参数契约：path 为必需字符串，start_line/end_line 为可选整数（1-indexed），show_line_numbers 为可选布尔值。正如望远镜的参数卡，明确告诉 LLM 如何精准聚焦。
 
-#### 87.4.1.3 server_tool_read_file::invoke()：按行范围安全读取文件内容
+#### 86.4.1.3 server_tool_read_file::invoke()：按行范围安全读取文件内容
 
 源码路径：`tools/server/server-tools.cpp` - `server_tool_read_file::invoke()`（第 212-271 行）
 
@@ -282,11 +282,11 @@ flowchart TD
 
 此流程图展示 read_file 的核心执行链路：参数解析 → 存在性与大小检查 → 按行过滤 → 格式化返回。
 
-### 87.4.2 server_tool_file_glob_search：递归文件搜索
+### 86.4.2 server_tool_file_glob_search：递归文件搜索
 
 基于 glob 模式递归搜索匹配文件，返回相对路径列表，用于项目结构探索。正如金属探测器扫描全场，只报出目标金属的位置。
 
-#### 87.4.2.1 server_tool_file_glob_search 构造函数：初始化工具身份
+#### 86.4.2.1 server_tool_file_glob_search 构造函数：初始化工具身份
 
 源码路径：`tools/server/server-tools.cpp` - `server_tool_file_glob_search`（第 284-289 行）
 
@@ -298,7 +298,7 @@ server_tool_file_glob_search() {
 }
 ```
 
-#### 87.4.2.2 server_tool_file_glob_search::get_definition()：参数 Schema
+#### 86.4.2.2 server_tool_file_glob_search::get_definition()：参数 Schema
 
 源码路径：`tools/server/server-tools.cpp` - `server_tool_file_glob_search::get_definition()`（第 291-307 行）
 
@@ -323,7 +323,7 @@ json get_definition() override {
 }
 ```
 
-#### 87.4.2.3 server_tool_file_glob_search::invoke()：递归 Glob 匹配实现
+#### 86.4.2.3 server_tool_file_glob_search::invoke()：递归 Glob 匹配实现
 
 源码路径：`tools/server/server-tools.cpp` - `server_tool_file_glob_search::invoke()`（第 309-351 行）
 
@@ -380,11 +380,11 @@ flowchart TD
 
 此流程图展示 file_glob_search 的核心执行链路：参数解析 → 路径存在性检查 → 递归遍历 → glob 匹配 → 结果收集 → 返回。
 
-### 87.4.3 server_tool_grep_search：正则表达式搜索
+### 86.4.3 server_tool_grep_search：正则表达式搜索
 
 在单个文件或整个目录中执行正则搜索，支持行号显示、最大匹配数限制。正如显微镜在切片上寻找特定纹理，逐行扫描、精准定位。
 
-#### 87.4.3.1 server_tool_grep_search 构造函数：初始化工具身份
+#### 86.4.3.1 server_tool_grep_search 构造函数：初始化工具身份
 
 源码路径：`tools/server/server-tools.cpp` - `server_tool_grep_search`（第 364-369 行）
 
@@ -396,7 +396,7 @@ server_tool_grep_search() {
 }
 ```
 
-#### 87.4.3.2 server_tool_grep_search::get_definition()：参数 Schema
+#### 86.4.3.2 server_tool_grep_search::get_definition()：参数 Schema
 
 源码路径：`tools/server/server-tools.cpp` - `server_tool_grep_search::get_definition()`（第 371-390 行）
 
@@ -423,7 +423,7 @@ json get_definition() override {
 }
 ```
 
-#### 87.4.3.3 server_tool_grep_search::invoke()：正则搜索核心逻辑
+#### 86.4.3.3 server_tool_grep_search::invoke()：正则搜索核心逻辑
 
 源码路径：`tools/server/server-tools.cpp` - `server_tool_grep_search::invoke()`（第 392-469 行）
 
@@ -498,15 +498,15 @@ flowchart TD
 
 此流程图展示 grep_search 的核心执行链路：参数解析 → 文件收集 → 逐行正则匹配 → 计数截断 → 结果返回。
 
-## 87.5 写操作工具：write_file / edit_file / apply_diff —— 文件系统的「改造工程师」
+## 86.5 写操作工具：write_file / edit_file / apply_diff —— 文件系统的「改造工程师」
 
 这三个工具 permission_write = true，属于写操作，调用时需用户确认。正如施工装备梯度，它们形成从简单到复杂的完整编辑能力链：write_file 整体重建、edit_file 行级手术、apply_diff 补丁融合。
 
-### 87.5.1 server_tool_write_file：文件的创建与覆盖
+### 86.5.1 server_tool_write_file：文件的创建与覆盖
 
 自动创建父目录，简化路径处理；返回写入字节数。正如推土机推平场地再整体浇筑。
 
-#### 87.5.1.1 server_tool_write_file 构造函数：初始化工具身份与写权限标记
+#### 86.5.1.1 server_tool_write_file 构造函数：初始化工具身份与写权限标记
 
 源码路径：`tools/server/server-tools.cpp` - `server_tool_write_file`（第 557-562 行）
 
@@ -518,7 +518,7 @@ server_tool_write_file() {
 }
 ```
 
-#### 87.5.1.2 server_tool_write_file::get_definition()：参数 Schema
+#### 86.5.1.2 server_tool_write_file::get_definition()：参数 Schema
 
 源码路径：`tools/server/server-tools.cpp` - `server_tool_write_file::get_definition()`（第 564-579 行）
 
@@ -542,7 +542,7 @@ json get_definition() override {
 }
 ```
 
-#### 87.5.1.3 server_tool_write_file::invoke()：原子写入实现
+#### 86.5.1.3 server_tool_write_file::invoke()：原子写入实现
 
 源码路径：`tools/server/server-tools.cpp` - `server_tool_write_file::invoke()`（第 581-609 行）
 
@@ -582,11 +582,11 @@ flowchart TD
 
 此流程图展示 write_file 的核心执行链路：参数解析 → 创建目录 → 写入文件 → 返回字节数。
 
-### 87.5.2 server_tool_edit_file：基于行的精准编辑
+### 86.5.2 server_tool_edit_file：基于行的精准编辑
 
 支持 replace/delete/append 三种操作，通过行号定位，带完整合法性验证。正如手术刀在精确坐标切开、缝合。
 
-#### 87.5.2.1 server_tool_edit_file 构造函数：初始化工具身份与写权限标记
+#### 86.5.2.1 server_tool_edit_file 构造函数：初始化工具身份与写权限标记
 
 源码路径：`tools/server/server-tools.cpp` - `server_tool_edit_file`（第 620-625 行）
 
@@ -598,7 +598,7 @@ server_tool_edit_file() {
 }
 ```
 
-#### 87.5.2.2 server_tool_edit_file::get_definition()：复杂操作 Schema
+#### 86.5.2.2 server_tool_edit_file::get_definition()：复杂操作 Schema
 
 源码路径：`tools/server/server-tools.cpp` - `server_tool_edit_file::get_definition()`（第 627-671 行）
 
@@ -637,7 +637,7 @@ json get_definition() override {
 
 这段代码定义了 edit_file 的复杂参数结构：operations 数组，每个元素包含 type（replace/delete/append）、start_line、end_line（replace/delete 必需）、content（replace/append 需要）。正如手术清单，每一刀都有明确坐标与动作。
 
-#### 87.5.2.3 server_tool_edit_file::invoke()：编辑验证与应用流程
+#### 86.5.2.3 server_tool_edit_file::invoke()：编辑验证与应用流程
 
 源码路径：`tools/server/server-tools.cpp` - `server_tool_edit_file::invoke()`（第 673-790 行）
 
@@ -732,11 +732,11 @@ flowchart TD
 
 此流程图展示 edit_file 的核心执行链路：读取 → 排序 → 验证 → 应用 → 写回。
 
-### 87.5.3 server_tool_apply_diff：Git 风格补丁应用
+### 86.5.3 server_tool_apply_diff：Git 风格补丁应用
 
 接收 unified diff，写临时文件后调用 `git apply`，利用 Git 原生能力处理复杂变更。正如专业焊枪配合标准焊料，处理复杂结构连接。
 
-#### 87.5.3.1 server_tool_apply_diff 构造函数：初始化工具身份与写权限标记
+#### 86.5.3.1 server_tool_apply_diff 构造函数：初始化工具身份与写权限标记
 
 源码路径：`tools/server/server-tools.cpp` - `server_tool_apply_diff`（第 803-808 行）
 
@@ -748,7 +748,7 @@ server_tool_apply_diff() {
 }
 ```
 
-#### 87.5.3.2 server_tool_apply_diff::get_definition()：参数 Schema
+#### 86.5.3.2 server_tool_apply_diff::get_definition()：参数 Schema
 
 源码路径：`tools/server/server-tools.cpp` - `server_tool_apply_diff::get_definition()`（第 810-822 行）
 
@@ -772,7 +772,7 @@ json get_definition() override {
 }
 ```
 
-#### 87.5.3.3 server_tool_apply_diff::invoke()：临时文件 + git apply
+#### 86.5.3.3 server_tool_apply_diff::invoke()：临时文件 + git apply
 
 源码路径：`tools/server/server-tools.cpp` - `server_tool_apply_diff::invoke()`（第 824-853 行）
 
@@ -819,11 +819,11 @@ flowchart TD
 
 此流程图展示 apply_diff 的核心执行链路：解析 diff → 创建临时文件 → 写入 → git apply → 清理 → 返回结果。
 
-## 87.6 沙箱边界的守门人——多层围栏下的命令执行引擎
+## 86.6 沙箱边界的守门人——多层围栏下的命令执行引擎
 
 这是权限最高、风险最大的工具：执行任意 Shell 命令。必须有多层安全围栏。正如租借大型机械，不仅要红色标签，还要限时、限载、完工强制熄火。
 
-### 87.6.1 run_proc_result 结构体：进程执行结果的标准载体
+### 86.6.1 run_proc_result 结构体：进程执行结果的标准载体
 
 在进入 run_process 之前，先看它的返回值结构，定义于 `__main__` 全局基础设施区域（第 100-105 行左右）：
 
@@ -837,7 +837,7 @@ struct run_proc_result {
 
 三个字段分别在 run_process 的不同阶段填充：output 在读取管道时累积，exit_code 在 waitpid 获取状态后由宏提取，timeout 在超时分支置 true。正如机械作业记录单，记录产出、退出状态、是否超时强停。
 
-### 87.6.2 to_cstr_vec()：参数向量转 C 风格数组的辅助函数
+### 86.6.2 to_cstr_vec()：参数向量转 C 风格数组的辅助函数
 
 同样位于 `__main__` 区域（第 1-30 行左右），用于将 `vector<string>` 转换为 `execvp` 所需的 `char*[]`：
 
@@ -851,7 +851,7 @@ static std::vector<char *> to_cstr_vec(const std::vector<std::string> & v) {
 }
 ```
 
-### 87.6.3 run_process()：进程执行基础设施
+### 86.6.3 run_process()：进程执行基础设施
 
 这是 exec_shell_command 的底层引擎，也是所有子进程执行的统一入口。
 
@@ -953,9 +953,9 @@ flowchart TD
 
 此流程图展示 run_process 的核心执行链路：创建管道 → fork → 子进程 exec / 父进程读取输出 → 超时轮询与强制终止 → 退出码提取 → 返回结果。
 
-### 87.6.4 server_tool_exec_shell_command：执行工具封装
+### 86.6.4 server_tool_exec_shell_command：执行工具封装
 
-#### 87.6.4.1 server_tool_exec_shell_command 构造函数：初始化最高风险工具身份
+#### 86.6.4.1 server_tool_exec_shell_command 构造函数：初始化最高风险工具身份
 
 源码路径：`tools/server/server-tools.cpp` - `server_tool_exec_shell_command`（第 483-488 行）
 
@@ -967,7 +967,7 @@ server_tool_exec_shell_command() {
 }
 ```
 
-#### 87.6.4.2 server_tool_exec_shell_command::get_definition()：参数 Schema
+#### 86.6.4.2 server_tool_exec_shell_command::get_definition()：参数 Schema
 
 源码路径：`tools/server/server-tools.cpp` - `server_tool_exec_shell_command::get_definition()`（第 490-509 行）
 
@@ -993,7 +993,7 @@ json get_definition() override {
 }
 ```
 
-#### 87.6.4.3 server_tool_exec_shell_command::invoke()：调用 run_process 并格式化返回
+#### 86.6.4.3 server_tool_exec_shell_command::invoke()：调用 run_process 并格式化返回
 
 源码路径：`tools/server/server-tools.cpp` - `server_tool_exec_shell_command::invoke()`（第 512-544 行）
 
@@ -1033,11 +1033,11 @@ flowchart TD
 
 此流程图展示 exec_shell_command 的核心执行链路：参数解析 → 调用 run_process → 格式化结果 → 返回。
 
-## 87.7 server_tools 注册表与 HTTP 暴露 —— 工具生态的「调度中心」
+## 86.7 server_tools 注册表与 HTTP 暴露 —— 工具生态的「调度中心」
 
 server_tools 类是工具系统的「大管家」：管理工具实例生命周期、按配置筛选启用工具、注册 HTTP 路由、分发调用请求。正如装修公司的工具调度室，工具清单在册、按需启用、统一对外接单。
 
-### 87.7.1 server_tools 类定义：工具集合管理器
+### 86.7.1 server_tools 类定义：工具集合管理器
 
 源码路径：`tools/server/server-tools.h` - `server_tools`（第 13-22 行）
 
@@ -1070,7 +1070,7 @@ classDiagram
 
 此图展示 server_tools 组合管理所有工具实例。
 
-### 87.7.2 build_tools() 工厂函数：集中创建所有内置工具
+### 86.7.2 build_tools() 工厂函数：集中创建所有内置工具
 
 源码路径：`tools/server/server-tools.cpp` - `build_tools()`（第 856-863 行）
 
@@ -1111,7 +1111,7 @@ flowchart TD
 
 此流程图展示 build_tools 创建全部 7 个内置工具的过程。
 
-### 87.7.3 server_tools::setup()：筛选启用 + 注册 HTTP 路由
+### 86.7.3 server_tools::setup()：筛选启用 + 注册 HTTP 路由
 
 源码路径：`tools/server/server-tools.cpp` - `server_tools::setup()`（第 865-922 行）
 
@@ -1165,7 +1165,7 @@ flowchart TD
 
 此流程图展示 setup 的核心执行链路：创建全量工具 → 白名单筛选 → 注册 HTTP 路由。
 
-### 87.7.4 server_tools::invoke()：按名线性查找分发
+### 86.7.4 server_tools::invoke()：按名线性查找分发
 
 源码路径：`tools/server/server-tools.cpp` - `server_tools::invoke()`（第 925-931 行）
 
@@ -1197,7 +1197,7 @@ flowchart TD
 
 此流程图展示 invoke 的核心执行链路：线性查找 → 多态调用 → 返回结果或错误。
 
-### 87.7.5 模块依赖图：继承体系与组合关系
+### 86.7.5 模块依赖图：继承体系与组合关系
 
 ```mermaid
 classDiagram
@@ -1263,7 +1263,7 @@ classDiagram
 
 此图展示 `server_tool` 七大派生类的继承体系，以及 `server_tools` 通过 `vector<unique_ptr<server_tool>>` 组合管理所有工具实例、并在 `setup()` 中调用 `build_tools()` 工厂函数的关系。正如装修公司的组织架构图：工具族谱 + 调度室持有工具实例 + 采购清单创建工具。
 
-## 87.8 设计中的取舍
+## 86.8 设计中的取舍
 
 为什么不直接用 `system()` 而要手写 `run_process()`？正如租借机械不能只用钥匙启动就不管了，`system()` 无法捕获 stdout/stderr、无法设置超时强制杀死、无法限制输出大小、会阻塞主线程。`run_process()` 通过 fork+pipe+execvp 实现了非阻塞输出捕获、精确超时控制、输出硬性截断，是生产级子进程执行的最小完备实现。
 
@@ -1275,7 +1275,7 @@ classDiagram
 
 权限模型为何只分 `permission_write` 一个布尔位？当前威胁模型简单：只读操作无副作用可自由调用，写操作有副作用需人工确认。细粒度 RBAC 会引入配置复杂度，当前单一布尔位已覆盖 90% 场景，遵循「简单优先」原则。正如装修工具只分「测量类」与「施工类」两档，已足够应对大多数现场。
 
-## 87.9 动手练习
+## 86.9 动手练习
 
 1. **阅读只读工具的实现边界**
    阅读 `tools/server/server-tools.cpp` 第184-469行，对比三个只读工具：
@@ -1328,7 +1328,7 @@ classDiagram
    - setup() 中的 lambda 捕获 this 指针，如果 server_tools 对象销毁会发生什么？
    - to_json() 与 get_definition() 返回的内容有何本质区别，各自服务于谁？
 
-## 87.10 本章小结
+## 86.10 本章小结
 
 这一章中我们学习了 llama.cpp 服务端的 Agent 工具系统。首先理解了 server_tool 抽象基类定义的三大契约（get_definition/invoke/to_json）与 permission_write 安全标记；其次剖析了只读三剑客 read_file/glob_search/grep_search 的参数 Schema 与核心实现；接着深入写操作三件套 write_file/edit_file/apply_diff 的编辑语义与验证逻辑；然后解析了最高风险的 exec_shell_command 及其底层 run_process 基础设施的多层安全围栏；最后梳理了 server_tools 注册表的工厂模式、白名单筛选、HTTP 路由注册与分发调用全流程。
 

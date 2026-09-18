@@ -1,5 +1,5 @@
 
-# 第 14 章 词汇表与分词系统 —— 文本与 Token 的"双向桥梁"
+# 第15章 词汇表与分词系统 —— 文本与 Token 的"双向桥梁"
 
 ## 学习目标
 
@@ -13,11 +13,11 @@
 - 阅读UGM分词的Viterbi DP算法及XCDA压缩双数组解码
 - 掌握PLaMo2的Trie展平与动态规划回溯实现
 
-## 14.1 生活类比
+## 15.1 生活类比
 
 想象llama.cpp的分词系统是一家**国际快递公司的分拣中心**，负责把不同语言、不同形式的「包裹」(文本)拆成标准化的「快递箱」(token)。UTF-8字节流 = 快递车上还没拆包的包裹（一串原始字节）；Unicode码点(codepoint) = 拆包后的单个物品（每个字符）；NFD规范化 = 把「café」统一拆成「cafe+´」，避免「é」和「e+´」两种写法混淆；GPT-2字节回退 = 给每个0-255的字节分配一个Unicode占位字符，保证任何字节都能被tokenize；SPM优先级队列 = 按「分数」（对数概率）从高到低排序的优先队列，先合并高分token；BPE rank表 = 训练时按频次排序的合并规则表，rank小（出现早）的优先合并；特殊token分区 = 把<|im_start|>、 等「快递面单」预先切出来，剩下的才是普通文本；detokenize三遍清理 = 快递员取件时：去掉「 ?」前的多余空格、合并「 ' 」两侧空格、处理「 's」的撇号缩写；naive_trie字典树 = 快递分拣柜，每层货架放一种字符前缀，沿着货架最快找到匹配；XCDA紧凑双数组 = 智能货架编号系统，用一个字节就能定位任何前缀对应的归一化字符串。就像分拣中心需要协调传送带、扫码枪、堆垛机一样，llama.cpp需要在Unicode编码、词表匹配、特殊token切分之间精确配合。特别token就是「特殊面单」：不能被通用规则误处理，必须优先识别为完整单元。
 
-## 14.2 源码地图
+## 15.2 源码地图
 
 src/unicode.h
 ├── struct unicode_cpt_flags              # 码点类别位标志(NUMBER/LETTER/HAN/NFD...)
@@ -138,13 +138,13 @@ src/llama-vocab.cpp
     ├── naive_trie.*                      # 字典树增删查
     └── llama_priority_queue.pop_move()   # 移动pop
 
-## 14.3 Unicode 支持：编码与规范化 —— 文本与 Token 的「第一道翻译官」
+## 15.3 Unicode 支持：编码与规范化 —— 文本与 Token 的「第一道翻译官」
 
-### 14.3.1 为什么需要 utf8 ↔ codepoint 的双向通道？
+### 15.3.1 为什么需要 utf8 ↔ codepoint 的双向通道？
 
 Tokenizer 的最小操作单位是 Unicode 码点而非字节，因此必须先把 UTF-8 字节流拆成码点序列。通过 `unicode_cpt_to_utf8()` / `unicode_cpt_from_utf8()` 实现字节与码点的互转，错误输入用 `0xFFFD` 替换避免异常向上传播。NFD 规范化（`unicode_cpts_normalize_nfd`）解决「音标复合字符」在不同源数据中的形态差异，是 SPM/WPM 分词器稳定性的前提。大小写转换（`unicode_tolower`）支持 LLaMA3 等大小写不敏感的预分词正则（如 `'(?i:'s|...)`）。汉字识别（`unicode_cpt_is_han`）为 Kimi-K2 等模型提供 CJK 字符的快速判别，配合正则 `\p{Han}+` 完成中文分词。
 
-### 14.3.2 unicode_cpt_from_utf8()：UTF-8 字节流到码点的解码器
+### 15.3.2 unicode_cpt_from_utf8()：UTF-8 字节流到码点的解码器
 
 源码路径：`src/unicode.cpp` - `unicode_cpt_from_utf8()`（第 33-66 行）
 
@@ -196,7 +196,7 @@ uint32_t unicode_cpt_from_utf8(const std::string & utf8, size_t & offset) {
 
 这段代码实现了标准的 UTF-8 解码逻辑：根据首字节的高位模式判断字符长度（1~4 字节），逐位拼装码点，并严格校验后续字节是否符合 `10xxxxxx` 模式。任何不合规输入直接抛出异常，由上层 `unicode_cpts_from_utf8` 捕获并替换为替换字符 `U+FFFD`。
 
-### 14.3.3 unicode_cpts_from_utf8()：字节流到码点流的安全通道
+### 15.3.3 unicode_cpts_from_utf8()：字节流到码点流的安全通道
 
 源码路径：`src/unicode.cpp` - `unicode_cpts_from_utf8()`（第 766-780 行）
 
@@ -222,7 +222,7 @@ std::vector<uint32_t> unicode_cpts_from_utf8(const std::string & utf8) {
 
 这段代码定义了「字节流 → 码点流」的安全转换管道。它逐个调用 `unicode_cpt_from_utf8`，一旦遇到非法 UTF-8 序列（如截断、错误续字节），捕获异常、仅前进 1 字节、写入 `0xFFFD`，保证流程绝不中断——这正是工业级分词器必须具备的鲁棒性。
 
-### 14.3.4 unicode_cpts_normalize_nfd()：NFD 规范化的二分查找实现
+### 15.3.4 unicode_cpts_normalize_nfd()：NFD 规范化的二分查找实现
 
 源码路径：`src/unicode.cpp` - `unicode_cpts_normalize_nfd()`（第 754-764 行）
 
@@ -246,7 +246,7 @@ std::vector<uint32_t> unicode_cpts_normalize_nfd(const std::vector<uint32_t> & c
 
 这段代码实现了 NFD（Canonical Decomposition）规范化：将 `é` (U+00E9) 等预组合字符拆解为 `e` (U+0065) + `´` (U+0301)。核心数据结构 `unicode_ranges_nfd` 是按 `first` 升序排列的区间表（来自 `unicode-data.cpp`），利用 `std::upper_bound` 实现 O(log N) 查找，再做边界校验。这保证了无论输入文本使用预组合还是分解形式，进入分词器前都被统一成分解形式，消除歧义。
 
-### 14.3.5 unicode_tolower()：大小写映射的二分查表
+### 15.3.5 unicode_tolower()：大小写映射的二分查表
 
 源码路径：`src/unicode.cpp` - `unicode_tolower()`（第 807-817 行）
 
@@ -267,7 +267,7 @@ uint32_t unicode_tolower(uint32_t cpt) {
 
 这段代码提供 Unicode 感知的小写转换。`unicode_map_lowercase` 是 `(原码点, 小写码点)` 的升序数组（含 ASCII 及扩展字母），二分查找 O(log N) 完成映射。LLaMA-3 的预分词正则 `(?i:'s|...)` 依赖此函数实现大小写不敏感匹配。
 
-### 14.3.6 unicode_cpt_is_han()：CJK 汉字区间判断
+### 15.3.6 unicode_cpt_is_han()：CJK 汉字区间判断
 
 源码路径：`src/unicode.cpp` - `unicode_cpt_is_han()`（第 916-943 行）
 
@@ -288,7 +288,7 @@ bool unicode_cpt_is_han(uint32_t cpt) {
 
 这段代码覆盖了 Unicode 标准中 9 个汉字相关区块。Kimi-K2 的预分词器 `unicode_regex_split_custom_kimi_k2` 直接调用它作为 `\p{Han}+` 的高效实现，避免了通用正则引擎的开销。
 
-### 14.3.7 unicode_cpt_flags_array()：全码点属性表的 O(1) 构建
+### 15.3.7 unicode_cpt_flags_array()：全码点属性表的 O(1) 构建
 
 源码路径：`src/unicode.cpp` - `unicode_cpt_flags_array()`（第 96-122 行）
 
@@ -320,7 +320,7 @@ static std::vector<unicode_cpt_flags> unicode_cpt_flags_array() {
 
 这段代码在程序启动时一次性构建全码点属性表（约 110 万项）。先按区间批量填充大类（Letter/Number/Punctuation…），再叠加显式集合（Whitespace/Lowercase/Uppercase/NFD），最终实现 `unicode_cpt_flags_from_cpt` 的 O(1) 常数时间查询。分词器预处理阶段每字符都会调用此表，性能收益巨大。
 
-### 14.3.8 unicode_byte_to_utf8 / unicode_utf8_to_byte：GPT-2 字节回退双向映射
+### 15.3.8 unicode_byte_to_utf8 / unicode_utf8_to_byte：GPT-2 字节回退双向映射
 
 源码路径：`src/unicode.cpp` - `unicode_byte_to_utf8_map()`（第 124-140 行）与 `unicode_utf8_to_byte_map()`（第 142-158 行）
 
@@ -353,7 +353,7 @@ static std::unordered_map<std::string, uint8_t> unicode_utf8_to_byte_map() {
 
 这两段代码构建了 GPT-2 风格的字节级回退机制：将任意 0-255 字节一一映射到 256 个互不冲突的 Unicode 码点（可打印字符直映，其余落入 PUA 区）。BPE 分词器在遇到词表外字节序列时，先用此映射把字节「伪装」成合法 Unicode 字符，再按常规流程分词，保证**任意二进制数据皆可编码**。
 
-### 14.3.9 unicode_regex_split()：顶层正则分词分发器
+### 15.3.9 unicode_regex_split()：顶层正则分词分发器
 
 源码路径：`src/unicode.cpp` - `unicode_regex_split()`（第 946-1088 行）
 
@@ -441,13 +441,13 @@ std::vector<std::string> unicode_regex_split(const std::string & text,
 
 ---
 
-## 14.4 正则表达式分词 —— 模型预分词的「自定义加速器」
+## 15.4 正则表达式分词 —— 模型预分词的「自定义加速器」
 
-### 14.4.1 为什么需要为不同模型定制正则分词？
+### 15.4.1 为什么需要为不同模型定制正则分词？
 
 标准 `std::regex` 对 Unicode 类别（`\p{L}` 等）支持有限，且性能较差；每种模型有独特的预分词规则。GPT-2 分词器用 `'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+` 把文本切成单词、数字、标点三大类。LLaMA-3 在 GPT-2 基础上增加数字定长（`\p{N}{1,3}`）、行尾换行处理、大小写不敏感等扩展。Kimi-K2 用 Han 字符优先匹配，并支持大小写不敏感的英文子词（含撇号缩写）。AFMOE 数字按 `digit_count % 3` 分组（1/2 + 3+3+...），模拟十进制分组的可读性。Gemma4 仅按 `\n` 切分（BPE 内部不允许 token 跨换行）。通过 `unicode_regex_split_custom` 分发器自动选择对应实现，未匹配时回退到 `std::regex`。
 
-### 14.4.2 unicode_regex_split_custom_gpt2()：GPT-2 经典预分词的手写实现
+### 15.4.2 unicode_regex_split_custom_gpt2()：GPT-2 经典预分词的手写实现
 
 源码路径：`src/unicode.cpp` - `unicode_regex_split_custom_gpt2()`（第 176-270 行）
 
@@ -534,7 +534,7 @@ static std::vector<size_t> unicode_regex_split_custom_gpt2(const std::string & t
 
 这段代码**完全手写**了 GPT-2 的预分词正则逻辑，逐字符扫描码点数组，按优先级依次尝试匹配：撇号缩写 → 字母词 → 数字词 → 标点符号串 → 空白序列。完全避免了正则引擎的编译与匹配开销，且对 Unicode 类别（`is_letter`/`is_number`/`is_whitespace`）直接查 `unicode_cpt_flags` 表，实现了**零分配、零回溯、O(N) 线性扫描**。
 
-### 14.4.3 unicode_regex_split_custom_llama3()：LLaMA-3 的增强预分词
+### 15.4.3 unicode_regex_split_custom_llama3()：LLaMA-3 的增强预分词
 
 源码路径：`src/unicode.cpp` - `unicode_regex_split_custom_llama3()`（第 272-378 行）
 
@@ -569,7 +569,7 @@ if (last_end_r_or_n > 0) { pos = last_end_r_or_n; _add_token(pos); continue; }
 
 这段代码在 GPT-2 基础上做了三大增强：① 大小写不敏感的撇号缩写（调用 `unicode_tolower`）；② 数字每 3 位强制切分（`\p{N}{1,3}`），避免超长数字 token；③ 显式识别 `\r\n` 换行序列作为独立 token，改善代码/结构化文本的分词质量。这些细微差别直接影响下游 BPE 合并的输入单元，进而影响模型对数字、代码、多语言文本的建模能力。
 
-### 14.4.4 unicode_regex_split_custom_kimi_k2()：Kimi-K2 的中文优先分词
+### 15.4.4 unicode_regex_split_custom_kimi_k2()：Kimi-K2 的中文优先分词
 
 源码路径：`src/unicode.cpp` - `unicode_regex_split_custom_kimi_k2()`（第 415-590 行）
 
@@ -595,7 +595,7 @@ if (is_letter_pattern) {
 
 这段代码体现了**中英混排场景的分词策略差异**：汉字优先作为独立 token 序列（每字一 token 或按词切分），英文部分复用类 GPT-2/LLaMA-3 逻辑但**显式排除汉字**，避免中英文字符混合在同一个预分词片段中。这种设计让下游 BPE 合并更专注于各自语言的子词建模。
 
-### 14.4.5 unicode_regex_split_custom_afmoe()：AFMOE 的数字分组魔法
+### 15.4.5 unicode_regex_split_custom_afmoe()：AFMOE 的数字分组魔法
 
 源码路径：`src/unicode.cpp` - `unicode_regex_split_custom_afmoe()`（第 592-662 行）
 
@@ -616,7 +616,7 @@ if (flags.is_number) {
 
 这段代码实现了**十进制分组直觉**：数字 `1234567` 会被预分词为 `1` `234` `567`（模 3 余 1 先切 1 位），而非 `123` `456` `7`。这种预分词方式让后续 BPE 更容易学到「千分位分组」模式，提升数值推理能力。
 
-### 14.4.6 unicode_regex_split_custom_newlines()：Gemma4 的极简换行切分
+### 15.4.6 unicode_regex_split_custom_newlines()：Gemma4 的极简换行切分
 
 源码路径：`src/unicode.cpp` - `unicode_regex_split_custom_newlines()`（第 664-691 行）
 
@@ -642,13 +642,13 @@ static std::vector<size_t> unicode_regex_split_custom_newlines(const std::string
 
 ---
 
-## 14.5 llama_vocab 类：词汇表核心 —— Token 世界的「百科全书」
+## 15.5 llama_vocab 类：词汇表核心 —— Token 世界的「百科全书」
 
-### 14.5.1 为什么用 pimpl 模式管理 vocab？
+### 15.5.1 为什么用 pimpl 模式管理 vocab？
 
 `llama_vocab` 通过 `unique_ptr<impl>` 隐藏数千行实现细节，对外只暴露精简的查询/转换接口。`load()` 从 GGUF 元数据读取 `tokenizer.model`、`tokenizer.pre`、`tokenizer.list/score/type` 字段。根据 `tokenizer_model` 字符串识别 SPM/BPE/WPM/UGM/RWKV/PLaMo2 类型并初始化对应 tokenizer。特殊 token（BOS/EOS/EOT/SEP/PAD/FIM_*）既支持 GGUF KV 显式配置，也支持按 token 文本自动检测兜底。`special_eog_ids` 集合统一管理所有「生成终止 token」，由 token 文本匹配 + EOT/EOM 启发式构建。`cache_special_tokens` 按文本长度倒序排列，保证 `tokenizer_st_partition` 用最长匹配优先切分。`token_to_piece_for_cache` 在 load 时预生成所有 token→文本缓存，避免推理时重复计算。
 
-### 14.5.2 llama_vocab::impl::load()：从 GGUF 加载词汇表的全流水线
+### 15.5.2 llama_vocab::impl::load()：从 GGUF 加载词汇表的全流水线
 
 源码路径：`src/llama-vocab.cpp` - `llama_vocab::impl::load()`（第 76-580 行）
 
@@ -729,7 +729,7 @@ void llama_vocab::impl::load(llama_model_loader & ml, const LLM_KV & kv) {
 
 这段代码是**词汇表初始化的主干道**：从 GGUF 读取原始数据 → 识别类型 → 填充核心容器 → 解析特殊 token → 构建 tokenizer → 预计算缓存。每一步都做了显式配置与启发式兜底的双重保障，确保即使 GGUF 元数据不全（如旧模型），也能通过 token 文本内容推断出 BOS/EOS/EOG 等关键 token。
 
-### 14.5.3 llama_vocab::impl::init_tokenizer()：工厂方法实例化具体分词器
+### 15.5.3 llama_vocab::impl::init_tokenizer()：工厂方法实例化具体分词器
 
 源码路径：`src/llama-vocab.cpp` - `llama_vocab::impl::init_tokenizer()`（第 2722-2741 行）
 
@@ -763,7 +763,7 @@ void llama_vocab::impl::init_tokenizer(enum llama_vocab_type type) {
 
 这段代码是**策略模式的工厂入口**：根据 `llama_vocab_type` 构造对应的 `llm_tokenizer_*` 实例。所有 tokenizer 共享同一基类 `llm_tokenizer`（仅含虚析构），具体实现完全解耦。UGM 需要额外传入 `precompiled_charsmap`（XCDA 双数组数据），其余类型仅需 `vocab` 引用即可访问词表查询接口。
 
-### 14.5.4 tokenizer_st_partition()：特殊 token 优先切分的贪心长匹配
+### 15.5.4 tokenizer_st_partition()：特殊 token 优先切分的贪心长匹配
 
 源码路径：`src/llama-vocab.cpp` - `llama_vocab::impl::tokenizer_st_partition()`（第 2743-2830 行）
 
@@ -814,9 +814,9 @@ void llama_vocab::impl::tokenizer_st_partition(std::forward_list<fragment_buffer
 
 ---
 
-## 14.6 SPM 分词器实现 —— SentencePiece 的「优先级队列合并」
+## 15.6 SPM 分词器实现 —— SentencePiece 的「优先级队列合并」
 
-### 14.6.1 为什么 SPM 用优先级队列而非 BPE 的 rank？
+### 15.6.1 为什么 SPM 用优先级队列而非 BPE 的 rank？
 
 SPM（SentencePiece）按 token 的 `score`（对数概率）排序，score 高的 pair 优先合并；与 BPE 的固定 rank 表形成对比。`llm_tokenizer_spm_session::tokenize` 三阶段流程：
 - **初始化符号链表**：按码点切分文本，每个符号含 prev/next 指针维护双向链表
@@ -824,7 +824,7 @@ SPM（SentencePiece）按 token 的 `score`（对数概率）排序，score 高�
 - **贪心合并**：循环 pop 队列顶 bigram，若两符号未被合并且长度匹配则合并右侧到左侧
 `resegment` 兜底逻辑：当合并后的子串仍不在 vocab 中时，先查 `rev_merge` 缓存尝试再分，否则按字节回退。`try_add_bigram` 同时维护 `work_queue` 和 `rev_merge`（文本→(left,right) 映射），是 resegment 的逆向索引。`llm_bigram_spm::comparator` 排序规则：`(l.score < r.score) || (l.score == r.score && l.left > r.left)`。
 
-### 14.6.2 llm_tokenizer_spm_session::tokenize()：SPM 三阶段合并主流程
+### 15.6.2 llm_tokenizer_spm_session::tokenize()：SPM 三阶段合并主流程
 
 源码路径：`src/llama-vocab.cpp` - `llm_tokenizer_spm_session::tokenize()`（第 115-158 行）
 
@@ -883,7 +883,7 @@ void tokenize(const std::string & text, std::vector<llama_token> & output) {
 
 这段代码展示了 SPM 的**贪心最长匹配合并**核心：符号链表 + 优先级队列（按 score 降序）。每次合并都把右符号「吞并」到左符号（累加 `n`，清零右符号），并用双向链表维护邻接关系。合并后立即尝试将新的左右相邻对加入队列，实现动态扩展。最终遍历链表，每个幸存符号调用 `resegment` 确保能映射到 vocab token。
 
-### 14.6.3 llm_tokenizer_spm_session::resegment()：兜底的递归逆向查找
+### 15.6.3 llm_tokenizer_spm_session::resegment()：兜底的递归逆向查找
 
 源码路径：`src/llama-vocab.cpp` - `llm_tokenizer_spm_session::resegment()`（第 160-186 行）
 
@@ -918,7 +918,7 @@ void resegment(llm_symbol & symbol, std::vector<llama_token> & output) {
 
 这段代码是 SPM 的**安全网**：合并后的符号若不在 vocab 中，先查 `rev_merge`（记录合并时的左右子符号索引），递归拆分；若连 `rev_merge` 也没有（极少见），退化为逐字节编码。`rev_merge` 的存在使得 SPM 能在贪心合并「过度」时回溯，保证覆盖率 100%。
 
-### 14.6.4 llm_tokenizer_spm_session::try_add_bigram()：队列入队与逆向索引同步构建
+### 15.6.4 llm_tokenizer_spm_session::try_add_bigram()：队列入队与逆向索引同步构建
 
 源码路径：`src/llama-vocab.cpp` - `llm_tokenizer_spm_session::try_add_bigram()`（第 188-216 行）
 
@@ -949,9 +949,9 @@ void try_add_bigram(int left, int right) {
 
 ---
 
-## 14.7 BPE 分词器实现 —— GPT/LLaMA 家族的「rank 表驱动合并」
+## 15.7 BPE 分词器实现 —— GPT/LLaMA 家族的「rank 表驱动合并」
 
-### 14.7.1 为什么 BPE 用 rank 而非 score？
+### 15.7.1 为什么 BPE 用 rank 而非 score？
 
 BPE（Byte Pair Encoding）按「合并规则的出现顺序」分配 rank，rank 小的 pair 优先合并。训练阶段把所有相邻 token pair 按频次排序写入 merges.txt；推理时按 rank 合并即可保证一致性。`llm_tokenizer_bpe` 构造函数：为每个 `LLAMA_VOCAB_PRE_TYPE_*` 绑定专属 `regex_exprs`（如 LLaMA3 用 `(?i:'s|...)`）。`llm_tokenizer_bpe_session::tokenize` 关键点：
 - 先用 `unicode_regex_split` 按 regex 切分文本为 word 集合（可选 `byte_encode` GPT-2 字节编码）
@@ -959,7 +959,7 @@ BPE（Byte Pair Encoding）按「合并规则的出现顺序」分配 rank，ran
 - 合并时校验 `left_token+right_token == bigram.text` 防止过期 bigram 误用
 - 合并后通过 `symbols_final` 跨 word 维护 next/prev 链表，最终输出保持原始顺序
 
-### 14.7.2 llm_tokenizer_bpe 构造函数：40+ 种预分词正则的 switch 分发
+### 15.7.2 llm_tokenizer_bpe 构造函数：40+ 种预分词正则的 switch 分发
 
 源码路径：`src/llama-vocab.cpp` - `llm_tokenizer_bpe::llm_tokenizer_bpe()`（第 255-427 行）
 
@@ -1006,7 +1006,7 @@ llm_tokenizer_bpe(const llama_vocab & vocab) {
 - Gemma4：仅按 `\n` 切分，且 `byte_encode = false`（不做 GPT-2 字节编码）。
 - 默认回退：FALCON 风格 4 条正则。
 
-### 14.7.3 llm_tokenizer_bpe_session::tokenize()：BPE 逐词合并与跨词链表
+### 15.7.3 llm_tokenizer_bpe_session::tokenize()：BPE 逐词合并与跨词链表
 
 源码路径：`src/llama-vocab.cpp` - `llm_tokenizer_bpe_session::tokenize()`（第 467-539 行）
 
@@ -1112,7 +1112,7 @@ void tokenize(const std::string & text, std::vector<llama_token> & output) {
 4. **跨词链表**：`symbols_final` 将各 word 的幸存符号按原序串联，保证输出 token 顺序与原文一致。
 5. **字节回退**：词表未命中时逐字节查 `byte_to_token`（GPT-2 字节映射）。
 
-### 14.7.4 llm_tokenizer_bpe_session::add_new_bigram()：BPE rank 表查询与入队
+### 15.7.4 llm_tokenizer_bpe_session::add_new_bigram()：BPE rank 表查询与入队
 
 源码路径：`src/llama-vocab.cpp` - `llm_tokenizer_bpe_session::add_new_bigram()`（第 541-566 行）
 
@@ -1141,13 +1141,13 @@ void add_new_bigram(int left, int right) {
 
 ---
 
-## 14.8 WPM / UGM / RWKV / PLaMo2 分词器 —— 百花齐放的「专用工具箱」
+## 15.8 WPM / UGM / RWKV / PLaMo2 分词器 —— 百花齐放的「专用工具箱」
 
-### 14.8.1 为什么需要多种专用分词器？
+### 15.8.1 为什么需要多种专用分词器？
 
 WPM（WordPiece）用于 BERT 类编码器模型，靠最长前缀匹配 + `token_unk` 兜底。UGM（Unigram）用于 T5 等基于 SentencePiece 的 LM，用 Viterbi 算法找全局最优分词路径。RWKV 通过 `naive_trie` 字典树实现 O(n) 的最长匹配查找。PLaMo2 用 Trie 表 + 动态规划（`scores`/`path` 数组）实现基于后缀表的贪心匹配。
 
-### 14.8.2 llm_tokenizer_wpm_session::preprocess()：WPM 的 NFD+小写+标点分词预处理
+### 15.8.2 llm_tokenizer_wpm_session::preprocess()：WPM 的 NFD+小写+标点分词预处理
 
 源码路径：`src/llama-vocab.cpp` - `llm_tokenizer_wpm_session::preprocess()`（第 626-654 行）
 
@@ -1188,7 +1188,7 @@ static std::vector<std::string> preprocess(const std::string & text) {
 
 这段代码实现了 **BERT/WordPiece 经典预处理管线**：NFD 分解 → 小写化 → 标点/汉字强制切分。`is_chinese_char` 覆盖 8 个 CJK 区间，确保中文字符单独成词。输出的 `words` 向量随后在 `tokenize()` 中逐个做最长前缀匹配。
 
-### 14.8.3 llm_tokenizer_wpm_session::tokenize()：最长前缀匹配 + UNK 兜底
+### 15.8.3 llm_tokenizer_wpm_session::tokenize()：最长前缀匹配 + UNK 兜底
 
 源码路径：`src/llama-vocab.cpp` - `llm_tokenizer_wpm_session::tokenize()`（第 584-624 行）
 
@@ -1226,7 +1226,7 @@ void tokenize(const std::string & text, std::vector<llama_token> & output) {
 
 这段代码展示了 **WordPiece 的贪心最长前缀匹配**：每个 word 前加 `▁`（空格标记），从位置 `i` 向后尝试最长子串，命中即输出 token 并跳过。若某位置无任何匹配，**整个 word 回退 UNK**，不做字节级拆解——这是与 BPE/SPM 最大的区别。
 
-### 14.8.4 llm_tokenizer_ugm_session::tokenize()：Unigram Viterbi DP 算法
+### 15.8.4 llm_tokenizer_ugm_session::tokenize()：Unigram Viterbi DP 算法
 
 源码路径：`src/llama-vocab.cpp` - `llm_tokenizer_ugm_session::tokenize()`（第 864-912 行）
 
@@ -1297,7 +1297,7 @@ void tokenize(const std::string & text, std::vector<llama_token> & output) {
 - 单码点未命中时强制兜底 UNK（惩罚分数 `unknown_token_score`）。
 - 最后从末尾回溯重建全局最优 token 序列。
 
-### 14.8.5 llm_tokenizer_ugm_session::normalize_prefix()：XCDA 紧凑双数组 O(1) 前缀查找
+### 15.8.5 llm_tokenizer_ugm_session::normalize_prefix()：XCDA 紧凑双数组 O(1) 前缀查找
 
 源码路径：`src/llama-vocab.cpp` - `llm_tokenizer_ugm_session::normalize_prefix()`（第 957-1001 行）
 
@@ -1351,7 +1351,7 @@ struct normalization_result normalize_prefix(const std::string & input, size_t i
 
 遍历时 `node_index ^= c` 实现 XOR 压缩跳转，`get_lcheck` 校验冲突，`get_leaf` 判断是否为终态。这使得 UGM 的归一化前缀查找达到**接近 O(1) 的极高速度**。
 
-### 14.8.6 llama_unescape_rwkv_token()：RWKV 转义序列解析
+### 15.8.6 llama_unescape_rwkv_token()：RWKV 转义序列解析
 
 源码路径：`src/llama-vocab.cpp` - `llama_unescape_rwkv_token()`（第 1035-1078 行）
 
@@ -1389,7 +1389,7 @@ static std::vector<uint8_t> llama_unescape_rwkv_token(const std::string & escape
 
 这段代码处理 RWKV 词表中的转义表示：`\t` `\n` `\r` → 单字节；`\xHH` → 任意字节值。RWKV 词表将所有 token 存为转义字符串，加载时统一解码为字节序列，构建 `naive_trie` 字典树用于推理时最长匹配。
 
-### 14.8.7 llm_tokenizer_plamo2::build()：Trie 展平为四张表 + DP 编码准备
+### 15.8.7 llm_tokenizer_plamo2::build()：Trie 展平为四张表 + DP 编码准备
 
 源码路径：`src/llama-vocab.cpp` - `llm_tokenizer_plamo2::build()`（第 1095-1160 行）
 
@@ -1464,7 +1464,7 @@ void build(const llama_vocab & vocab) {
 
 后缀按**逆序字典序**排序，保证相同前缀的片段在 table 中连续存放。`to_suffix_id_` 利用首码点高 32 位 + 后缀 id 低 32 位编码，实现 O(1) 定位「以某码点开头、属于某后缀类」的片段组。
 
-### 14.8.8 llm_tokenizer_plamo2::encode()：动态规划回溯找最优路径
+### 15.8.8 llm_tokenizer_plamo2::encode()：动态规划回溯找最优路径
 
 源码路径：`src/llama-vocab.cpp` - `llm_tokenizer_plamo2::encode()`（第 1162-1224 行）
 
@@ -1536,9 +1536,9 @@ std::vector<llama_token> encode(const std::string & text) const {
 
 ---
 
-## 14.9 分词与反分词 —— 文本与 Token 的「双向翻译官」
+## 15.9 分词与反分词 —— 文本与 Token 的「双向翻译官」
 
-### 14.9.1 为什么分词/反分词要严格对称？
+### 15.9.1 为什么分词/反分词要严格对称？
 
 推理服务需要把用户输入文本转成 token ID 给模型，再把模型输出的 token ID 还原成文本回传。`llama_vocab::impl::tokenize` 主入口：
 - 先用 `tokenizer_st_partition` 切出特殊 token（按 cache 长度倒序匹配）
@@ -1552,7 +1552,7 @@ std::vector<llama_token> encode(const std::string & text) const {
 
 `token_to_piece_for_cache` 在 load 时预生成所有 token→文本缓存，避免推理时重复计算。`token_to_piece` 按 vocab 类型差异化还原：SPM `▁`↔空格、BPE 字节token解码、RWKV 转义解码。C API 层（`llama_tokenize`/`llama_detokenize`/`llama_token_to_piece`）将 C++ 接口暴露给 C 用户。
 
-### 14.9.2 llama_vocab::impl::tokenize()：顶层分词分发入口
+### 15.9.2 llama_vocab::impl::tokenize()：顶层分词分发入口
 
 源码路径：`src/llama-vocab.cpp` - `llama_vocab::impl::tokenize()`（第 2847-2970 行）
 
@@ -1639,7 +1639,7 @@ std::vector<llama_token> llama_vocab::impl::tokenize(const std::string & raw_tex
 4. BPE 特殊处理：`escape_whitespaces`（空格↔▁）和 `byte_encode`（GPT-2 字节映射）。
 5. 最后按 `add_bos/add_eos` 配置注入特殊 token。
 
-### 14.9.3 llama_vocab::impl::token_to_piece()：差异化 token→文本还原
+### 15.9.3 llama_vocab::impl::token_to_piece()：差异化 token→文本还原
 
 源码路径：`src/llama-vocab.cpp` - `llama_vocab::impl::token_to_piece()`（第 3320-3424 行）
 
@@ -1713,7 +1713,7 @@ int32_t token_to_piece(llama_token token, char * buf, int32_t length,
 - RWKV：统一走转义解码器。
 - PLaMo2：字节 token 解 `<0xHH>`，其余原样。
 
-### 14.9.4 llama_vocab::impl::detokenize()：三遍清理算法还原自然文本
+### 15.9.4 llama_vocab::impl::detokenize()：三遍清理算法还原自然文本
 
 源码路径：`src/llama-vocab.cpp` - `llama_vocab::impl::detokenize()`（第 3433-3505 行）
 
@@ -1786,7 +1786,7 @@ int32_t detokenize(const llama_token * tokens, int32_t n_tokens, char * text,
 
 ---
 
-## 14.10 设计中的取舍
+## 15.10 设计中的取舍
 
 - 为什么不用 ICU 做 Unicode 规范化？
   ICU 体积大、依赖重，llama.cpp 追求「零依赖、单文件可运行」。自研 `unicode_cpts_normalize_nfd` 仅依赖静态表（`unicode-data.cpp` 约 200KB），编译后无外部动态库，完美契合嵌入式/移动端部署。
@@ -1803,7 +1803,7 @@ int32_t detokenize(const llama_token * tokens, int32_t n_tokens, char * text,
 - UGM 的 XCDA 双数组为何不用标准 Darts/Double-Array Trie？
   标准双数组需两个 `int` 数组（BASE/CHECK），XCDA 将 BASE/CHECK/LEAF/VALUE 打包进单个 `uint32_t`，内存占用降低 50%+。位运算解码在现代 CPU 上极快，且 GGUF 存储时直接序列化该数组，无需二次构建，加载即用。
 
-## 14.11 动手练习
+## 15.11 动手练习
 
 1. **阅读Unicode编码与规范化模块**
    - 阅读 `src/unicode.cpp` 第23-130行（`unicode_cpt_from_utf8`、`unicode_cpts_from_utf8`）以及第388-490行（NFD规范化、tolower、is_han），理解：
@@ -1862,7 +1862,7 @@ int32_t detokenize(const llama_token * tokens, int32_t n_tokens, char * text,
      - `clean_spaces = false` 的模型（如 SPM/Qwen2）为何不需要三遍清理？
      - 在 `detokenize` 第三遍中，为何仅对 `'s`/`'m` 等缩写去空格，而保留 `'t`/`'d` 的空格？
 
-## 14.12 本章小结
+## 15.12 本章小结
 
 这一章中我们学习了 llama.cpp 完整的词汇表与分词系统。首先我们了解了 Unicode 支持层：UTF-8 字节流与码点的双向转换、NFD 规范化、大小写映射、汉字识别、全码点属性表构建，以及 GPT-2 字节回退映射。接着我们深入了正则表达式预分词分发器：顶层 `unicode_regex_split` 通过 collapsed 映射让 `std::regex` 支持 Unicode 类别，并为 GPT-2/LLaMA-3/Kimi-K2/AFMOE/Gemma4 提供了手写的 O(N) 线性扫描实现。随后我们剖析了 `llama_vocab` 的 pimpl 架构与 GGUF 加载流水线，理解了特殊 token 的显式配置与启发式兜底、EOG 集合构建、缓存预生成机制。然后我们逐一拆解了六大分词器实现：SPM 的优先级队列贪心合并与 rev_merge 兜底、BPE 的 rank 表驱动合并与跨词链表、WPM 的最长前缀匹配与 UNK 整词回退、UGM 的 Viterbi DP 与 XCDA 双数组加速归一化、RWKV 的 naive_trie 字典树与转义解码、PLaMo2 的 Trie 展平四表与后缀感知动态规划。最后我们详细阅读了分词总入口 `tokenize` 与反分词 `detokenize` 的三遍清理算法，以及 C API 的封装层。
 

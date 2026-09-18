@@ -1,6 +1,6 @@
 
 
-# 第10章 结构化输出与语法约束 —— 让 LLM「听话」的工具集
+# 第9章 结构化输出与语法约束 —— 让 LLM「听话」的工具集
 
 ## 学习目标
 
@@ -11,11 +11,11 @@
 - 掌握结构化输出示例中 schema 注入与 JSON 校验的完整链路
 - 理解嵌入服务并发测试如何验证 /embedding 端点的稳定性
 
-## 10.1 生活类比
+## 9.1 生活类比
 
 想象 GBNF 是一套语法警察的执法手册，而 JSON Schema 是嫌疑人的画像：SchemaConverter = 画像分析师，把模糊的画像（JSON Schema）翻译成清晰的执法手册条目（GBNF 规则）；_visit_pattern = 指纹比对师，把 ECMA-262 指纹（正则）转译为执法手册中的特征描述（GBNF 字符类与量词）；_build_object_rule = 档案整理员，处理必填项+可选项+额外项的复杂排列组合；PRIMITIVE_RULES = 执法手册的基础法条（true/false/null/string/number/object/array）；SPACE_RULE = 防止嫌疑人无限申诉的字数限制器，约束空格最多 1-2 个换行+20 个制表符；Pydantic 转换器 = 模型锻造厂，把 Python 装饰器（BaseModel）铸造成 GBNF 形状的标准化产品；动态模型工厂 = 变形金刚，把普通 Python 函数和 OpenAI 字典变形为统一形态的 Pydantic 类；文档生成器 = 翻译官，把 GBNF 技术语法翻译成 LLM 看得懂的 Markdown 说明书；server_embd = 质检员，反复按门铃（并发请求）测试大门（/embedding）是否每次都给出相同的回应（相似度≈1）。
 
-## 10.2 源码地图
+## 9.2 源码地图
 
 ```
 examples/json_schema_to_grammar.py
@@ -121,11 +121,11 @@ examples/server_embd.py
 └── __main__                     # 余弦相似度计算
 ```
 
-## 10.3 JSON Schema 转换器的"中央调度台" —— SchemaConverter 类
+## 9.3 JSON Schema 转换器的"中央调度台" —— SchemaConverter 类
 
 `SchemaConverter` 是整个 JSON Schema 到 GBNF 转换流程的中央调度台。它通过递归遍历 Schema 字典，构建出能够约束 LLM 输出的 GBNF 文法规则。其核心设计在于将内置规则注册表 `_rules` 与原始规则集合分离，避免重名冲突。
 
-### 10.3.1 SchemaConverter.__init__()：初始化转换器上下文
+### 9.3.1 SchemaConverter.__init__()：初始化转换器上下文
 
 源码路径：`examples/json_schema_to_grammar.py` - `SchemaConverter.__init__()`（第166-173行）
 
@@ -144,7 +144,7 @@ def __init__(self, *, prop_order, allow_fetch, dotall, raw_pattern):
 
 这段代码定义了转换器的构造函数，接收四个配置参数并初始化内部状态。`_rules` 字典存储最终生成的 GBNF 规则，预置了 `space` 规则用于处理空白字符。`_refs` 用于缓存解析后的引用 Schema，`_refs_being_resolved` 用于检测循环引用。
 
-### 10.3.2 PRIMITIVE_RULES 与 STRING_FORMAT_RULES：基础法条与特殊格式
+### 9.3.2 PRIMITIVE_RULES 与 STRING_FORMAT_RULES：基础法条与特殊格式
 
 源码路径：`examples/json_schema_to_grammar.py` - `PRIMITIVE_RULES`（第138-148行）、`STRING_FORMAT_RULES`（第151-156行）
 
@@ -170,7 +170,7 @@ STRING_FORMAT_RULES = {
 
 这段代码定义了 JSON 六种基本类型及特殊字符串格式的预定义 GBNF 规则。`BuiltinRule` 封装了规则内容字符串与依赖列表，`PRIMITIVE_RULES` 覆盖了 boolean/number/string/null/object/array 及辅助的 char/value 规则；`STRING_FORMAT_RULES` 则为 uuid、date、time、date-time 提供了具体的字符级匹配模式。
 
-### 10.3.3 _add_rule() 与 _add_primitive()：规则注册与去重机制
+### 9.3.3 _add_rule() 与 _add_primitive()：规则注册与去重机制
 
 源码路径：`examples/json_schema_to_grammar.py` - `SchemaConverter._add_rule()`（第230-237行）、`SchemaConverter._add_primitive()`（第470-475行）
 
@@ -199,7 +199,7 @@ def _add_primitive(self, name: str, rule: BuiltinRule):
 
 `_add_rule` 负责规则的去重与命名：将非法字符替换为连字符，若规则名冲突且内容不同则自动追加数字后缀。`_add_primitive` 则在注册基础规则时自动递归注入其依赖规则，确保引用的 `space`、`char` 等基础规则都已加载。
 
-### 10.3.4 format_grammar()：最终文法输出
+### 9.3.4 format_grammar()：最终文法输出
 
 源码路径：`examples/json_schema_to_grammar.py` - `SchemaConverter.format_grammar()`（第522-525行）
 
@@ -213,11 +213,11 @@ def format_grammar(self):
 
 转换完成后，`format_grammar` 按规则名排序输出最终的 GBNF 文法文本，保证生成结果的确定性与可读性。
 
-## 10.4 基础类型与字符串处理 —— 数字、字符串与空格规则
+## 9.4 基础类型与字符串处理 —— 数字、字符串与空格规则
 
 转换器内置了处理数字范围、字符串字符集与空格约束的核心工具函数。
 
-### 10.4.1 _generate_min_max_int()：按位生成整数区间规则
+### 9.4.1 _generate_min_max_int()：按位生成整数区间规则
 
 源码路径：`examples/json_schema_to_grammar.py` - `_generate_min_max_int()`（第29-119行）
 
@@ -246,7 +246,7 @@ def _generate_min_max_int(min_value: Optional[int], max_value: Optional[int], ou
 
 这个函数通过三个嵌套函数协作，将整数区间转换为 GBNF 字符类与量词的组合。它支持负数（通过取反递归）、变长位数（分段生成）、以及逐位对齐的 `uniform_range` 逻辑，确保生成的规则精确覆盖 `[min, max]` 区间。
 
-### 10.4.2 _build_repetition()：生成 {min,max} 重复规则
+### 9.4.2 _build_repetition()：生成 {min,max} 重复规则
 
 源码路径：`examples/json_schema_to_grammar.py` - `_build_repetition()`（第15-27行）
 
@@ -270,7 +270,7 @@ def _build_repetition(item_rule, min_items, max_items, separator_rule=None):
 
 该函数处理 GBNF 中的重复量词生成。无分隔符时直接映射 `?`、`+`、`*` 或 `{m,n}`；有分隔符时递归构造 `(item sep item)*` 结构，正确处理最小/最大出现次数。
 
-### 10.4.3 SPACE_RULE 与 char 规则：空白约束与字符集
+### 9.4.3 SPACE_RULE 与 char 规则：空白约束与字符集
 
 源码路径：`examples/json_schema_to_grammar.py` - 常量定义（第130-137行、第138-148行）
 
@@ -283,11 +283,11 @@ SPACE_RULE = BuiltinRule(r'( [ \t\n] space)?', ['space'])  # 允许 0-1 个空�
 
 `SPACE_RULE` 采用右递归 `( [ \t\n] space)?` 形式，限制连续空白字符；`char` 规则定义了 JSON 字符串中合法的字符：可打印 ASCII、转义序列（`\b`、`\f`、`\n`、`\r`、`\t`、`"`、`\`）及 Unicode 转义 `\uXXXX`。
 
-## 10.5 Schema 引用解析器 —— 递归解决 '$ref' 与远程加载
+## 9.5 Schema 引用解析器 —— 递归解决 '$ref' 与远程加载
 
 JSON Schema 通过 `$ref` 复用定义，转换器需在遍历前将所有引用展开。
 
-### 10.5.1 resolve_refs()：深度优先解析与远程获取
+### 9.5.1 resolve_refs()：深度优先解析与远程获取
 
 源码路径：`examples/json_schema_to_grammar.py` - `SchemaConverter.resolve_refs()`（第239-274行）
 
@@ -329,7 +329,7 @@ def resolve_refs(self, schema: dict, url: str):
 
 `resolve_refs` 采用深度优先遍历 Schema 树。遇到 `$ref` 时：HTTPS 引用需开启 `allow_fetch` 才允许远程获取，获取后递归解析远程 Schema；`#/...` 内部引用则转为绝对 URL 并按 `/` 分段逐层定位目标子 Schema。解析结果缓存至 `self._refs`，替换原 Schema 中的 `$ref` 为绝对引用，便于后续 `visit` 阶段直接展开。
 
-### 10.5.2 _resolve_ref()：单引用的规则名映射与循环检测
+### 9.5.2 _resolve_ref()：单引用的规则名映射与循环检测
 
 源码路径：`examples/json_schema_to_grammar.py` - `SchemaConverter._resolve_ref()`（第381-389行）
 
@@ -347,11 +347,11 @@ def _resolve_ref(self, ref):
 
 在 `visit` 阶段遇到 `$ref` 时调用。将 fragment 转为合法规则名（非法字符替换为 `-`），通过 `_refs_being_resolved` 集合检测循环引用，递归调用 `visit` 生成被引用 Schema 的规则，最后返回规则名供上层引用。
 
-## 10.6 对象规则构建器 —— 必选/可选属性的"排列组合"
+## 9.6 对象规则构建器 —— 必选/可选属性的"排列组合"
 
 对象规则是 GBNF 生成中最复杂的部分，需处理必选/可选/任意键的所有合法组合。
 
-### 10.6.1 _build_object_rule()：核心构建流程
+### 9.6.1 _build_object_rule()：核心构建流程
 
 源码路径：`examples/json_schema_to_grammar.py` - `SchemaConverter._build_object_rule()`（第477-520行）
 
@@ -423,7 +423,7 @@ def _build_object_rule(self, properties: List[Tuple[str, Any]], required: Set[st
 
 构建分四步：① 按 `prop_order` 排序属性；② 为每属性生成 `key: value` 的 KV 子规则；③ 处理 `additionalProperties`：若为字典则递归生成 value 规则，key 规则用 `_not_strings` 排除已知属性名；④ 组装：必选属性用 `,` 串联，可选属性通过 `get_recursive_refs` 递归生成所有合法子集组合（含 `*` 任意键），外层用 `( ... )?` 标记整体可选。
 
-### 10.6.2 _not_strings() 与 not_literal()：Trie 树批量否定
+### 9.6.2 _not_strings() 与 not_literal()：Trie 树批量否定
 
 源码路径：`examples/json_schema_to_grammar.py` - `SchemaConverter._not_strings()`（第202-228行）、`SchemaConverter.not_literal()`（第180-200行）
 
@@ -482,11 +482,11 @@ def _not_strings(self, strings):
 
 `not_literal` 采用字符级递归生成否定规则；`_not_strings` 构建 Trie 树，对已知属性名批量生成高效的否定规则，用于 `additionalProperties` 的 key 约束——确保额外键不与已定义属性重名。
 
-## 10.7 正则模式到 GBNF 的翻译器 —— _visit_pattern 深度解析
+## 9.7 正则模式到 GBNF 的翻译器 —— _visit_pattern 深度解析
 
 JSON Schema 的 `string.pattern` 使用 ECMA-262 正则，需翻译为 GBNF 文法。
 
-### 10.7.1 _visit_pattern()：状态机核心逻辑
+### 9.7.1 _visit_pattern()：状态机核心逻辑
 
 源码路径：`examples/json_schema_to_grammar.py` - `SchemaConverter._visit_pattern()`（第281-379行）
 
@@ -656,7 +656,7 @@ def _visit_pattern(self, pattern, name):
 - **字面量合并优化**：`join_seq` 使用 `itertools.groupby` 将连续字面量合并为 `"..."`，减少规则长度。
 - **最终包装**：非 `raw_pattern` 模式下，整体用 `"\\"" ... "\\"" space` 包裹，符合 JSON 字符串字面量语法。
 
-### 10.7.2 _format_literal()：字面量转义
+### 9.7.2 _format_literal()：字面量转义
 
 源码路径：`examples/json_schema_to_grammar.py` - `SchemaConverter._format_literal()`（第175-178行）
 
@@ -670,9 +670,9 @@ def _format_literal(self, literal):
 
 对 `\r`、`\n`、`"`、`\` 等特殊字符做转义，生成符合 GBNF 语法的 `"..."` 字符串字面量。
 
-## 10.8 主入口与统一调度 —— visit 方法与命令行入口
+## 9.8 主入口与统一调度 —— visit 方法与命令行入口
 
-### 10.8.1 visit()：Schema 类型分发总线
+### 9.8.1 visit()：Schema 类型分发总线
 
 源码路径：`examples/json_schema_to_grammar.py` - `SchemaConverter.visit()`（第394-468行）
 
@@ -744,7 +744,7 @@ def visit(self, schema, name):
 - `minimum/maximum` → `_generate_min_max_int`
 - 空对象/无类型约束 → 退化为 `object`/`value` 基础规则
 
-### 10.8.2 _generate_union_rule 与 _generate_constant_rule
+### 9.8.2 _generate_union_rule 与 _generate_constant_rule
 
 源码路径：`examples/json_schema_to_grammar.py` - `_generate_union_rule()`（第276-279行）、`_generate_constant_rule()`（第391-392行）
 
@@ -761,7 +761,7 @@ def _generate_constant_rule(self, value):
 
 联合规则为每个分支生成 `name-alternative-i` 子规则并用 `|` 串联；常量规则直接 `json.dumps` 序列化后转义包裹。
 
-### 10.8.3 main()：命令行入口与参数透传
+### 9.8.3 main()：命令行入口与参数透传
 
 源码路径：`examples/json_schema_to_grammar.py` - `main()`（第527-570行）
 
@@ -793,9 +793,9 @@ def main(args_in = None):
 
 命令行工具支持从文件、stdin、HTTPS URL 加载 Schema，透传四个核心参数给转换器，完成引用解析与遍历后输出排序后的 GBNF 文法。
 
-## 10.9 正则到 GBNF 的轻量包装 —— regex_to_grammar.py 的"管道工"
+## 9.9 正则到 GBNF 的轻量包装 —— regex_to_grammar.py 的"管道工"
 
-### 10.9.1 __main__：子进程复用主转换器
+### 9.9.1 __main__：子进程复用主转换器
 
 源码路径：`examples/regex_to_grammar.py` - `__main__`（第1-20行）
 
@@ -816,11 +816,11 @@ print(subprocess.check_output(
 
 该脚本不重复实现正则翻译，而是构造最小 JSON Schema `{"type": "string", "pattern": "<REGEX>"}`，通过子进程调用 `json_schema_to_grammar.py` 并透传额外参数（如 `--allow-fetch`），利用 `--raw-pattern` 让正则直接作为 GBNF 规则使用。`os.path.realpath(__file__)` 保证跨平台正确定位依赖脚本。
 
-## 10.10 Pydantic 到 GBNF 的"炼金术" —— 类型映射与规则生成
+## 9.10 Pydantic 到 GBNF 的"炼金术" —— 类型映射与规则生成
 
 `pydantic_models_to_grammar.py` 将 Python 类型注解转换为 GBNF 规则，并同步生成 Markdown/Text 文档。
 
-### 10.10.1 PydanticDataType：数据类型枚举
+### 9.10.1 PydanticDataType：数据类型枚举
 
 源码路径：`examples/pydantic_models_to_grammar.py` - `PydanticDataType`（第54-74行）
 
@@ -844,7 +844,7 @@ class PydanticDataType(Enum):
 
 枚举定义了转换器支持的所有目标 GBNF 类型名，包含字符串家族扩展（三引号、Markdown 代码块）及复合类型标识。
 
-### 10.10.2 map_pydantic_type_to_gbnf()：Python 类型到 GBNF 名的递归映射
+### 9.10.2 map_pydantic_type_to_gbnf()：Python 类型到 GBNF 名的递归映射
 
 源码路径：`examples/pydantic_models_to_grammar.py` - `map_pydantic_type_to_gbnf()`（第76-115行）
 
@@ -896,7 +896,7 @@ def map_pydantic_type_to_gbnf(pydantic_type: type[Any]) -> str:
 - 普通类 → `custom-class-<Name>`
 - `dict[K,V]` → `custom-dict-key-type-<K>-value-type-<V>`
 
-### 10.10.3 format_model_and_field_name()：驼峰转 kebab-case
+### 9.10.3 format_model_and_field_name()：驼峰转 kebab-case
 
 源码路径：`examples/pydantic_models_to_grammar.py` - `format_model_and_field_name()`（第117-126行）
 
@@ -910,7 +910,7 @@ def format_model_and_field_name(model_name: str) -> str:
 
 正则 `[A-Z][^A-Z]*` 拆分驼峰命名（如 `MyModel` → `["My", "Model"]`），转小写并用连字符连接，生成符合 GBNF 规则命名规范的标识符。
 
-### 10.10.4 regex_to_gbnf()：简单正则翻译
+### 9.10.4 regex_to_gbnf()：简单正则翻译
 
 源码路径：`examples/pydantic_models_to_grammar.py` - `regex_to_gbnf()`（第179-196行）
 
@@ -924,9 +924,9 @@ def regex_to_gbnf(regex_pattern: str) -> str:
 
 仅处理 `\d` → `[0-9]`、`\s` → `[ \t\n]` 两种常见转义，其余正则语法假定与 GBNF 兼容。
 
-## 10.11 嵌套模型与特殊字符串 —— Pydantic 规则的"复杂组装"
+## 9.11 嵌套模型与特殊字符串 —— Pydantic 规则的"复杂组装"
 
-### 10.11.1 generate_gbnf_rule_for_type()：字段类型调度器
+### 9.11.1 generate_gbnf_rule_for_type()：字段类型调度器
 
 源码路径：`examples/pydantic_models_to_grammar.py` - `generate_gbnf_rule_for_type()`（第296-415行）
 
@@ -1013,7 +1013,7 @@ def generate_gbnf_rule_for_type(
 - **正则 pattern**：调用 `regex_to_gbnf` 简单翻译
 - **数字精度/位数**：读取 `json_schema_extra` 中的 `max_precision`/`min_precision`/`max_digit`/`min_digit` 生成约束规则
 
-### 10.11.2 generate_gbnf_integer_rules() 与 generate_gbnf_float_rules()：数字精度约束
+### 9.11.2 generate_gbnf_integer_rules() 与 generate_gbnf_float_rules()：数字精度约束
 
 源码路径：`examples/pydantic_models_to_grammar.py` - `generate_gbnf_integer_rules()`（第198-239行）、`generate_gbnf_float_rules()`（第241-294行）
 
@@ -1050,9 +1050,9 @@ def generate_gbnf_float_rules(max_digit=None, min_digit=None, max_precision=None
 
 整数规则生成 `integer-part-maxN-minM ::= [0-9] [0-9]? ...` 形式；浮点规则拆分为 `integer-part` 与 `fractional-part` 两个子规则，再组合为 `float-... ::= integer-part "." fractional-part`，支持独立控制整数位数与小数精度。
 
-## 10.12 Pydantic 模型的"全家福" —— generate_gbnf_grammar 与主入口
+## 9.12 Pydantic 模型的"全家福" —— generate_gbnf_grammar 与主入口
 
-### 10.12.1 generate_gbnf_grammar()：单模型规则生成
+### 9.12.1 generate_gbnf_grammar()：单模型规则生成
 
 源码路径：`examples/pydantic_models_to_grammar.py` - `generate_gbnf_grammar()`（第417-488行）
 
@@ -1126,7 +1126,7 @@ def generate_gbnf_grammar(model: type[BaseModel], processed_models: set[type[Bas
 5. 组装模型规则：`model ::= "{" "\n" field1 "," "\n" field2 ... "\n" ws "}"`
 6. 特殊字符串时追加换行后的特殊规则引用
 
-### 10.12.2 generate_gbnf_grammar_from_pydantic_models()：多模型顶层组装
+### 9.12.2 generate_gbnf_grammar_from_pydantic_models()：多模型顶层组装
 
 源码路径：`examples/pydantic_models_to_grammar.py` - `generate_gbnf_grammar_from_pydantic_models()`（第490-574行）
 
@@ -1183,7 +1183,7 @@ def generate_gbnf_grammar_from_pydantic_models(
 - **单函数调用**：`root ::= function` → `function ::= {"function": "...", "params": ModelX}`
 - **并发函数调用**：`list_of_outputs=True` 时 `root ::= [ function, function, ... ]`
 
-### 10.12.3 get_primitive_grammar()：自动补全基础依赖
+### 9.12.3 get_primitive_grammar()：自动补全基础依赖
 
 源码路径：`examples/pydantic_models_to_grammar.py` - `get_primitive_grammar()`（第576-626行）
 
@@ -1232,9 +1232,9 @@ triple-quotes ::= "'''\""""
 - `value/object/array/number` 通用规则（当出现 `custom-class-any`）
 - Markdown 代码块 / 三引号字符串专用规则
 
-## 10.13 动态模型工厂 —— 从函数到 Pydantic 的"变形术"
+## 9.13 动态模型工厂 —— 从函数到 Pydantic 的"变形术"
 
-### 10.13.1 create_dynamic_model_from_function()：函数签名+docstring → Pydantic 类
+### 9.13.1 create_dynamic_model_from_function()：函数签名+docstring → Pydantic 类
 
 源码路径：`examples/pydantic_models_to_grammar.py` - `create_dynamic_model_from_function()`（第1147-1204行）
 
@@ -1268,7 +1268,7 @@ def create_dynamic_model_from_function(func: Callable[..., Any]):
 
 利用 `inspect.signature` 提取参数类型注解，`docstring_parser.parse` 解析文档字符串（需每参数有描述），动态创建 Pydantic 模型并注入 `run()` 方法调用原函数，实现从函数到可执行模型的转换。
 
-### 10.13.2 convert_dictionary_to_pydantic_model()：JSON Schema/OpenAI 字典 → Pydantic 类
+### 9.13.2 convert_dictionary_to_pydantic_model()：JSON Schema/OpenAI 字典 → Pydantic 类
 
 源码路径：`examples/pydantic_models_to_grammar.py` - `convert_dictionary_to_pydantic_model()`（第1277-1349行）
 
@@ -1314,7 +1314,7 @@ def convert_dictionary_to_pydantic_model(dictionary: dict[str, Any], model_name:
 
 递归解析字典结构：支持 `properties`、`enum`、`array`、`object`、`required` 等关键字，兼容 OpenAI Function Calling 格式（`function.name/description/parameters`），自动处理嵌套对象与数组项类型。
 
-### 10.13.3 批量工厂与 run 方法注入
+### 9.13.3 批量工厂与 run 方法注入
 
 源码路径：`examples/pydantic_models_to_grammar.py` - `create_dynamic_models_from_dictionaries()`（第1234-1247行）、`add_run_method_to_dynamic_model()`（第1207-1231行）
 
@@ -1337,9 +1337,9 @@ def add_run_method_to_dynamic_model(model: type[BaseModel], func: Callable[..., 
 
 批量转换字典列表，以及为已有模型后向注入 `run` 方法，配合动态模型工厂形成完整工具链。
 
-## 10.14 文档生成器 —— 让 LLM "读懂" Pydantic 模型的"说明书"
+## 9.14 文档生成器 —— 让 LLM "读懂" Pydantic 模型的"说明书"
 
-### 10.14.1 generate_markdown_documentation()：Markdown 格式文档
+### 9.14.1 generate_markdown_documentation()：Markdown 格式文档
 
 源码路径：`examples/pydantic_models_to_grammar.py` - `generate_markdown_documentation()`（第628-683行）
 
@@ -1386,7 +1386,7 @@ def generate_markdown_documentation(
 
 生成结构化 Markdown：模型名、描述、字段列表（递归发现嵌套 BaseModel）、示例输出。缩进用 4 空格表达层次。
 
-### 10.14.2 generate_field_markdown() 与 generate_text_documentation()
+### 9.14.2 generate_field_markdown() 与 generate_text_documentation()
 
 源码路径：`examples/pydantic_models_to_grammar.py` - `generate_field_markdown()`（第685-741行）、`generate_text_documentation()`（第841-891行）
 
@@ -1418,9 +1418,9 @@ def generate_field_markdown(field_name, field_type, model, depth=1, documentatio
 
 字段文档区分 `list[T]`、`Union[...]`、普通类型三种渲染方式，递归处理嵌套 BaseModel。`generate_text_documentation` 结构对称但缩进风格更适合 LLM 上下文。
 
-## 10.15 Pydantic 结构化输出示例 —— json_schema_pydantic_example.py
+## 9.15 Pydantic 结构化输出示例 —— json_schema_pydantic_example.py
 
-### 10.15.1 create_completion()：通用 HTTP 客户端 + Schema 注入
+### 9.15.1 create_completion()：通用 HTTP 客户端 + Schema 注入
 
 源码路径：`examples/json_schema_pydantic_example.py` - `create_completion()`（第13-37行）
 
@@ -1452,7 +1452,7 @@ def create_completion(*, response_model=None, endpoint="http://localhost:8080/v1
 4. 调用本地 llama-server `/v1/chat/completions` 端点
 5. `type_adapter.validate_json(content)` 反序列化并校验
 
-### 10.15.2 QAPair 与 PyramidalSummary：约束示例模型
+### 9.15.2 QAPair 与 PyramidalSummary：约束示例模型
 
 源码路径：`examples/json_schema_pydantic_example.py` - 类定义（第47-70行）
 
@@ -1479,9 +1479,9 @@ class PyramidalSummary(BaseModel):
 - `Annotated[List[QAPair], MinLen(2)]` → 集合最小长度约束
 - `Optional[Annotated[List['PyramidalSummary'], MinLen(2)]]` → 递归自引用 + 可选 + 长度约束
 
-## 10.16 函数调用示例库 —— pydantic_models_to_grammar_examples.py
+## 9.16 函数调用示例库 —— pydantic_models_to_grammar_examples.py
 
-### 10.16.1 create_completion()：/completion 端点客户端
+### 9.16.1 create_completion()：/completion 端点客户端
 
 源码路径：`examples/pydantic_models_to_grammar_examples.py` - `create_completion()`（第27-37行）
 
@@ -1501,7 +1501,7 @@ def create_completion(host, prompt, gbnf_grammar):
 
 直接调用 llama-server `/completion` 端点（非 OpenAI 兼容格式），传入 `prompt` 与 `grammar`，打印请求/响应便于调试。
 
-### 10.16.2 SendMessageToUser 与 Calculator：工具模型定义
+### 9.16.2 SendMessageToUser 与 Calculator：工具模型定义
 
 源码路径：`examples/pydantic_models_to_grammar_examples.py` - `SendMessageToUser`（第42-43行）、`Calculator`（第69-83行）
 
@@ -1538,7 +1538,7 @@ class Calculator(BaseModel):
 - `SendMessageToUser`：最简工具模型，演示 RCE（任意代码执行）风险
 - `Calculator`：Enum 参数 `MathOperation` + `Union[int, float]` 多类型参数，GBNF 生成联合规则
 
-### 10.16.3 example_rce() 与 example_calculator()：单/多工具调用演示
+### 9.16.3 example_rce() 与 example_calculator()：单/多工具调用演示
 
 源码路径：`examples/pydantic_models_to_grammar_examples.py` - `example_rce()`（第47-62行）、`example_calculator()`（第89-112行）
 
@@ -1575,7 +1575,7 @@ def example_calculator(host):
 
 `example_rce` 演示最小函数调用链路；`example_calculator` 验证 LLM 输出与预期字典一致，并执行计算。
 
-### 10.16.4 example_struct()：非函数调用结构化输出
+### 9.16.4 example_struct()：非函数调用结构化输出
 
 源码路径：`examples/pydantic_models_to_grammar_examples.py` - `example_struct()`（第130-143行）
 
@@ -1596,7 +1596,7 @@ def example_struct(host):
 
 不使用 `outer_object_name`，直接以 `Book` 模型作为根规则，从非结构化文本提取结构化字段。
 
-### 10.16.5 example_concurrent()：并发函数调用
+### 9.16.5 example_concurrent()：并发函数调用
 
 源码路径：`examples/pydantic_models_to_grammar_examples.py` - `example_concurrent()`（第164-213行）
 
@@ -1632,9 +1632,9 @@ def example_concurrent(host):
 
 `list_of_outputs=True` 生成数组根规则，支持单次推理输出多个函数调用。
 
-## 10.17 嵌入服务并发测试 —— server_embd.py 的"压力小工"
+## 9.17 嵌入服务并发测试 —— server_embd.py 的"压力小工"
 
-### 10.17.1 requests_post_async()：requests 异步包装
+### 9.17.1 requests_post_async()：requests 异步包装
 
 源码路径：`examples/server_embd.py` - `requests_post_async()`（第13-14行）
 
@@ -1645,7 +1645,7 @@ async def requests_post_async(*args, **kwargs):
 
 使用 `asyncio.threads.to_thread` 将阻塞的 `requests.post` 放入线程池，实现异步并发。
 
-### 10.17.2 main()：并发请求 /embedding 端点
+### 9.17.2 main()：并发请求 /embedding 端点
 
 源码路径：`examples/server_embd.py` - `main()`（第16-25行）
 
@@ -1664,7 +1664,7 @@ async def main():
 
 并发发起 `n=8` 个 POST 请求，所有请求发送相同文本 `"a "*1022`，收集各响应的 `embedding` 字段。
 
-### 10.17.3 __main__：余弦相似度计算
+### 9.17.3 __main__：余弦相似度计算
 
 源码路径：`examples/server_embd.py` - `__main__`（第8-28行）
 
@@ -1682,7 +1682,7 @@ for i in range(n-1):
 
 计算两两向量的余弦相似度。理想情况下相似度应接近 1.0，验证嵌入模型在并发场景下的确定性与数值稳定性。
 
-## 10.18 设计中的取舍
+## 9.18 设计中的取舍
 
 **为什么不直接用 JSON Schema 做约束？**
 
@@ -1700,9 +1700,9 @@ GBNF 文法是上下文无关的，不支持正则的反向引用（`\1` 等上�
 
 实际应用中工具定义常来自 Python 函数（本地开发）或 OpenAI 字典（远程注册/配置文件）。统一转为 Pydantic 模型后，复用同一套 GBNF 生成、文档生成、run 执行流水线，避免为每种来源维护独立逻辑。
 
-## 10.19 动手练习
+## 9.19 动手练习
 
-### 练习1：追踪 JSON Schema 到 GBNF 的转换全过程
+### 9.19.1 练习1：追踪 JSON Schema 到 GBNF 的转换全过程
 
 **内容**：
 阅读 examples/json_schema_to_grammar.py 第449-530行与第232-244行，追踪以下 Schema 转换的完整调用链：
@@ -1714,7 +1714,7 @@ GBNF 文法是上下文无关的，不支持正则的反向引用（`\1` 等上�
 - _build_object_rule 如何处理 required 属性？
 - 最终生成的 GBNF 规则文本大概是什么样子？
 
-### 练习2：深入正则翻译器
+### 9.19.2 练习2：深入正则翻译器
 
 **内容**：
 阅读 examples/json_schema_to_grammar.py 第281-379行的 _visit_pattern 方法，尝试理解以下正则的转换：
@@ -1727,7 +1727,7 @@ GBNF 文法是上下文无关的，不支持正则的反向引用（`\1` 等上�
 - sub_rule_ids 缓存机制在 {m,n} 量词中如何复用规则？
 - 第三个模式会被正确转换吗？为什么不支持反向引用？
 
-### 练习3：Pydantic 到 GBNF 的类型映射实验
+### 9.19.3 练习3：Pydantic 到 GBNF 的类型映射实验
 
 **内容**：
 阅读 examples/pydantic_models_to_grammar.py 第76-115行的类型映射函数：
@@ -1740,7 +1740,7 @@ GBNF 文法是上下文无关的，不支持正则的反向引用（`\1` 等上�
 - list[str] 和 set[str] 生成的规则有何区别？
 - 为什么 Optional[T] 和 Union[T, None] 会生成不同的规则名前缀？
 
-### 练习4：动态模型工厂的工作流
+### 9.19.4 练习4：动态模型工厂的工作流
 
 **内容**：
 阅读 examples/pydantic_models_to_grammar.py 第1147-1204行的 create_dynamic_model_from_function：
@@ -1753,7 +1753,7 @@ GBNF 文法是上下文无关的，不支持正则的反向引用（`\1` 等上�
 - docstring_parser.parse 支持哪些 docstring 风格？
 - 转换后的模型如何与 generate_gbnf_grammar_and_documentation 衔接？
 
-### 练习5：结构化输出的端到端实验
+### 9.19.5 练习5：结构化输出的端到端实验
 
 **内容**：
 阅读 examples/json_schema_pydantic_example.py 全文与 examples/pydantic_models_to_grammar_examples.py 第218-273行的 example_concurrent：
@@ -1766,7 +1766,7 @@ GBNF 文法是上下文无关的，不支持正则的反向引用（`\1` 等上�
 - TypeAdapter 与直接 model.schema() 的区别是什么？
 - 如果 LLM 输出不符合预期，客户端会得到什么反馈？
 
-## 10.20 本章小结
+## 9.20 本章小结
 
 这一章中我们学习了 llama.cpp 生态中结构化输出与语法约束的完整工具链。首先深入剖析了 `json_schema_to_grammar.py` 中的 `SchemaConverter` 核心转换器，理解其如何递归遍历 JSON Schema，通过 `_add_rule` 去重注册、`resolve_refs` 解析引用、`_visit_pattern` 状态机翻译正则、`_build_object_rule` 组装对象排列组合，最终输出确定性的 GBNF 文法。其次探索了 `regex_to_grammar.py` 如何通过子进程复用主转换器实现正则到 GBNF 的轻量管道。接着系统讲解了 `pydantic_models_to_grammar.py` 的类型映射体系：`PydanticDataType` 枚举、`map_pydantic_type_to_gbnf` 递归映射、`generate_gbnf_rule_for_type` 处理嵌套模型/Enum/列表/联合/字典/特殊字符串/数字约束，以及 `generate_gbnf_grammar` 与 `generate_gbnf_grammar_from_pydantic_models` 的单/多模型组装策略。随后揭秘了动态模型工厂 `create_dynamic_model_from_function` 与 `convert_dictionary_to_pydantic_model` 如何将函数签名、OpenAI 字典统一变形为 Pydantic 类，配合 `run` 方法注入实现可执行工具模型。文档生成器 `generate_markdown_documentation` 与 `generate_text_documentation` 则为 LLM 系统提示词提供可读说明书。最后通过三个示例程序验证端到端链路：`json_schema_pydantic_example.py` 演示 OpenAI 兼容接口下的 Schema 注入与校验；`pydantic_models_to_grammar_examples.py` 覆盖 RCE 最小调用、Enum/Union 参数计算器、非函数调用结构化抽取、三源融合并发调用；`server_embd.py` 以并发请求验证嵌入服务的数值确定性。
 

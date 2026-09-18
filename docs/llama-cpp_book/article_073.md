@@ -1,6 +1,6 @@
 
 
-# 72. OuteTTS 双模型工具链 —— 文字到声音的"双端流水线"
+# 第73章 OuteTTS 双模型工具链 —— 文字到声音的"双端流水线"
 
 ## 学习目标
 
@@ -13,11 +13,11 @@
 - 学习 WAV 文件格式（RIFF/PCM）的底层结构与跨语言二进制序列化方式
 - 掌握终端颜色量化的位运算技巧与 ANSI 转义序列生成
 
-## 72.1 生活类比
+## 73.1 生活类比
 
 想象 OuteTTS 是一座同声传译录音棚：TTC 模型就像速记员，把文字稿翻译成只有内部能懂的「语音速记符号」——也就是离散的音频码；CTS 模型则像配音演员，拿着速记符号在隔音棚里录制成一张张「声谱照片」——即频谱嵌入向量；而 Griffin-Lim 算法如同暗房冲印师，把二维声谱照片通过多次重叠显影（iFFT 加上 Overlap-Add），冲洗成一维的连续声波胶片。引导 Token 机制充当提词器，每当速记员换气（遇到换行符）时，强制提示下一个词的开头，从根本上防止漏词。文本预处理好比稿件校对，把数字（123）改写成文字（one two three），生僻词注音，确保速记员不会念错。终端颜色工具则像调音台的指示灯，将 24 位真彩色（RGB）压缩为 256 色终端能显示的信号。整个流程如同「文字 → 速记 → 配音 → 冲印」的工业流水线，C++ 版是棚内全自动设备，Python 版则是远程遥控的客户端。
 
-## 72.2 源码地图
+## 73.2 源码地图
 
 ```
 tools/tts/tts.cpp
@@ -74,11 +74,11 @@ tools/tts/tts-outetts.py
 
 ---
 
-## 72.3 程序入口与终端工具 —— TTS 的「门面与指示灯」
+## 73.3 程序入口与终端工具 —— TTS 的「门面与指示灯」
 
 在同声传译录音棚的类比中，`main()` 函数是录音棚的**总导演**，统筹从剧本接收、人员调度到最终成片输出的全流程；`print_usage()` 是门口的**前台接待**，在访客迷路时给出清晰指引；而 `rgb2xterm256()` 与 `set_xterm256_foreground()` 则是调音台上**五颜六色的指示灯**，将 24 位真彩色压缩为 256 色终端能识别的信号，让日志输出在彩色终端中清晰可辨。本节将沿着「导演→前台→指示灯」的顺序，逐一拆解这些「门面」代码。
 
-### 72.3.1 print_usage()：使用说明与主入口的「前台接待」
+### 73.3.1 print_usage()：使用说明与主入口的「前台接待」
 
 **源码路径**：`tools/tts/tts.cpp` - `print_usage()`（65-69 行）
 
@@ -95,7 +95,7 @@ static void print_usage(int, char ** argv) {
 
 **代码作用概述**：该函数在用户参数错误或显式请求帮助时被调用，通过 `LOG` 宏输出标准化的命令行使用示例。它不涉及任何业务逻辑，纯粹作为用户界面的「前台接待」，降低工具的上手门槛。
 
-### 72.3.2 模块依赖图
+### 73.3.2 模块依赖图
 
 ```mermaid
 flowchart LR
@@ -107,7 +107,7 @@ flowchart LR
 
 ---
 
-### 72.3.3 rgb2xterm256()：终端颜色量化的「调色师」
+### 73.3.3 rgb2xterm256()：终端颜色量化的「调色师」
 
 **源码路径**：`tools/tts/tts.cpp` - `rgb2xterm256()`（35-46 行）
 
@@ -136,7 +136,7 @@ static int rgb2xterm256(int r, int g, int b) {
 
 **代码作用概述**：该函数实现 24 位 RGB 到 xterm256 色空间的**最近邻量化**。核心逻辑是将 RGB 空间划分为 6×6×6 = 216 色的颜色立方体（索引 16-231）与 24 级灰度（索引 232-255）两套码本，通过欧氏距离平方（`SQR` 宏）在两者中择优。`cube[]` 数组中的八进制值 `{0, 0137, 0207, 0257, 0327, 0377}` 对应十进制 `{0, 95, 135, 195, 215, 245}`，正是 xterm256 标准的 6 级色阶基值。`UNCUBE` 宏将 0-255 通道值映射到 0-5 索引，实现均匀量化。
 
-### 72.3.4 模块依赖图
+### 73.3.4 模块依赖图
 
 ```mermaid
 flowchart TD
@@ -151,7 +151,7 @@ flowchart TD
 
 ---
 
-### 72.3.5 set_xterm256_foreground()：ANSI 转义序列的「信号灯」
+### 73.3.5 set_xterm256_foreground()：ANSI 转义序列的「信号灯」
 
 **源码路径**：`tools/tts/tts.cpp` - `set_xterm256_foreground()`（48-53 行）
 
@@ -170,7 +170,7 @@ static std::string set_xterm256_foreground(int r, int g, int b) {
 
 ---
 
-### 72.3.6 main()：TTS 流程总控的「总导演」
+### 73.3.6 main()：TTS 流程总控的「总导演」
 
 **源码路径**：`tools/tts/tts.cpp` - `main()`（506-792 行，完整骨架）
 
@@ -261,7 +261,7 @@ int main(int argc, char ** argv) {
 
 **代码作用概述**：`main()` 是 C++ 版 TTS 的**总导演**，完整贯穿「参数解析 → 双模型加载 → 说话人配置 → Prompt 构建 → 采样器初始化 → 生成循环 → 码本过滤 → 声码器解码 → 波形重建 → WAV 保存」的全生命周期。它像导演一样调度各个部门（模块），确保「文字 → 速记 → 配音 → 冲印」的工业流水线有序运转。
 
-### 72.3.7 模块依赖图
+### 73.3.7 模块依赖图
 
 ```mermaid
 flowchart TB
@@ -282,11 +282,11 @@ flowchart TB
 
 ---
 
-## 72.4 OuteTTS 工具链全景 —— 文字到声音的「双端流水线」
+## 73.4 OuteTTS 工具链全景 —— 文字到声音的「双端流水线」
 
 延续录音棚类比：C++ 端（`tts.cpp`）是**棚内全自动设备**，TTC 与 CTS 两台机器物理直连，数据在内存中零拷贝流动；Python 端（`tts-outetts.py`）是**远程遥控客户端**，通过 HTTP 协议指挥两台远程服务器（LLM 服务 + 解码服务）协作。本节对比两端的全景入口，揭示同一套「双模型流水线」在本地推理与服务化部署下的不同形态。
 
-### 72.4.1 main()：C++ 全流程入口的「一体机」
+### 73.4.1 main()：C++ 全流程入口的「一体机」
 
 **源码路径**：`tools/tts/tts.cpp` - `main()`（506-792 行，完整实现见上节 72.3.6）
 
@@ -295,7 +295,7 @@ flowchart TB
 - **显式资源管理**：模型、上下文、批次、采样器均需手动 `init/free`，体现 C++ RAII 以外的手动生命周期控制。
 - **多序列并行原生支持**：`n_parallel` 由参数控制，`llama_batch` 原生支持多序列 ID，单次 `llama_decode` 即可并行推进多条生成流。
 
-### 72.4.2 __main__：Python 客户端入口的「遥控器」
+### 73.4.2 __main__：Python 客户端入口的「遥控器」
 
 **源码路径**：`tools/tts/tts-outetts.py` - `__main__`（123-326 行，完整骨架）
 
@@ -372,7 +372,7 @@ print('audio written to file "%s"' % filename)
 
 **代码作用概述**：Python 版 `__main__` 是**远程遥控客户端**，通过四次 HTTP 往返完成全流程：① 向 LLM 服务发送 prompt 与参考 token，获取原始 token 序列；② 本地过滤归一化音频码；③ 向解码服务发送码本，获取声谱嵌入矩阵；④ 本地执行 `embd_to_audio` 与 `save_wav` 完成波形重建与落盘。说话人参考数据硬编码在脚本中，体现了「轻量客户端、重度服务端」的部署理念。
 
-### 72.4.3 架构时序图
+### 73.4.3 架构时序图
 
 ```mermaid
 sequenceDiagram
@@ -390,11 +390,11 @@ sequenceDiagram
 
 ---
 
-## 72.5 文本预处理与分词 —— 把「人类语言」翻译成模型能懂的「暗号」
+## 73.5 文本预处理与分词 —— 把「人类语言」翻译成模型能懂的「暗号」
 
 在录音棚类比中，文本预处理是**稿件校对员**的工作：把剧本里的阿拉伯数字（123）改写成英文单词，统一大小写，去除标点符号，确保速记员（TTC 模型）念稿时不会卡壳或读错。C++ 版实现了完整的**工业级校对流水线**（数字转写→清洗→分词），Python 版则是**简化版清洗**，依赖预训练模型的鲁棒性容忍未转写的数字。
 
-### 72.5.1 convert_less_than_thousand()：千位以下数字转英文的「百位译员」
+### 73.5.1 convert_less_than_thousand()：千位以下数字转英文的「百位译员」
 
 **源码路径**：`tools/tts/tts.cpp` - `convert_less_than_thousand()`（274-291 行）
 
@@ -426,7 +426,7 @@ static std::string convert_less_than_thousand(int num) {
 
 ---
 
-### 72.5.2 number_to_words()：完整数字转写的「总译员」
+### 73.5.2 number_to_words()：完整数字转写的「总译员」
 
 **源码路径**：`tools/tts/tts.cpp` - `number_to_words()`（293-337 行）
 
@@ -482,7 +482,7 @@ static std::string number_to_words(const std::string & number_str) {
 
 ---
 
-### 72.5.3 replace_numbers_with_words()：正则匹配替换的「全文扫描仪」
+### 73.5.3 replace_numbers_with_words()：正则匹配替换的「全文扫描仪」
 
 **源码路径**：`tools/tts/tts.cpp` - `replace_numbers_with_words()`（339-355 行）
 
@@ -513,7 +513,7 @@ static std::string replace_numbers_with_words(const std::string & input_text) {
 
 ---
 
-### 72.5.4 process_text()：文本归一化管道的「流水线总控」（C++ 完整版）
+### 73.5.4 process_text()：文本归一化管道的「流水线总控」（C++ 完整版）
 
 **源码路径**：`tools/tts/tts.cpp` - `process_text()`（358-389 行，完整实现）
 
@@ -557,7 +557,7 @@ static std::string process_text(const std::string & text, const outetts_version 
 
 **代码作用概述**：该函数是 C++ 版的**文本归一化总管道**，按序执行：① 数字转写 ② 全局小写 ③ 特殊字符转空格 ④ 非字母清洗 ⑤ 空白压缩 ⑥ 按版本插入分隔符（`<|text_sep|>` 或 `<|space|>`）⑦ 追加结束标记 `<|text_end|>\n`。输出直接可作为 TTC 模型的 prompt 片段。
 
-### 72.5.5 模块依赖图
+### 73.5.5 模块依赖图
 
 ```mermaid
 flowchart LR
@@ -574,7 +574,7 @@ flowchart LR
 
 ---
 
-### 72.5.6 process_text()：Python 简化版的「快速清洗工」
+### 73.5.6 process_text()：Python 简化版的「快速清洗工」
 
 **源码路径**：`tools/tts/tts-outetts.py` - `process_text()`（116-120 行）
 
@@ -603,11 +603,11 @@ def process_text(text: str):
 
 ---
 
-## 72.6 提示词工程与引导机制 —— 给 LLM 的「提词器」
+## 73.6 提示词工程与引导机制 —— 给 LLM 的「提词器」
 
 在录音棚类比中，Prompt 构造是**导演编写的拍摄大纲**，引导 Token 机制是**提词器**。`prompt_add` 提供多态追加接口，`prompt_init` 注入开场白 `<|im_start|>\n`，`prepare_guide_tokens` 提取每个单词的首 token 作为「提词卡」，`get_tts_version` 自动识别剧本版本（v0.2/v0.3），`audio_text_from_speaker` 与 `audio_data_from_speaker` 将参考演员的台词与声谱码本注入大纲，实现**声音克隆**。
 
-### 72.6.1 prompt_add()：多态提示追加的「万能胶水」
+### 73.6.1 prompt_add()：多态提示追加的「万能胶水」
 
 **源码路径**：`tools/tts/tts.cpp` - `prompt_add()`（391-402 行）
 
@@ -631,7 +631,7 @@ static void prompt_add(llama_tokens & prompt, const llama_vocab * vocab, const s
 
 ---
 
-### 72.6.2 prompt_init()：初始化对话标记的「开场白」
+### 73.6.2 prompt_init()：初始化对话标记的「开场白」
 
 **源码路径**：`tools/tts/tts.cpp` - `prompt_init()`（404-408 行）
 
@@ -647,7 +647,7 @@ static void prompt_init(llama_tokens & prompt, const llama_vocab * vocab) {
 
 ---
 
-### 72.6.3 prepare_guide_tokens()：生成引导序列的「提词卡制作」
+### 73.6.3 prepare_guide_tokens()：生成引导序列的「提词卡制作」
 
 **源码路径**：`tools/tts/tts.cpp` - `prepare_guide_tokens()`（410-433 行）
 
@@ -684,7 +684,7 @@ static std::vector<llama_token> prepare_guide_tokens(const llama_vocab * vocab, 
 
 ---
 
-### 72.6.4 speaker_from_file()：加载说话人配置的「演员档案库」
+### 73.6.4 speaker_from_file()：加载说话人配置的「演员档案库」
 
 **源码路径**：`tools/tts/tts.cpp` - `speaker_from_file()`（435-444 行）
 
@@ -704,7 +704,7 @@ static json speaker_from_file(const std::string & speaker_file) {
 
 ---
 
-### 72.6.5 get_tts_version()：识别模型版本的「剧本版本核对员」
+### 73.6.5 get_tts_version()：识别模型版本的「剧本版本核对员」
 
 **源码路径**：`tools/tts/tts.cpp` - `get_tts_version()`（446-465 行）
 
@@ -731,7 +731,7 @@ static outetts_version get_tts_version(llama_model *model, json speaker = json::
 
 ---
 
-### 72.6.6 audio_text_from_speaker()：构建参考文本序列的「参考台词单」
+### 73.6.6 audio_text_from_speaker()：构建参考文本序列的「参考台词单」
 
 **源码路径**：`tools/tts/tts.cpp` - `audio_text_from_speaker()`（467-478 行）
 
@@ -752,7 +752,7 @@ static std::string audio_text_from_speaker(json speaker, const outetts_version t
 
 ---
 
-### 72.6.7 audio_data_from_speaker()：构建参考音频码本的「参考声谱档」
+### 73.6.7 audio_data_from_speaker()：构建参考音频码本的「参考声谱档」
 
 **源码路径**：`tools/tts/tts.cpp` - `audio_data_from_speaker()`（480-504 行）
 
@@ -785,11 +785,11 @@ static std::string audio_data_from_speaker(json speaker, const outetts_version t
 
 ---
 
-## 72.7 音频码生成与采样 —— LLM 如何「逐字念出」语音密码
+## 73.7 音频码生成与采样 —— LLM 如何「逐字念出」语音密码
 
 在录音棚类比中，生成循环是**速记员在录音棚里极速书写速记符号**的过程。TTC 模型逐 token 预测音频码，采样器（Top-K=4）控制随机性，**引导 Token 机制**在每次遇到换行符（198）时强制下一个 token 为该单词的首 token，确保「不漏词、不乱序」。多序列并行（`n_parallel`）如同多位速记员同步工作。
 
-### 72.7.1 KV 缓存初始化与 Prompt 评估
+### 73.7.1 KV 缓存初始化与 Prompt 评估
 
 **源码路径**：`tools/tts/tts.cpp` - `__main__` 生成循环前段（793-820 行）
 
@@ -814,7 +814,7 @@ llama_synchronize(ctx_ttc);
 
 **代码作用概述**：构建批次，将 prompt token 分发到多个序列 ID，调用 `llama_decode` 完成前缀 KV 缓存填充，仅最后一个 token 计算 logits 以启动生成。
 
-### 72.7.2 采样循环与引导机制触发
+### 73.7.2 采样循环与引导机制触发
 
 **源码路径**：`tools/tts/tts.cpp` - `__main__` 生成循环主体（821-870 行）
 
@@ -857,7 +857,7 @@ llama_batch_free(batch);
    - 否则将新 token 加入下一批次。
 2. 批次为空或达上限退出循环。
 
-### 72.7.3 架构时序图
+### 73.7.3 架构时序图
 
 ```mermaid
 sequenceDiagram
@@ -876,11 +876,11 @@ sequenceDiagram
 
 ---
 
-## 72.8 音频码过滤与声码器解码 —— 从「数字密码」到「声谱嵌入」
+## 73.8 音频码过滤与声码器解码 —— 从「数字密码」到「声谱嵌入」
 
 速记员写完速记符号（原始 token 序列）后，**剪辑师**上场：剔除非音频 token，仅保留 `[151672, 155772]` 区间的音频码，并减去偏移归一化为 `[0, 4100]` 的码本索引。随后**配音演员（CTS 模型）**登场，将码本序列解码为连续的声谱嵌入向量。
 
-### 72.8.1 C++ 版：码本过滤与解码
+### 73.8.1 C++ 版：码本过滤与解码
 
 **源码路径**：`tools/tts/tts.cpp` - `__main__` 过滤解码段（970-1010 行）
 
@@ -907,7 +907,7 @@ const float * embd = llama_get_embeddings(ctx_cts);
 
 ---
 
-### 72.8.2 Python 版：码本过滤与解码请求
+### 73.8.2 Python 版：码本过滤与解码请求
 
 **源码路径**：`tools/tts/tts-outetts.py` - `__main__` 过滤解码段（270-300 行）
 
@@ -925,13 +925,13 @@ embd = response_json[0]["embedding"]
 
 ---
 
-## 72.9 Griffin-Lim 波形重建 —— 从「声谱」到「声音」的逆变换魔法
+## 73.9 Griffin-Lim 波形重建 —— 从「声谱」到「声音」的逆变换魔法
 
 在录音棚类比中，`embd_to_audio` 是**暗房冲印师**：拿着配音演员产出的「声谱照片」（复数频谱），通过 iFFT 显影、加窗定影、重叠相加冲洗、包络归一化定影，最终得到连续的「声波胶片」（时域波形）。关键参数：`n_fft=1280`（频率分辨率）、`n_hop=320`（75% 重叠）、`n_win=1280`（窗长）、汉宁窗减少频谱泄漏。
 
-### 72.9.1 C++ 版信号处理函数族
+### 73.9.1 C++ 版信号处理函数族
 
-#### fill_hann_window()
+#### 73.9.1.1 fill_hann_window()
 
 **源码路径**：`tools/tts/tts.cpp` - `fill_hann_window()`（109-117 行）
 
@@ -951,7 +951,7 @@ static void fill_hann_window(int length, bool periodic, float * output) {
 
 ---
 
-#### twiddle()
+#### 73.9.1.2 twiddle()
 
 **源码路径**：`tools/tts/tts.cpp` - `twiddle()`（120-124 行）
 
@@ -967,7 +967,7 @@ static void twiddle(float * real, float * imag, int k, int N) {
 
 ---
 
-#### irfft()
+#### 73.9.1.3 irfft()
 
 **源码路径**：`tools/tts/tts.cpp` - `irfft()`（126-153 行）
 
@@ -1004,7 +1004,7 @@ static void irfft(int n, const float * inp_cplx, float * out_real) {
 
 ---
 
-#### fold()
+#### 73.9.1.4 fold()
 
 **源码路径**：`tools/tts/tts.cpp` - `fold()`（165-187 行）
 
@@ -1034,7 +1034,7 @@ static void fold(const std::vector<float> & data, int64_t n_out, int64_t n_win, 
 
 ---
 
-#### embd_to_audio()：声谱到波形完整流程（C++ 版）
+#### 73.9.1.5 embd_to_audio()：声谱到波形完整流程（C++ 版）
 
 **源码路径**：`tools/tts/tts.cpp` - `embd_to_audio()`（190-261 行）
 
@@ -1111,7 +1111,7 @@ static std::vector<float> embd_to_audio(const float * embd, const int n_codes, c
 6. **重叠相加**：`fold(res)` 得波形，`fold(hann2)` 得包络。
 7. **包络归一化**：`audio /= env` 消除窗函数叠加导致的幅度调制。
 
-### 72.9.2 模块依赖图
+### 73.9.2 模块依赖图
 
 ```mermaid
 flowchart TB
@@ -1129,9 +1129,9 @@ flowchart TB
 
 ---
 
-### 72.9.3 Python 版信号处理函数族（逐函数标注源码路径）
+### 73.9.3 Python 版信号处理函数族（逐函数标注源码路径）
 
-#### fill_hann_window()
+#### 73.9.3.1 fill_hann_window()
 
 **源码路径**：`tools/tts/tts-outetts.py` - `fill_hann_window()`（11-14 行）
 
@@ -1146,7 +1146,7 @@ def fill_hann_window(size, periodic=True):
 
 ---
 
-#### irfft()
+#### 73.9.3.2 irfft()
 
 **源码路径**：`tools/tts/tts-outetts.py` - `irfft()`（17-18 行）
 
@@ -1159,7 +1159,7 @@ def irfft(n_fft, complex_input):
 
 ---
 
-#### fold()
+#### 73.9.3.3 fold()
 
 **源码路径**：`tools/tts/tts-outetts.py` - `fold()`（21-30 行）
 
@@ -1178,7 +1178,7 @@ def fold(buffer, n_out, n_win, n_hop, n_pad):
 
 ---
 
-#### process_frame()
+#### 73.9.3.4 process_frame()
 
 **源码路径**：`tools/tts/tts-outetts.py` - `process_frame()`（33-38 行）
 
@@ -1195,7 +1195,7 @@ def process_frame(args):
 
 ---
 
-#### embd_to_audio()
+#### 73.9.3.5 embd_to_audio()
 
 **源码路径**：`tools/tts/tts-outetts.py` - `embd_to_audio()`（41-81 行）
 
@@ -1240,11 +1240,11 @@ def embd_to_audio(embd, n_codes, n_embd, n_thread=4):
 
 ---
 
-## 72.10 WAV 文件保存与后处理 —— 把「数字波形」装进「标准容器」
+## 73.10 WAV 文件保存与后处理 —— 把「数字波形」装进「标准容器」
 
 冲印师冲洗出胶片后，需装入**标准胶片罐**（WAV 文件）交付。WAV 采用 RIFF 容器：`RIFF` 头 → `fmt ` 块 → `data` 块。16-bit PCM 要求浮点样本乘 32767 截断到 `[-32768, 32767]`。C++ 版用结构体直接二进制写入，Python 版用 `struct.pack` 显式打包，保证跨平台字节序一致。前 1/4 秒强制静音消除起始伪影。
 
-### 72.10.1 wav_header 结构体：WAV 头的二进制布局
+### 73.10.1 wav_header 结构体：WAV 头的二进制布局
 
 **源码路径**：`tools/tts/tts.cpp` - 全局作用域（`save_wav16` 上方）
 
@@ -1270,7 +1270,7 @@ struct wav_header {
 
 ---
 
-### 72.10.2 save_wav16()：C++ WAV 写入
+### 73.10.2 save_wav16()：C++ WAV 写入
 
 **源码路径**：`tools/tts/tts.cpp` - `save_wav16()`（86-107 行）
 
@@ -1302,7 +1302,7 @@ static bool save_wav16(const std::string & fname, const std::vector<float> & dat
 
 ---
 
-### 72.10.3 save_wav()：Python WAV 写入
+### 73.10.3 save_wav()：Python WAV 写入
 
 **源码路径**：`tools/tts/tts-outetts.py` - `save_wav()`（84-113 行）
 
@@ -1349,7 +1349,7 @@ def save_wav(filename, audio_data, sample_rate):
 
 ---
 
-### 72.10.4 后处理与保存（C++ 版）
+### 73.10.4 后处理与保存（C++ 版）
 
 **源码路径**：`tools/tts/tts.cpp` - `__main__` 尾段（1011-1041 行）
 
@@ -1368,11 +1368,11 @@ if (save_wav16(params.out_file, audio, n_sr)) {
 
 ---
 
-## 72.11 全局初始化与基础设施 —— 录音棚的「开机自检」
+## 73.11 全局初始化与基础设施 —— 录音棚的「开机自检」
 
 C++ 通过全局静态初始化完成「开机自检」：`ones`/`tens` 词表为数字转写提供词典基础，`outetts_version` 枚举区分协议版本。Python 依赖模块加载时执行的顶层代码隐式完成初始化。
 
-### 72.11.1 全局初始化（C++ 版）
+### 73.11.1 全局初始化（C++ 版）
 
 **源码路径**：`tools/tts/tts.cpp` - 文件开头（1-64 行）
 
@@ -1402,7 +1402,7 @@ enum outetts_version {
 - `UNCUBE`：将 0-255 通道值映射到 0-5 立方体索引的**分段常数函数**（无分支位运算替代亦可）。
 - `SQR`：欧氏距离平方的**宏实现**，避免函数调用开销。
 
-### 72.11.2 模块依赖图
+### 73.11.2 模块依赖图
 
 ```mermaid
 flowchart TB
@@ -1418,7 +1418,7 @@ flowchart TB
 
 ---
 
-## 72.12 设计中的取舍
+## 73.12 设计中的取舍
 
 为什么 C++ 使用自实现的 O(n²) DFT 而不是 FFT？  
 C++ 版本选择自实现 DFT 主要是为了保持零外部依赖的极简哲学。OuteTTS 的帧长固定为 1280 点，数百帧的处理量在 O(n²) 下仍然可以在毫秒级完成，引入 FFT 库会增加编译复杂度和二进制体积。相比之下，Python 版直接调用 `np.fft.irfft`，利用 NumPy 的底层 C 实现获得 O(n log n) 的加速，体现了脚本语言「够用就好」与系统语言「精雕细琢」的差异。
@@ -1434,7 +1434,7 @@ Python 版设计为轻量客户端，通过 HTTP 协调独立的 LLM 服务与�
 
 ---
 
-## 72.13 动手练习
+## 73.13 动手练习
 
 - 阅读 `tools/tts/tts.cpp` 中 `convert_less_than_thousand()`（274-291 行）、`number_to_words()`（293-337 行）与 `replace_numbers_with_words()`（339-355 行）的协作实现。当前实现对以下输入的处理存在什么问题？输入："I have 1,000,000 dollars"（带逗号分隔符，正则未匹配逗号）；输入："Room 101"（数字作为专有名词，101 会被转写为 one hundred one 而非 one o one）；输入："Version 2.0"（小数点被当作序号，转写为 two point zero 而非 two dot oh）；输入："3.14159"（小数部分逐位转写导致过长）。思考如何改进正则表达式或数字转写逻辑，使其更健壮地处理这些边界情况。
 - 修改 `tools/tts/tts-outetts.py` 中的 `embd_to_audio()` 函数，分别尝试以下参数组合并听辨差异：1. 将 `n_fft` 从 1280 改为 2048（更高频率分辨率），观察声音是否变得更「闷」或更「清晰」？2. 将 `n_hop` 从 320 改为 640（50% 重叠），观察是否出现「机器人」般的断续感？3. 注释掉包络归一化代码（`audio[mask] /= env[mask]`），观察输出音量是否出现周期性波动？4. 将 `fill_hann_window()` 中的 `periodic` 参数从 True 改为 False，观察频谱泄漏差异。解释 FFT 大小、重叠率与计算复杂度、音质之间的权衡关系。
@@ -1445,7 +1445,7 @@ Python 版设计为轻量客户端，通过 HTTP 协调独立的 LLM 服务与�
 
 ---
 
-## 72.14 本章小结
+## 73.14 本章小结
 
 这一章中我们深入解析了 OuteTTS 工具链的完整实现，首先从 C++ 与 Python 双端架构鸟瞰了 TTS 的三段式流水线（文本→音频码→声谱嵌入→波形），接着剖析了文本预处理中数字转写与清洗的关键作用，然后重点探讨了引导 Token 机制如何防止 LLM 生成漏词，以及音频码的过滤与归一化过程。在声码器端，我们详细拆解了 Griffin-Lim/iSTFT 算法的数学原理与工程实现，并对比了 C++ 自实现 DFT 与 Python NumPy FFT 的技术选型差异。最后，我们覆盖了 WAV 文件格式的底层结构、终端颜色量化的位运算技巧，以及全局初始化的设计考量。
 

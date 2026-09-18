@@ -1,7 +1,7 @@
 
 
 
-# 第6章 HF→GGUF 转换核心引擎 —— ModelBase 通用框架与多架构适配体系
+# 第5章 HF→GGUF 转换核心引擎 —— ModelBase 通用框架与多架构适配体系
 
 ## 学习目标
 
@@ -13,7 +13,7 @@
 - 掌握主流架构（Llama/DeepSeekV2/Gemma/Qwen/MoE/SSM/BERT/Encoder）在 `modify_tensors`、`set_gguf_parameters`、`set_vocab` 中的差异化定制模式
 - 理解 `LazyTorchTensor` 如何通过 `__torch_function__` 代理实现远程/本地/分片张量的统一惰性加载与 NumPy 转换
 
-## 6.1 生活类比
+## 5.1 生活类比
 
 想象你是一位**芯片封装厂的总工程师**，面对来自世界各地的「裸晶圆」（Hugging Face 模型权重）：有的晶圆已经切好并贴好标签（标准 Llama），有的晶圆把 Q/K/V 三个电极焊在一根线上（Baichuan/GPT-NeoX/Falcon），有的晶圆内部藏着几十个「专家子芯片」需要先拆解再堆叠成 3D 封装，有的晶圆采用了实验室才有的 NVFP4/MXFP4 新工艺，需要把原厂的「超级块」拆开、重排、再按 GGML 规范打包。你的工厂（`ModelBase`）必须建立一套**标准化流水线**：
 
@@ -29,7 +29,7 @@
 
 整个过程**不拆散成套家具（张量合并只在必要时如 MoE 专家堆叠/QKV 拆分发生）**、**不丢零件（精度保持/位级一致）**、**不超载搬运车（惰性加载/流式处理）**。
 
-## 6.2 源码地图
+## 5.2 源码地图
 
 ./convert_hf_to_gguf.py
 ├── ModelBase（核心基类）
@@ -51,9 +51,9 @@
 │   ├── from_local_tensor / from_remote_tensor / from_safetensors_slice / numpy / __torch_function__ —— 统一延迟加载接口
 ├── parse_args / split_str_to_n_bytes / get_model_architecture / main —— 命令行入口与架构识别
 
-## 6.3 ModelBase：转换器核心流水线
+## 5.3 ModelBase：转换器核心流水线
 
-### 6.3.1 __init__：初始化与张量建档
+### 5.3.1 __init__：初始化与张量建档
 
 源码路径：`./convert_hf_to_gguf.py` - `ModelBase.__init__`（第 81-143 行）
 
@@ -108,7 +108,7 @@ def __init__(self, dir_model: Path, ftype: gguf.LlamaFileType, fname_out: Path, 
 > - 第 111-112 行：NVFP4/MXFP4 标记位，后续 `prepare_tensors` 根据量化配置置位。
 > - 第 114-116 行：提前创建 `GGUFWriter`，架构名留待子类 `set_gguf_parameters` 阶段通过 `add_architecture()` 确定。
 
-### 6.3.2 index_tensors：分片扫描与惰性生成器构建
+### 5.3.2 index_tensors：分片扫描与惰性生成器构建
 
 源码路径：`./convert_hf_to_gguf.py` - `ModelBase.index_tensors`（第 160-240 行）
 
@@ -169,7 +169,7 @@ flowchart TD
     J --> K
 ```
 
-### 6.3.3 dequant_model：多工艺反量化统一入口
+### 5.3.3 dequant_model：多工艺反量化统一入口
 
 源码路径：`./convert_hf_to_gguf.py` - `ModelBase.dequant_model`（第 242-397 行）
 
@@ -232,9 +232,9 @@ def dequant_model(self):
 > - 第 272-380 行：按 `quant_method` 分发。关键设计：**不立即计算**，而是构造新的零参 `lambda` 生成器存入 `new_tensors`，保持惰性流水线不变。
 > - 第 382-387 行：原子性替换 `model_tensors`，旧键删除、新键插入，**下游 `get_tensors`/`prepare_tensors` 完全感知不到反量化发生**。
 
-### 6.3.4 NVFP4 静态打包与专家流式生成
+### 5.3.4 NVFP4 静态打包与专家流式生成
 
-#### 6.3.4.1 _nvfp4_pack：超级块重组核心算子
+#### 5.3.4.1 _nvfp4_pack：超级块重组核心算子
 
 源码路径：`./convert_hf_to_gguf.py` - `ModelBase._nvfp4_pack`（第 474-493 行）
 
@@ -271,7 +271,7 @@ def _nvfp4_pack(weight: Tensor, scale: Tensor) -> tuple[np.ndarray, list[int]]:
 > - 第 488-491 行：按 **4 blocks = 1 super-block** 分组，`d_grouped` 形状 `[out_features, n_super, 4]`，`qs_grouped` 形状 `[out_features, n_super, 32]`，拼接后 `raw` 形状 `[out_features, n_super * 36]`（4 scales + 32 weight bytes）。
 > - 第 493 行：返回 `raw` (numpy) 与逻辑形状 `[out_features, n_super * 64]`，后者供 `GGUFWriter.add_tensor(raw_dtype=NVFP4)` 使用。
 
-#### 6.3.4.2 _generate_nvfp4_tensors / _flush_nvfp4_experts：专家流式聚合
+#### 5.3.4.2 _generate_nvfp4_tensors / _flush_nvfp4_experts：专家流式聚合
 
 源码路径：`./convert_hf_to_gguf.py` - `ModelBase._generate_nvfp4_tensors`（第 521-585 行）与 `ModelBase._flush_nvfp4_experts`（第 709-738 行）
 
@@ -378,7 +378,7 @@ sequenceDiagram
     end
 ```
 
-### 6.3.5 命名三件套：架构无关的标准化命名
+### 5.3.5 命名三件套：架构无关的标准化命名
 
 源码路径：`./convert_hf_to_gguf.py` - `ModelBase.format_tensor_name`/`match_model_tensor_name`/`map_tensor_name`（第 403-431 行）
 
@@ -422,7 +422,7 @@ def map_tensor_name(self, name: str, try_suffixes: Sequence[str] = (".weight", "
 
 > **协作模式**：子类 `modify_tensors` 先做架构特有变换（QKV 拆分、转置、合并），最后调用 `super().modify_tensors(data_torch, name, bid)`，基类内部再调用 `map_tensor_name` 完成最终定名，**保证命名一致性**。
 
-### 6.3.6 tensor_force_quant / generate_extra_tensors / modify_tensors / prepare_tensors：总装车间四大接口
+### 5.3.6 tensor_force_quant / generate_extra_tensors / modify_tensors / prepare_tensors：总装车间四大接口
 
 源码路径：`./convert_hf_to_gguf.py` - 对应方法（第 465-472, 834-834 行等）
 
@@ -487,9 +487,9 @@ def prepare_tensors(self):
 > - `modify_tensors`：基类实现已包含 `map_tensor_name` 与可选 `gate/up` 融合。子类**必须**以 `yield from super().modify_tensors(...)` 结尾，确保命名映射生效。
 > - `prepare_tensors`：核心流水线，**顺序固定**：NVFP4 预处理 → 反量化 → 张量遍历 → 修改/映射 → 强制量化 → 量化写入。`chain(generate_extra_tensors(), get_tensors())` 保证额外张量**优先写入**（便于某些运行时先读取）。
 
-## 6.4 TextModel / MmprojModel：双轨制分厂
+## 5.4 TextModel / MmprojModel：双轨制分厂
 
-### 6.4.1 TextModel：文本主干通用框架
+### 5.4.1 TextModel：文本主干通用框架
 
 源码路径：`./convert_hf_to_gguf.py` - `TextModel`（第 942-1181 行）
 
@@ -572,7 +572,7 @@ def get_vocab_base(self) -> tuple[list[str], list[int], str]:
 > - RoPE 参数同时读取 `rope_parameters` 与 `rope_scaling`，**兼容新旧配置格式**。
 > - `get_vocab_base`：通用 HF tokenizer 词表提取，**特殊 token 判定**结合 `added_tokens_decoder.special` 与 `does_token_look_special` 启发式规则。
 
-### 6.4.2 MmprojModel：多模态投影器专用分厂
+### 5.4.2 MmprojModel：多模态投影器专用分厂
 
 源码路径：`./convert_hf_to_gguf.py` - `MmprojModel`（第 2050-2189 行）
 
@@ -640,9 +640,9 @@ def tensor_force_quant(self, name, new_name, bid, n_dims):
 > - `set_gguf_parameters`：调用 `add_clip_has_vision_encoder`/`add_vision_*` 等 **MMPROJ 专用 KV**，运行时 `llama.cpp` 仅加载投影器权重。
 > - `tensor_force_quant`：强制 `patch_embd`/`patch_merger` 用 F16/F32，**防止视觉特征提取层量化损伤过大**。
 
-## 6.5 典型架构适配模式解析
+## 5.5 典型架构适配模式解析
 
-### 6.5.1 LlamaModel：基准实现与 MoE 扩展
+### 5.5.1 LlamaModel：基准实现与 MoE 扩展
 
 源码路径：`./convert_hf_to_gguf.py` - `LlamaModel`（第 2755-2906 行）
 
@@ -724,7 +724,7 @@ def generate_extra_tensors(self) -> Iterable[tuple[str, Tensor]]:
 > - 第 2852-2868 行：MoE 专家合并**经典模式**：`_experts[bid]` 缓冲字典，凑齐 `n_experts * 3` 个张量（w1/w2/w3）后 `torch.stack(dim=0)` 生成 `[n_experts, ...]` 3D 张量，调用 `super().modify_tensors` 走标准命名映射。
 > - `generate_extra_tensors`：仅当 `rope_type == "llama3"` 时产出 `ROPE_FREQS` 张量，**完全由配置计算，无需读取权重**。
 
-### 6.5.2 DeepseekV2Model：MLA 吸收优化与 MoE 统一
+### 5.5.2 DeepseekV2Model：MLA 吸收优化与 MoE 统一
 
 源码路径：`./convert_hf_to_gguf.py` - `DeepseekV2Model`（第 8705-8891 行）
 
@@ -783,7 +783,7 @@ def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iter
 >   3. `k_b.transpose(1,2)` 调整内存布局以匹配 GGML 内核期望的 `[n_kv, k_dim, v_dim]`。
 > - 其余 MoE 合并逻辑与 `LlamaModel` 复用，体现**模板方法模式**。
 
-### 6.5.3 Gemma3Model：norm_shift 差异化定制
+### 5.5.3 Gemma3Model：norm_shift 差异化定制
 
 源码路径：`./convert_hf_to_gguf.py` - `Gemma3Model`（第 6842-6897 行）
 
@@ -811,7 +811,7 @@ def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iter
 > - `modify_tensors` 中统一调用 `f_shift = self.norm_shift(name)`，**避免硬编码字符串判断**。
 > - 此模式被 `Gemma2Model`/`GemmaModel` 继承/复用，**体现「策略模式」在张量修改中的应用**。
 
-### 6.5.4 Qwen2MoeModel / OlmoeModel：专家权重拆分与堆叠变体
+### 5.5.4 Qwen2MoeModel / OlmoeModel：专家权重拆分与堆叠变体
 
 源码路径：`./convert_hf_to_gguf.py` - `Qwen2MoeModel`（第 4528-4614 行）、`OlmoeModel`（第 6570-6587 行）
 
@@ -866,7 +866,7 @@ def modify_tensors(self, data_torch: torch.Tensor, name: str, bid: int | None) -
 > - `OlmoeModel`：原始权重为 `[n_experts * n_inner, n_embd]`，**需 `view` 还原 3D 再 `transpose(1,2)` 调整 `w2` 布局**。
 > - 两者均采用**缓存-合并-产出**模式，但拆分维度、转置需求完全不同，**展示架构差异对 `modify_tensors` 的定制化要求**。
 
-### 6.5.5 MambaModel / Mamba2Model / JambaModel：SSM 参数映射与 A_log 处理
+### 5.5.5 MambaModel / Mamba2Model / JambaModel：SSM 参数映射与 A_log 处理
 
 源码路径：`./convert_hf_to_gguf.py` - `MambaModel`（第 8027-8101 行）、`Mamba2Model`（第 8105-8191 行）、`JambaModel`（第 8195-8285 行）
 
@@ -938,7 +938,7 @@ def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iter
 > - `Mamba2Model` 额外处理 `SSM_A`/`SSM_D`/`SSM_NORM` 的形状重塑，**体现 Mamba2 分组归一化参数布局差异**。
 > - `JambaModel` 引入 `expert_layer_offset/period` 判定哪些层为 MoE，**动态重命名非 MoE 层的 experts.0 为普通 MLP**。
 
-### 6.5.6 BERT/Encoder 系列：位置嵌入裁剪与分类头适配
+### 5.5.6 BERT/Encoder 系列：位置嵌入裁剪与分类头适配
 
 源码路径：`./convert_hf_to_gguf.py` - `BertModel`（第 6341-6431 行）、`RobertaModel`（第 6472-6507 行）、`ModernBertModel`（第 12295-12323 行）
 
@@ -992,7 +992,7 @@ def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iter
 > - `RobertaModel`：`_position_offset = 1 + pad_token_id`，**位置嵌入裁剪**对齐 GGUF 期望的无 padding 位置表。
 > - `ModernBertModel`：统一分类头命名为 `classifier.out_proj.*`，**适配 GGUF 统一分类头接口**。
 
-## 6.6 LazyTorchTensor：惰性张量统一封装
+## 5.6 LazyTorchTensor：惰性张量统一封装
 
 源码路径：`./convert_hf_to_gguf.py` - `LazyTorchTensor`（第 12861-12921 行）
 
@@ -1070,33 +1070,33 @@ def __torch_function__(cls, func, types, args=(), kwargs=None):
 > - `__torch_function__` 仅拦截 `torch.Tensor.numpy`，**其他算子（加减乘除/切片/转置）交给 PyTorch 默认分发**，利用 meta tensor 机制推导形状/类型，**实现「零开销惰性计算图」**。
 > - 大小端转换在 `load_tensor`/`byteswap_tensor` 中集中处理，**跨平台一致性保障**。
 
-## 6.7 设计中的取舍
+## 5.7 设计中的取舍
 
-### 为什么 `prepare_tensors` 采用「先 NVFP4 预处理，再通用反量化」的顺序？
+### 5.7.1 为什么 `prepare_tensors` 采用「先 NVFP4 预处理，再通用反量化」的顺序？
 
 NVFP4 专家张量的 scale/weight 在 HF 格式中是**分离存储**的（`.weight_scale`、`.weight_scale_2`、`.input_scale`），必须先聚合打包成 GGML 超级块，**才能**从 `model_tensors` 中移除这些辅助张量。若先跑通用 `dequant_model`，会因找不到对应反量化逻辑而报错或误处理。
 
 > **核心取舍**：**专用格式优先于通用格式**。NVFP4/MXFP4 等新量化格式有专属打包流程，必须在通用反量化流水线介入前完成「原厂格式 → GGML 格式」的结构重组。
 
-### 为什么 `modify_tensors` 返回 `Iterable[tuple[str, Tensor]]` 而非单一 `(str, Tensor)`？
+### 5.7.2 为什么 `modify_tensors` 返回 `Iterable[tuple[str, Tensor]]` 而非单一 `(str, Tensor)`？
 
 支持 **一入多出**（QKV 拆分、gate/up 融合、专家合并产出 3D 张量）与 **零输出**（过滤视觉张量、缓冲专家张量、跳过 tied lm_head）。生成器模式天然支持变长输出，且惰性求值符合流水线设计。
 
 > **核心取舍**：**接口表达力 > 实现复杂度**。`yield from` 语法使子类组合基类逻辑极其自然，`return []` 语义明确表示「丢弃该张量」。
 
-### 为什么 `LazyTorchTensor` 不继承 `torch.Tensor` 而是用 `torch.Tensor._make_wrapper_subclass`？
+### 5.7.3 为什么 `LazyTorchTensor` 不继承 `torch.Tensor` 而是用 `torch.Tensor._make_wrapper_subclass`？
 
 `_make_wrapper_subclass` 创建的子类**保留完整 Tensor 接口**（形状、dtype、device、算子分发），且 `meta` device 张量**零内存占用**。直接继承需手动实现大量魔术方法，且难以兼容 PyTorch 内部优化。
 
 > **核心取舍**：**框架集成度 > 代码简洁性**。`__torch_function__` 代理模式让惰性张量能无缝接入 `torch.cat`/`torch.stack`/索引等运算，**形状推导自动完成**，仅在 `numpy()`/`to(device)` 等落地操作时触发真实 IO。
 
-### 为什么 `TextModel` 与 `MmprojModel` 分离而非合并？
+### 5.7.4 为什么 `TextModel` 与 `MmprojModel` 分离而非合并？
 
 文本模型输出 `MODEL` 类型 GGUF，**必须包含词表、lm_head、完整 Transformer 块**；多模态投影模型输出 `MMPROJ` 类型，**仅含视觉/音频编码器+投影器**，无词表、无 lm_head、无因果注意力。合并会导致大量 `if self.is_mmp...` 分支污染核心逻辑。
 
 > **核心取舍**：**职责边界清晰 > 代码复用率**。双轨制在 `ModelBase` 共享流水线前段（索引、反量化、命名），仅在 `set_gguf_parameters`/`write_vocab`/`set_type` 等尾部发散，**符合单一职责原则**。
 
-## 6.8 动手练习
+## 5.8 动手练习
 
 1. **追踪 NVFP4 专家聚合**：在 `convert_hf_to_gguf.py` 中添加日志，打印 `_generate_nvfp4_tensors` 中 `expert_blocks` 字典的键与长度变化，验证「凑齐 8 专家即刷新」的流式行为。
 2. **实现自定义 `tensor_force_quant`**：编写一个子类，强制所有 `*.attn_q` 张量使用 `Q4_K`、所有 `*.ffn_down` 使用 `Q5_0`，观察输出模型大小与困惑度变化。
@@ -1104,7 +1104,7 @@ NVFP4 专家张量的 scale/weight 在 HF 格式中是**分离存储**的（`.we
 4. **对比 `map_tensor_name` 映射表**：打印 `gguf.get_tensor_name_map(arch, n_layers)` 返回的 `TensorNameMap` 内部映射字典，理解「原始名 → 标准名」的对应规则。
 5. **调试 `LazyTorchTensor` 物化时机**：在 `LazyTorchTensor.__torch_function__` 中打印被拦截的 `func` 名称，运行转换器观察哪些操作触发了物化（`numpy`、`to`、切片等）。
 
-## 6.9 本章小结
+## 5.9 本章小结
 
 本章深入剖析了 `convert_hf_to_gguf.py` 中 **HF→GGUF 转换器的核心引擎与多架构适配体系**。我们学习了：
 

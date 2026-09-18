@@ -1,6 +1,6 @@
 
 
-# 测试体系 —— 像运营机场一样验证服务器稳定性
+# 第89章 测试体系 —— 像运营机场一样验证服务器稳定性
 
 ## 学习目标
 
@@ -13,7 +13,7 @@
 - 验证高级特性：推测解码一致性、LoRA 动态缩放、KV 缓存保存/恢复、上下文位移及睡眠唤醒机制
 - 构建服务治理测试体系：Router LRU 淘汰、CORS 代理、API 密钥认证与静态资源访问控制
 
-## 88.1 生活类比：llama-server 测试体系是一座机场塔台调度中心
+## 89.1 生活类比：llama-server 测试体系是一座机场塔台调度中心
 
 想象 llama-server 的测试体系是一座大型机场的塔台调度中心。每一次测试运行，都像是一架航班从起飞到降落的全流程追踪。
 
@@ -21,7 +21,7 @@
 
 就像塔台需要确保每架飞机安全、准时、高效地起降，这套测试体系确保 llama-server 在各种复杂场景下都能稳定、准确地提供服务。
 
-## 88.2 源码地图
+## 89.2 源码地图
 
 ```
 tools/server/tests/
@@ -256,13 +256,13 @@ tools/server/tests/
         └── test_server_sleep()                     # 空闲睡眠与唤醒检测
 ```
 
-## 88.3 生命周期管理 —— ServerProcess 与 ServerPreset 作为测试的产房与托儿所
+## 89.3 生命周期管理 —— ServerProcess 与 ServerPreset 作为测试的产房与托儿所
 
 每个测试都需要一个真实的 llama-server 进程实例，管理其生命周期（启动、就绪检测、终止）是一项重复且容易出错的工程。试想一下，如果每个测试都手动编写 `subprocess.Popen()` 调用、维护端口状态、处理进程崩溃，那么测试套件的代码量将膨胀数倍，且极易出现“忘记清理进程”、“端口被占用”等千奇百怪的问题。ServerProcess 类把这个复杂的流程封装成了几个简洁的方法，让测试代码可以像使用一个高级玩具一样操作真实服务器。它内部处理了所有细节：如何找到可执行文件、如何根据配置动态拼接命令行参数、如何在启动后等待服务器就绪、如何在测试结束后优雅关闭进程。测试作者只需关心“我需要的服务器配置是什么”，而不用关心“如何把这个配置变成正在运行的进程”。正如塔台值班员需要处理好每一架飞机的起飞降落，ServerProcess 在这里扮演着“产房护士”的角色——确保每个测试都能顺利接入一个健康的服务器实例。
 
 ServerPreset 工厂模式更巧妙——它通过 `@staticmethod` 定义了 tinyllama2、bert_bge_small、stories15m_moe 等预设配置，每个预设配置了特定的模型仓库、上下文大小、槽位数等参数，实现了"一键换模型"。这就像机场的航班时刻表模板，只需简单调用即可切换不同的飞机型号。更重要的是，这些预设参数并非随意设定，而是经过精心选择以覆盖不同的测试场景：tinyllama2 使用极小模型确保测试快速执行，bert_bge_small 专用于嵌入服务测试，stories15m_moe 则因为其 MoE 架构适合验证推测解码与 LoRA 功能。`load_all()` 方法会在测试会话开始时预启动所有预设服务器，提前下载模型到缓存，避免测试时网络等待，好比地勤组提前完成所有机型的预热。
 
-### ServerProcess.__init__() —— 从环境变量读取配置
+### 89.3.1 ServerProcess.__init__() —— 从环境变量读取配置
 
 源码路径：`tools/server/tests/utils.py` - `ServerProcess.__init__()`（108-115行）
 
@@ -283,7 +283,7 @@ def __init__(self):
 
 这段代码展示了服务器配置的"三级优先级"：代码默认值 < 环境变量覆盖 < 测试中的显式赋值。**external_server** 标志特别有用——当你已经在本地手动启动了一个服务器用于调试时，设置 `DEBUG_EXTERNAL` 环境变量可以让测试直接连接现有实例，跳过启停步骤，大幅加速调试循环。此外，`server_path` 属性用于指定可执行文件路径，而全局集合 `server_instances` 则负责跟踪所有启动过的实例，确保测试结束后能被统一清理，避免进程泄漏。这如同塔台直接使用一条已经就绪的跑道。
 
-### ServerProcess.start() —— 构建命令行、启动进程、健康检查轮询
+### 89.3.2 ServerProcess.start() —— 构建命令行、启动进程、健康检查轮询
 
 源码路径：`tools/server/tests/utils.py` - `ServerProcess.start()`（117-224行）
 
@@ -418,7 +418,7 @@ def start(self, timeout_seconds: int = DEFAULT_HTTP_TIMEOUT) -> None:
 
 健康检查循环使用 `while time.time() - start_time < timeout_seconds` 而不是简单的 sleep，这样可以在等待期间**同时检查进程是否死亡**——如果服务器在启动过程中崩溃（比如模型文件损坏），可以立即抛出 `RuntimeError` 而不是一直傻等。`server_instances.add(self)` 将实例加入全局集合，确保测试后能被 conftest.py 的 fixture 统一清理。
 
-### ServerProcess.stop() —— 优雅终止与资源清理
+### 89.3.3 ServerProcess.stop() —— 优雅终止与资源清理
 
 源码路径：`tools/server/tests/utils.py` - `ServerProcess.stop()`（226-242行）
 
@@ -450,7 +450,7 @@ def stop(self) -> None:
 
 `stop()` 方法采用**分层终止策略**：先发送 SIGTERM 给进程 5 秒的优雅退出时间，如果超时则强制 SIGKILL。`server_instances.remove(self)` 确保每个服务器只被清理一次——这对于测试中可能手动调用 `stop()` 又依赖 fixture 自动清理的场景非常重要。
 
-### ServerProcess.make_request() —— 同步HTTP请求封装
+### 89.3.4 ServerProcess.make_request() —— 同步HTTP请求封装
 
 源码路径：`tools/server/tests/utils.py` - `ServerProcess.make_request()`（244-276行）
 
@@ -497,7 +497,7 @@ def make_request(
 
 这个封装的核心价值在于**统一的数据结构**：测试代码通过 `res.status_code` 和 `res.body` 访问响应，而不需要关心 requests 库的 `response.json()` 可能抛出的异常。JSON 解析失败时自动降级为原始文本，这在测试 WebUI 静态资源（返回HTML）时非常实用。
 
-### ServerProcess.make_stream_request() —— SSE流式请求封装
+### 89.3.5 ServerProcess.make_stream_request() —— SSE流式请求封装
 
 源码路径：`tools/server/tests/utils.py` - `ServerProcess.make_stream_request()`（278-295行）
 
@@ -539,7 +539,7 @@ for data in server.make_stream_request("POST", "/chat/completions", ...):
 
 `iter_lines()` 方法逐行读取 SSE 响应，`data: ` 前缀后的 JSON 被解析为字典。遇到 `[DONE]` 标记时停止迭代。非 200 状态码直接抛出 `ServerError`，让调用方可以通过 `try/except` 捕获错误——这在测试上下文超限时非常有用。
 
-### ServerProcess.make_any_request() —— 自动聚合流式响应
+### 89.3.6 ServerProcess.make_any_request() —— 自动聚合流式响应
 
 源码路径：`tools/server/tests/utils.py` - `ServerProcess.make_any_request()`（297-376行）
 
@@ -649,7 +649,7 @@ def make_any_request(
 
 这个设计的巧妙之处在于**语义等价**：调用方不需要关心响应是流式还是非流式，获取到的都是 `{"choices": [{"message": {"content": ..., "tool_calls": ...}}]}` 格式的字典。
 
-### ServerPreset 系列 —— 预设配置工厂
+### 89.3.7 ServerPreset 系列 —— 预设配置工厂
 
 源码路径：`tools/server/tests/utils.py` - `ServerPreset.load_all()` 与 `ServerPreset.tinyllama2()`（381-401行）
 
@@ -684,7 +684,7 @@ def tinyllama2() -> ServerProcess:
 
 ServerPreset 的 `load_all()` 方法通过**反射**遍历所有静态方法，启动并停止每个预设对应的服务器实例，确保模型文件提前下载到本地缓存。`tinyllama2()` 预设配置了 `offline = True` 表示默认离线（模型已缓存），但 `load_all()` 会临时设置为 `False` 以触发下载。所有预设都配置了固定的 `seed = 42` 来保证测试的确定性。每个预设中的参数都经过精心选择：`n_ctx = 512`、`n_slots = 2` 的组合使得每个槽位的上下文恰好为 256，便于验证上下文限制相关逻辑；`n_predict = 64` 控制生成长度以避免测试耗时过长。
 
-### conftest.py —— 测试隔离与预加载
+### 89.3.8 conftest.py —— 测试隔离与预加载
 
 源码路径：`tools/server/tests/conftest.py` - `stop_server_after_each_test()` 与 `do_something()`（1-18行）
 
@@ -708,7 +708,7 @@ def do_something():
 
 `stop_server_after_each_test` 使用 `autouse=True` 自动应用于所有测试，`yield` 之前的代码在测试前执行，之后的代码在测试后执行。复制集合的操作防止了迭代过程中修改集合导致的 `RuntimeError`。`do_something` 使用 `scope="module"` 确保每个测试模块只预加载一次预设。
 
-### ServerError 与其他辅助函数 —— 错误处理与并发执行
+### 89.3.9 ServerError 与其他辅助函数 —— 错误处理与并发执行
 
 源码路径：`tools/server/tests/utils.py` - `ServerError.__init__()`（32-36行）、`parallel_function_calls()`（500-529行）、`match_regex()`（531-537行）、`download_file()`（539-552行）、`is_slow_test_allowed()`（554-555行）
 
@@ -761,7 +761,7 @@ def match_regex(regex: str, text: str) -> bool:
 
 `parallel_function_calls` 是测试中的**并发工具箱**：它接受 `(函数, 参数元组)` 列表，用 `ThreadPoolExecutor` 并行执行，并通过预分配的 `results` 列表保证结果顺序与输入顺序一致。`ServerError` 存储错误状态码和响应体，`match_regex` 则使用 `IGNORECASE | MULTILINE | DOTALL` 标志进行宽松的正则匹配——DOTALL 让 `.` 能匹配换行符，这在匹配多行生成文本时很关键。
 
-### 设计取舍分析
+### 89.3.10 设计取舍分析
 
 **问：为什么 ServerProcess 使用声明式参数构建而非外部配置文件？**
 
@@ -771,7 +771,7 @@ def match_regex(regex: str, text: str) -> bool:
 
 答：ServerPreset 不是用一个类来管理配置，而是通过 `@staticmethod` 定义工厂方法。这样设计的原因在于**配置是纯粹的函数变换**——输入是 `ServerProcess()` 实例，输出是配置好的实例。静态方法的形式让 `load_all()` 可以方便地通过反射（`ServerPreset.__dict__.items()`）遍历所有预设并逐个启动。如果改为实例方法，`load_all()` 内的反射逻辑会变得更复杂且不符合工厂模式的直觉。trade-off 是静态方法无法继承和多态，但测试预设本身不需要这些特性。
 
-### ServerProcess 运行流程架构图
+### 89.3.11 ServerProcess 运行流程架构图
 
 ```mermaid
 graph TD
@@ -790,7 +790,7 @@ graph TD
     L -->|server.stop| M[进程终止与清理]
 ```
 
-## 88.4 基础服务探测 —— 像体检报告一样验证核心端点
+## 89.4 基础服务探测 —— 像体检报告一样验证核心端点
 
 基础服务探测是每个测试套件的"第一道防线"。如果服务器无法启动、健康检查失败，后续所有测试都无从谈起。test_basic.py 模块验证了服务器最核心的七个基础端点行为，如同为服务器做一次全面的体检，每一项检查（健康检查、元数据、模型列表、槽位监控等）都对应着体检报告中的一个指标，确保每个基础部件都工作正常。
 
@@ -808,7 +808,7 @@ graph TD
 
 每一项体检结果都需要符合标准值（assert）才算合格，正如航班起飞前必须通过所有例行检查。下面我们逐一解读各项检查的详细流程。
 
-### test_server_start_simple() —— 健康检查验证
+### 89.4.1 test_server_start_simple() —— 健康检查验证
 
 源码路径：`tools/server/tests/unit/test_basic.py` - `test_server_start_simple()`（16-20行）
 
@@ -822,7 +822,7 @@ def test_server_start_simple():
 
 这个测试只有四行代码，但背后经历了 ServerProcess.start() 的完整流程：构建命令行参数、启动子进程、健康检查轮询等待就绪。它实际上是所有其他测试的"隐式前置条件"——如果服务器启动失败，这个测试会直接失败并给出清晰的错误信息（如 `Server process died with return code 1`）。这就像体检时最基础的生命体征测量——体温、脉搏、血压，如果这些都无法获取，后续所有项目都无法开展。
 
-### test_server_props() —— 服务器元数据验证
+### 89.4.2 test_server_props() —— 服务器元数据验证
 
 源码路径：`tools/server/tests/unit/test_basic.py` - `test_server_props()`（22-33行）
 
@@ -846,7 +846,7 @@ def test_server_props():
 
 /props 端点返回服务器的运行配置元数据，这相当于体检报告中的“基础信息”栏目，记录了服务器的型号、配置等关键参数。这个测试特别验证了 `n_ctx / n_slots` 的计算——当有 2 个槽位且总上下文为 512 时，每个槽位获得 256 的上下文。这种单一槽位上下文的配置对大模型推理至关重要，因为它决定了单个请求能处理的最大 prompt 长度。
 
-### test_server_models() —— 模型列表验证
+### 89.4.3 test_server_models() —— 模型列表验证
 
 源码路径：`tools/server/tests/unit/test_basic.py` - `test_server_models()`（35-42行）
 
@@ -864,7 +864,7 @@ def test_server_models():
 
 `/models` 端点返回当前加载的模型列表。此测试确保模型 ID 正确映射到预设的别名 `tinyllama-2`，验证了服务器对模型别名的解析与注册逻辑。
 
-### test_server_slots() —— 槽位监控开关验证
+### 89.4.4 test_server_slots() —— 槽位监控开关验证
 
 源码路径：`tools/server/tests/unit/test_basic.py` - `test_server_slots()`（44-63行）
 
@@ -894,7 +894,7 @@ def test_server_slots():
 
 这个测试展示了 ServerProcess 的**灵活性**：同一个测试中先禁用槽位监控启动服务器验证 501 错误，然后停止服务器，重新启用槽位监控再次启动。`server.stop()` 和 `server.start()` 在同一测试函数内的配合，让测试能够验证同一服务器实例在不同配置下的行为差异。
 
-### test_load_split_model() —— 分片模型加载验证
+### 89.4.5 test_load_split_model() —— 分片模型加载验证
 
 源码路径：`tools/server/tests/unit/test_basic.py` - `test_load_split_model()`（65-79行）
 
@@ -917,7 +917,7 @@ def test_load_split_model():
 
 此测试验证服务器能够正确加载被拆分到多个 `.gguf` 文件中的模型。它通过指定仓库 `ggml-org/models` 和文件路径 `tinyllamas/split/stories15M-q8_0-00001-of-00003.gguf` 来触发分片模型加载，随后发送一个简单的补全请求，并断言生成内容与预期正则匹配。这测试了服务器对分片模型的管理和推理能力。
 
-### test_no_webui() —— WebUI 开关验证
+### 89.4.6 test_no_webui() —— WebUI 开关验证
 
 源码路径：`tools/server/tests/unit/test_basic.py` - `test_no_webui()`（81-96行）
 
@@ -941,7 +941,7 @@ def test_no_webui():
 
 该测试验证 WebUI 的默认启用与禁用行为。默认情况下，直接访问服务器根路径应返回 HTML 页面（断言包含 `<!doctype html>`）。当设置 `no_webui = True` 后，根路径应返回 404 错误，表明 WebUI 已被成功禁用。
 
-### test_server_model_aliases_and_tags() —— 多别名与标签验证
+### 89.4.7 test_server_model_aliases_and_tags() —— 多别名与标签验证
 
 源码路径：`tools/server/tests/unit/test_basic.py` - `test_server_model_aliases_and_tags()`（98-112行）
 
@@ -965,7 +965,7 @@ def test_server_model_aliases_and_tags():
 
 此测试验证了服务器对模型多别名与标签的支持。当为模型配置多个别名（用逗号分隔）和多个标签时，`/models` 返回的模型信息中，`aliases` 与 `tags` 字段应分别包含全部配置值。此外，模型 `id` 按字母序从 `aliases` 集合的第一个元素派生（例如，`tinyllama-2`, `fim`, `code` 三个别名的字母序第一个为 `code`）。这验证了服务器内部的 `std::set` 排序行为及其对外暴露的一致性。
 
-### 基础探测流程架构图
+### 89.4.8 基础探测流程架构图
 
 ```mermaid
 graph TD
@@ -984,19 +984,19 @@ graph TD
     E --> M[test_server_model_aliases_and_tags]
 ```
 
-### 设计取舍分析
+### 89.4.9 设计取舍分析
 
 **问：为什么基础 /health 测试不与其他测试合并？**
 
 答：既然 `test_server_props` 等测试已经在验证服务器的多个属性，为什么 `test_server_start_simple` 还要单独存在？答案在于**最短失败路径**的设计哲学——如果服务器连启动和基础健康检查都无法通过，那么任何其他测试的失败原因都将难以排查。将健康检查独立成最简测试，可以让 CI/CD 在服务器出现问题时**第一时间**报告最根本的错误，而不是在几十个测试中都看到相同的启动失败信息。这种“层次化隔离”的模式（先验证最基础功能，再逐层深入）是整个测试套件组织的基础原则。
 
-## 88.5 Chat Completion 全场景覆盖 —— 对话补全的压力测试场
+## 89.5 Chat Completion 全场景覆盖 —— 对话补全的压力测试场
 
 Chat Completion 是 llama-server 最核心的 API，对应 OpenAI 的 `/chat/completions` 接口。test_chat_completion.py 提供了从基础对话到高级特性的全覆盖测试，覆盖了流式/非流式、不同模板、不同响应格式、错误处理、缓存机制等**20 多个测试场景**。
 
 这个测试模块之所以重要，是因为它验证了 llama-server 与 OpenAI API 的兼容性——任何使用 OpenAI Python SDK 的客户端都应该能无缝切换到 llama-server。
 
-### Chat Completion 测试用例分类架构图
+### 89.5.1 Chat Completion 测试用例分类架构图
 
 ```mermaid
 graph LR
@@ -1017,7 +1017,7 @@ graph LR
     F --> F3[test_completion_with_response_format]
 ```
 
-### test_chat_completion() —— 基础对话验证
+### 89.5.2 test_chat_completion() —— 基础对话验证
 
 源码路径：`tools/server/tests/unit/test_chat_completion.py` - `test_chat_completion()`（12-40行）
 
@@ -1048,7 +1048,7 @@ def test_chat_completion(model, system_prompt, user_prompt, max_tokens, re_conte
 
 这个测试通过 `@pytest.mark.parametrize` 覆盖了多种组合。
 
-### parametrize 数据组合
+### 89.5.3 parametrize 数据组合
 
 源码路径：`tools/server/tests/unit/test_chat_completion.py` - `test_chat_completion()`（12-40行）的 `@pytest.mark.parametrize` 数据部分
 
@@ -1070,7 +1070,7 @@ def test_chat_completion(model, system_prompt, user_prompt, max_tokens, re_conte
 
 这三个用例覆盖了三种截然不同的场景：长度限制结束、自然结束、以及长上下文模型变体，确保基础对话功能在不同配置下的健壮性。
 
-### test_chat_completion_cached_tokens() —— KV缓存命中率验证
+### 89.5.4 test_chat_completion_cached_tokens() —— KV缓存命中率验证
 
 源码路径：`tools/server/tests/unit/test_chat_completion.py` - `test_chat_completion_cached_tokens()`（42-59行）
 
@@ -1099,7 +1099,7 @@ def test_chat_completion_cached_tokens():
 
 这个测试**精确验证了 KV 缓存命中机制**：第一次请求处理了 77 个 token（无缓存），第二次相同 prompt 全部命中（76 个缓存），第三次改变最后一个数字时只有 51 个缓存命中（前 51 个 token 被复用），第四次只保留更少的前缀。这些数值不是随意设定的，而是根据 tokenizer 的实际切分精确计算出来的。例如，`("1 2 3 4 5 6")` 的 token 序列长度为 77，第二次请求完全复用后，仅需处理第一个 token（即新添加的系统提示符），因此 `cached_tokens = 76`。这种精确到单个 token 的断言确保了缓存逻辑的正确性。
 
-### test_chat_completion_stream() —— 流式响应验证
+### 89.5.5 test_chat_completion_stream() —— 流式响应验证
 
 源码路径：`tools/server/tests/unit/test_chat_completion.py` - `test_chat_completion_stream()`（61-95行）
 
@@ -1150,7 +1150,7 @@ def test_chat_completion_stream(system_prompt, user_prompt, max_tokens, re_conte
 
 流式测试验证了 SSE 协议的**事件顺序和格式**：第一个事件只有 `role: assistant` 没有 `content`，中间事件只有 `content` 没有 `role`，最后一个事件有 `finish_reason` 但没有 `content`。所有事件共享同一个 `id`，确保客户端可以可靠地追踪同一响应的多个事件。最后，`usage` 字段只出现在无 `choices` 的事件中（`include_usage` 的默认行为）。这个模式类似于塔台持续接收飞行器的位置更新，最后在降落（finish_reason）时汇总全程数据。
 
-### test_chat_completion_with_timings_per_token() —— 流式时序统计验证
+### 89.5.6 test_chat_completion_with_timings_per_token() —— 流式时序统计验证
 
 源码路径：`tools/server/tests/unit/test_chat_completion.py` - `test_chat_completion_with_timings_per_token()`（228-253行）
 
@@ -1188,7 +1188,7 @@ def test_chat_completion_with_timings_per_token():
 
 此测试验证 `timings_per_token` 选项在流式响应中的作用。通过 `stream_options: {"include_usage": True}` 和 `timings_per_token: True`，服务器会在最后一个事件（无 `choices`）中返回每个 token 的处理时序统计（如 `prompt_per_second`、`predicted_per_second`、`predicted_n`）。测试确保第一个事件不包含 `timings`，而最后一个事件必须包含这些统计信息，并且 `predicted_n` 不超过设置的 `max_tokens`。
 
-### test_logprobs() 与 test_logprobs_stream() —— token概率输出验证
+### 89.5.7 test_logprobs() 与 test_logprobs_stream() —— token概率输出验证
 
 源码路径：`tools/server/tests/unit/test_chat_completion.py` - `test_logprobs()`（255-281行）与 `test_logprobs_stream()`（283-318行）
 
@@ -1266,7 +1266,7 @@ def test_logprobs_stream():
 
 `test_logprobs_stream` 验证了流式场景下的同样行为：每个非首个事件都携带 `logprobs` 信息，通过逐 token 累积 `aggregated_text` 并与累积的 `output_text` 对比，确保流式 logprobs 的正确性。
 
-### logprobs 验证流程时序图
+### 89.5.8 logprobs 验证流程时序图
 
 ```mermaid
 sequenceDiagram
@@ -1286,7 +1286,7 @@ sequenceDiagram
     C->>C: assert aggregated_text == output_text
 ```
 
-### test_chat_completions_multiple_choices() —— 多选择与缓存复用验证
+### 89.5.9 test_chat_completions_multiple_choices() —— 多选择与缓存复用验证
 
 源码路径：`tools/server/tests/unit/test_chat_completion.py` - `test_chat_completions_multiple_choices()`（436-455行）
 
@@ -1315,7 +1315,7 @@ def test_chat_completions_multiple_choices():
 
 这个测试的核心目的是验证**多 choice 请求的缓存复用**和**槽位调度器**的稳定性。`n: 2` 表示希望服务器生成两个不同的候选回复，当连续两次请求使用同一个槽位（`id_slot: 0`）时，缓存应该被复用而不会导致调度器死锁。
 
-### 测试时序图：Chat Completion 请求流程
+### 89.5.10 测试时序图：Chat Completion 请求流程
 
 ```mermaid
 sequenceDiagram
@@ -1346,7 +1346,7 @@ sequenceDiagram
     S->>S: terminate() + wait()
 ```
 
-### 补充：其他关键测试函数
+### 89.5.11 补充：其他关键测试函数
 
 除了上述核心函数外，test_chat_completion.py 还包含许多重要的测试场景，这里简要介绍几个：
 
@@ -1360,11 +1360,11 @@ sequenceDiagram
 
 **test_logit_bias()（320-345行）**：通过 `/tokenize` 端点获取要禁止的词汇的 token ID 列表，构建 `logit_bias` 字典（值为 -100），然后验证生成的文本中不包含这些被禁止的词汇。
 
-## 88.6 设计中的取舍 —— 关键工程决策的权衡分析
+## 89.6 设计中的取舍 —— 关键工程决策的权衡分析
 
 在深入源码之后，我们需要站在设计者的角度思考几个关键的工程决策。这些决策往往没有绝对的对错，而是在特定约束条件下的最优选择。下面通过几个核心问题来分析其中的 trade-off。
 
-### 关键设计决策对比图
+### 89.6.1 关键设计决策对比图
 
 ```mermaid
 graph TD
@@ -1382,37 +1382,37 @@ graph TD
     E1 & E2 --> H[选择: make_any_request手动聚合]
 ```
 
-### 问题一：为什么不使用异步 pytest 插件？
+### 89.6.2 问题一：为什么不使用异步 pytest 插件？
 
 **问：为什么不使用异步 pytest 插件？这种设计的 trade-off 是什么？**
 
 答：项目采用了 ThreadPoolExecutor 实现并行请求，而不是使用 pytest-asyncio 或任何异步HTTP库。Python 的 asyncio 生态虽然成熟，但对于测试场景来说引入了额外的复杂度：异步HTTP客户端需要专门的事件循环管理，且与线程池的兼容性不佳。ThreadPoolExecutor 方案简单可靠，且测试目标本身就是验证服务器的并发处理能力——线程发起同步请求比协程更接近真实客户端的行为模式。trade-off 在于放弃了 asyncio 的高并发性能，但测试场景通常不会达到需要协程级别的并发量。
 
-### 问题二：为什么 health 检查用轮询而不是阻塞等待？
+### 89.6.3 问题二：为什么 health 检查用轮询而不是阻塞等待？
 
 **问：为什么 health 检查用轮询而不是阻塞等待？这种设计的 trade-off 是什么？**
 
 答：ServerProcess.start() 中采用了 0.5 秒间隔的轮询，而非阻塞式等待端口。核心原因是**需要在等待期间同时监控进程状态**：如果服务器在启动过程中崩溃（如模型文件损坏），轮询循环可以在每次迭代中通过 `self.process.poll()` 检测到并立即抛出 `RuntimeError`，而不是无限期等待。阻塞式的 `wait_for_port` 无法在处理超时前报告这种异常情况。trade-off 是轮询会引入最多 0.5 秒的额外延迟，但对于服务器启动（通常需要数秒）来说完全可以接受。
 
-### 问题三：为什么 make_any_request 要手动聚合流式而非依赖 SSE 库？
+### 89.6.4 问题三：为什么 make_any_request 要手动聚合流式而非依赖 SSE 库？
 
 **问：为什么 `make_any_request` 要手动聚合流式而非依赖 `httpx` 等库的 SSE 功能？这种设计的 trade-off 是什么？**
 
 答：由于 llama-server 在流式响应中返回的 SSE 格式并非标准 `data: [DONE]` 结束，还包含了 `include_usage` 选项下的额外 `usage` 字段 chunk，以及工具调用的分片 arguments 需要跨 chunk 拼接——这些场景超出了通用 SSE 客户端库的默认处理能力。手动聚合可以在测试过程中逐步验证每个 chunk 的结构（如 `assert len(chunk['choices']) == 1`），在开发阶段更容易发现服务器行为的异常。trade-off 是需要自己维护聚合逻辑，但换来的是更精确的断言能力，以及对于流式工具调用的分片连接策略的完全掌控。
 
-### 问题四：为什么 ServerPreset 采用静态方法而非类的实例方法？
+### 89.6.5 问题四：为什么 ServerPreset 采用静态方法而非类的实例方法？
 
 **问：为什么 ServerPreset 采用静态方法而非类的实例方法？这种设计的 trade-off 是什么？**
 
 答：ServerPreset 不是用一个类来管理配置，而是通过 `@staticmethod` 定义工厂方法。这样设计的原因在于**配置是纯粹的函数变换**——输入是 `ServerProcess()` 实例，输出是配置好的实例。静态方法的形式让 `load_all()` 可以方便地通过反射（`ServerPreset.__dict__.items()`）遍历所有预设并逐个启动。如果改为实例方法，`load_all()` 内的反射逻辑会变得更复杂且不符合工厂模式的直觉。trade-off 是静态方法无法继承和多态，但测试预设本身不需要这些特性。
 
-### 问题五：为什么基础 /health 测试不与其他测试合并？
+### 89.6.6 问题五：为什么基础 /health 测试不与其他测试合并？
 
 **问：基础服务探测中为什么 /health 测试不与其他测试合并？这种设计的 trade-off 是什么？**
 
 答：在 88.4 中我们提到，`test_server_start_simple` 独立存在的价值在于提供**最短失败路径**。如果服务器发生启动故障（如端口被占用、模型加载失败），只运行 `pytest test_basic.py::test_server_start_simple` 可以最快地确认问题是否出在服务器本身。这种“层次化隔离”模式避免了把所有测试都变成“启动失败”的重复报错。trade-off 是会增加一个简短的测试用例，但换来的是更清晰的故障排查路径。
 
-## 88.7 动手练习
+## 89.7 动手练习
 
 1. **服务器生命周期与请求封装探索**：阅读 `tools/server/tests/utils.py` 第 117-224 行的 `ServerProcess.start()` 方法，深入理解命令行参数动态构建、健康检查循环逻辑、`server_instances` 集合的测试隔离角色，以及进程崩溃时的异常检测机制，并思考 Unix Socket 支持和 `LLAMA_SERVER_BIN_PATH` 环境变量的应用场景。
 
@@ -1430,7 +1430,7 @@ graph TD
 
 8. **视觉输入与协议一致性**：阅读 `tools/server/tests/unit/test_vision_api.py` 和 `test_compat_anthropic.py` 的视觉测试，创建 OpenAI 与 Anthropic 格式的图像理解一致性测试、批量嵌入确定性测试、损坏数据错误处理，以及多模态请求的 KV 缓存清理行为对比验证。
 
-## 88.8 本章小结
+## 89.8 本章小结
 
 这一章中我们系统地探索了 llama-server 的整套 Python 测试体系，从最底层的服务器进程管理到最顶层的协议兼容性验证。首先我们认识了 `ServerProcess` 类和 `ServerPreset` 工厂模式，理解了如何通过环境变量、命令行参数构建和健康检查轮询来管理真实服务器进程的生命周期；其次我们分析了 `make_request`、`make_stream_request`、`make_any_request` 三种 HTTP 请求封装策略，掌握了同步、流式和自动聚合三种请求的处理模式；接着我们深入了 `conftest.py` 的测试隔离机制，理解了 `autouse` fixture 和模块级预加载的设计哲学；然后我们逐一剖析了基础端点测试（test_basic.py）、Chat Completion 全场景测试（test_chat_completion.py）、Legacy Completion 深度测试（test_completion.py）、Anthropic 协议兼容性测试（test_compat_anthropic.py）、工具调用测试（test_tool_call.py）、推测解码与 LoRA 测试、KV 缓存管理测试、多模态视觉测试、嵌入/Rerank/分词/模板/填充等辅助任务测试，以及 Router、安全、代理、睡眠等服务治理测试。我们讨论了这些测试背后的关键设计取舍，理解了为什么选择同步请求而非异步、为什么使用轮询而非阻塞、以及为什么手动聚合流式响应——每个决策都服务于测试的可靠性、可读性与可维护性。
 

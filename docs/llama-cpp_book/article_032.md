@@ -1,6 +1,6 @@
 
 
-# 第31章 复合办公室的多面手 —— 多模态与扩散架构的工程实现
+# 第32章 复合办公室的多面手 —— 多模态与扩散架构的工程实现
 
 ## 学习目标
 
@@ -14,11 +14,11 @@
 - 理解混合内存基础设施中注意力 KV 与循环 R/S 状态的统一管理
 - 能区分图像 token logits 抑制、视觉专家分支、DeepStack 注入、扩散掩码、sinks 注意力等高级特性
 
-## 31.1 生活类比
+## 32.1 生活类比
 
 想象多模态模型是一座**翻译官 + 画家 + 秘书的复合办公室**：**Chameleon = 双重身份员工**——既能看懂图片，也能写文字。为避免「不小心吐出乱码图片」，在打字阶段把图片对应位置的格子用「极低分」封死（-FLT_MAX），确保文字永远胜出。**CogVLM = 两套衣服的员工**——处理文字穿「西装」（wqkv/wo），处理图像换「工装」（visexp_attn_wqkv）。通过判断「这次来的是文字还是图像」自动换装，专业能力互不干扰。**Qwen2-VL / Qwen3-VL = 三维坐标的导游**——MRoPE 把位置信息分成 4 段（时间、高度、宽度、其他），让模型同时知道「这是视频的第几秒、像素的第几行、第几列」。DeepStack 则是让低层视觉特征能跨越多层注入，类似「透视眼镜」层层叠加。**LLaDA / RND1 = 并行雕刻家**——传统 AI 是一个字一个字写（自回归），它们则同时雕刻所有位置（扩散），所以不需要 KV 缓存这种「记忆便签」，所有位置一起改。**LFM2 = 双技能工人**——既会用锤子（注意力），也会用扳手（短卷积）。通过判断「这活儿是精细活还是批量活」自动选工具，工具之间还能配合。**MIMO2-ISWA = 带缓冲的流水线**——滑动窗口让近期信息进「快速通道」，远期信息进「档案室」，sinks 则是「重要便签」，防止长序列生成时模型跑题。**混合内存基础设施 = 统一的档案管理员**——同时管理注意力的 KV 缓存与循环层的 R/S 状态，为上层提供统一访问接口。就像现代办公室需要专业的多面手和精密的协作机制，多模态模型也需要在同一套硬件上协调图像、文本、扩散、循环等多种推理范式。
 
-## 31.2 源码地图
+## 32.2 源码地图
 
 ```
 src/models/chameleon.cpp
@@ -119,11 +119,11 @@ src/llama-memory-hybrid-iswa.h / .cpp
 ├── llama_memory_hybrid_iswa_context              # ISWA + R/S 上下文
 ```
 
-## 31.3 Chameleon：图像 Token 封锁线 —— 共享骨干下的输出层硬干预
+## 32.3 Chameleon：图像 Token 封锁线 —— 共享骨干下的输出层硬干预
 
 Chameleon 是早期多模态模型的典型代表，它的核心设计哲学是：**用同一套 Transformer 结构同时处理文本和图像 token，但在输出层强行屏蔽图像 token 的生成概率**。这种"共享骨干、分离输出"的设计让模型在理解图像的同时，保证只输出文本。这正如前文类比中的"双重身份员工"：工作时共用一套大脑理解图文，但发言时给图像 token 贴上"禁言令"。
 
-### 31.3.1 llm_build_chameleon::llm_build_chameleon()：构建计算图与图像 Token 封锁线
+### 32.3.1 llm_build_chameleon::llm_build_chameleon()：构建计算图与图像 Token 封锁线
 
 Chameleon 的计算图构建入口是 `llm_build_chameleon` 类的构造函数。它继承自 `llm_graph_context`，在构造时完整搭建从嵌入到输出的前向图，并在最后通过 `ggml_set_1d` 实现图像 token logits 的硬屏蔽。
 
@@ -223,7 +223,7 @@ llm_build_chameleon::llm_build_chameleon(const llama_model & model, const llm_gr
 
 这段代码定义了 Chameleon 模型的完整前向计算图构建流程：从输入嵌入开始，经过多层 Transformer（含可选的 Q/K 归一化、swin_norm 分支），最终在输出层通过 `ggml_set_1d` 将图像 token 对应的 logits 位置强制设为 `-FLT_MAX`，从而在采样时彻底屏蔽图像 token 的生成。
 
-### 31.3.2 ggml_set_1d：零拷贝写入 -FLT_MAX 实现 Logits 硬屏蔽
+### 32.3.2 ggml_set_1d：零拷贝写入 -FLT_MAX 实现 Logits 硬屏蔽
 
 Chameleon 的精髓在于最后几行代码实现的**图像 token logits 抑制**（第 105-118 行）。让我们放大来看这三个核心函数的协同工作：
 
@@ -252,7 +252,7 @@ GGML 的采样器在 softmax 前通常会做数值稳定性处理（减去 max l
 **与 Attention Mask 的本质区别：**  
 Attention mask 作用于注意力分数（`QK^T`），仅阻止信息流向；而 logits 抑制作用于**输出分布**，直接改写模型的"发言权"。Chameleon 允许图像 token 参与注意力交互（理解图像），但禁止其出现在最终输出序列中——正如"双重身份员工"工作时看图、开会时禁言。
 
-### 31.3.3 Chameleon 图像 Token 抑制流程图
+### 32.3.3 Chameleon 图像 Token 抑制流程图
 
 ```mermaid
 flowchart TD
@@ -267,11 +267,11 @@ flowchart TD
     I --> J[采样器 softmax -> 图像 token 概率为 0]
 ```
 
-## 31.4 CogVLM：双权重切换专家 —— 输入分流的视觉语言解耦
+## 32.4 CogVLM：双权重切换专家 —— 输入分流的视觉语言解耦
 
 CogVLM 采用了截然不同的设计：**为文本和图像输入维护两套完全独立的注意力与 FFN 权重**，在运行时根据输入类型动态切换。这避免了共享权重时的任务干扰，但增加了参数量。这正如前文类比中的"两套衣服的员工"：处理文字穿"西装"（wqkv/wo），处理图像换"工装"（visexp_attn_wqkv），互不干扰。
 
-### 31.4.1 llm_build_cogvlm::llm_build_cogvlm()：构建计算图与输入分流双权重
+### 32.4.1 llm_build_cogvlm::llm_build_cogvlm()：构建计算图与输入分流双权重
 
 源码路径：`src/models/cogvlm.cpp` - `llm_build_cogvlm`（第1-80行）
 
@@ -384,7 +384,7 @@ llm_build_cogvlm::llm_build_cogvlm(const llama_model & model, const llm_graph_pa
 
 这段代码实现了 CogVLM 的核心特性：**运行时根据 `ubatch.token` 是否存在，选择文本权重集（`wqkv`/`wo`/`ffn_*`）或视觉专家权重集（`visexp_attn_wqkv`/`visexp_attn_wo`/`visexp_ffn_*`）**。注意力投影使用合并的 `wqkv` 张量，通过 `ggml_view_3d` 零拷贝切分出 Q、K、V。
 
-### 31.4.2 ggml_view_3d：零拷贝 QKV 切片艺术
+### 32.4.2 ggml_view_3d：零拷贝 QKV 切片艺术
 
 `ggml_view_3d` 是 CogVLM 高效拆分合并 QKV 的关键。它不复制数据，而是创建一个**新的张量视图**，指向同一块内存但形状和步长不同。
 
@@ -405,7 +405,7 @@ ggml_tensor * Qcur = ggml_view_3d(ctx0, qkv,
 
 这种**内存连续、逻辑分离**的布局，使得合并投影矩阵乘法一次完成，推理时极其高效——正如员工换装只需挂钩切换，无需重新织布。
 
-### 31.4.3 CogVLM 双权重切换流程图
+### 32.4.3 CogVLM 双权重切换流程图
 
 ```mermaid
 flowchart TD
@@ -420,11 +420,11 @@ flowchart TD
     H --> I[输出]
 ```
 
-## 31.5 Qwen2-VL：三维坐标导游 —— MRoPE 多段位置编码
+## 32.5 Qwen2-VL：三维坐标导游 —— MRoPE 多段位置编码
 
 Qwen2-VL 引入了**多段旋转位置编码**，将位置信息分解为 4 个段（通常对应：时间、高度、宽度、其他），分别应用不同频率的旋转，使模型能精准感知视频/图像的时空结构。这正如前文类比中的"三维坐标导游"：MRoPE 把位置信息分成 4 段，让模型同时知道「这是视频的第几秒、像素的第几行、第几列」。
 
-### 31.5.1 llm_build_qwen2vl::llm_build_qwen2vl()：构建计算图与 MRoPE 注入
+### 32.5.1 llm_build_qwen2vl::llm_build_qwen2vl()：构建计算图与 MRoPE 注入
 
 源码路径：`src/models/qwen2vl.cpp` - `llm_build_qwen2vl`（第7-80行）
 
@@ -506,7 +506,7 @@ llm_build_qwen2vl::llm_build_qwen2vl(const llama_model & model, const llm_graph_
 - **`ggml_rope_multi`**：替代标准 `ggml_rope_ext`，接收 `sections` 数组，对 Q/K 的不同维度段应用不同频率的旋转。视觉 token 通常在前几段编码二维空间位置，文本 token 在时间段编码序列位置。
 - **偏置项 `bq`/`bk`/`bv`/`bo`**：Qwen 系列特有，每个投影层都带可学习偏置，`bo` 直接加在注意力输出投影后。
 
-### 31.5.2 ggml_rope_multi：多段旋转位置编码的实现流程
+### 32.5.2 ggml_rope_multi：多段旋转位置编码的实现流程
 
 `ggml_rope_multi` 的工作流程可用以下流程图表示：
 
@@ -530,11 +530,11 @@ flowchart TD
 
 每个段独立计算旋转矩阵再拼接，实现了"一维向量编码多维坐标"的几何直觉。
 
-## 31.6 Qwen3-VL：透视眼镜叠加 —— DeepStack 跨层特征融合
+## 32.6 Qwen3-VL：透视眼镜叠加 —— DeepStack 跨层特征融合
 
 Qwen3-VL 在 Qwen2-VL 基础上引入 **DeepStack**：在前 `n_deepstack_layers` 层，将输入嵌入的对应层切片**逐层注入**到主路径残差中。这让低层视觉特征能直接传递到高层，缓解深层信息衰减。这正如前文类比中的"透视眼镜"：低层视觉特征跨越多层叠加，高层也能"看清"原始像素细节。
 
-### 31.6.1 llm_build_qwen3vl::llm_build_qwen3vl()：构建计算图与 DeepStack 注入
+### 32.6.1 llm_build_qwen3vl::llm_build_qwen3vl()：构建计算图与 DeepStack 注入
 
 源码路径：`src/models/qwen3vl.cpp` - `llm_build_qwen3vl`（第5-100行）
 
@@ -605,7 +605,7 @@ llm_build_qwen3vl::llm_build_qwen3vl(const llama_model & model, const llm_graph_
 }
 ```
 
-### 31.6.2 ggml_view_2d：零拷贝切片提取层级嵌入
+### 32.6.2 ggml_view_2d：零拷贝切片提取层级嵌入
 
 **DeepStack 注入核心代码（第 70-75 行）：**
 ```cpp
@@ -626,7 +626,7 @@ if (il < (int) n_deepstack_layers) {
   - `(il + 1) * n_embd * sizeof(float)`：偏移量，跳过前 `il` 层嵌入，定位到第 `il+1` 层
 - **为什么是 `il + 1`？** 第 0 层注意力输出后注入第 1 层嵌入，形成"当前层计算 + 下一层视觉先验"的交替模式。
 
-### 31.6.3 DeepStack 数据流向图
+### 32.6.3 DeepStack 数据流向图
 
 ```mermaid
 flowchart LR
@@ -650,11 +650,11 @@ flowchart LR
 
 每层主路径计算完成后，通过 `ggml_add` 将对应层级的嵌入特征残差相加，实现跨层信息直通。
 
-## 31.7 Qwen3-VL-MoE：专家委员会 + 透视眼镜 —— MoE 与 DeepStack 共舞
+## 32.7 Qwen3-VL-MoE：专家委员会 + 透视眼镜 —— MoE 与 DeepStack 共舞
 
 Qwen3-VL-MoE 将 Qwen3-VL 的标准 FFN 替换为 MoE 专家层，同时保留 DeepStack 跨层注入。这相当于给"透视眼镜叠加"的导游配上了"专家委员会"：不同专家处理不同模态特征，门控网络动态路由。
 
-### 31.7.1 llm_build_qwen3vlmoe::llm_build_qwen3vlmoe()：构建计算图与 MoE FFN 分支
+### 32.7.1 llm_build_qwen3vlmoe::llm_build_qwen3vlmoe()：构建计算图与 MoE FFN 分支
 
 源码路径：`src/models/qwen3vl-moe.cpp` - `llm_build_qwen3vlmoe`（第12-100行）
 
@@ -736,14 +736,14 @@ llm_build_qwen3vlmoe::llm_build_qwen3vlmoe(const llama_model & model, const llm_
 }
 ```
 
-### 31.7.2 build_moe_ffn：MoE 专家并行计算与 Softmax 门控
+### 32.7.2 build_moe_ffn：MoE 专家并行计算与 Softmax 门控
 
 **关键差异：**
 - **`build_moe_ffn` 替代 `build_ffn`**：专家权重为 `ffn_up_exps`/`gate_exps`/`down_exps`，形状 `[n_expert, ...]`。
 - **门控函数 `LLAMA_EXPERT_GATING_FUNC_TYPE_SOFTMAX`**：标准 softmax 路由，输出概率分布和为 1，每个 token 仅路由到 Top-K 个专家。
 - **DeepStack 保留**：MoE 版本同样支持跨层视觉特征注入。
 
-### 31.7.3 MoE 前向流程图
+### 32.7.3 MoE 前向流程图
 
 ```mermaid
 flowchart TD
@@ -762,11 +762,11 @@ flowchart TD
     K --> L[MoE 输出: [n_embd, n_tokens]]
 ```
 
-## 31.8 LLaDA：并行雕刻家 —— 非因果注意力的扩散生成
+## 32.8 LLaDA：并行雕刻家 —— 非因果注意力的扩散生成
 
 LLaDA 打破自回归范式，采用**扩散生成**：所有 token 位置并行去噪，无需 KV 缓存，注意力为**双向（非因果）**。这正如前文类比中的"并行雕刻家"：传统 AI 是一个字一个字写（自回归），它们则同时雕刻所有位置（扩散），所以不需要 KV 缓存这种"记忆便签"，所有位置一起改。
 
-### 31.8.1 llm_build_llada::llm_build_llada()：构建计算图与非因果注意力输入
+### 32.8.1 llm_build_llada::llm_build_llada()：构建计算图与非因果注意力输入
 
 源码路径：`src/models/llada.cpp` - `llm_build_llada`（第1-80行）
 
@@ -830,7 +830,7 @@ llm_build_llada::llm_build_llada(const llama_model & model, const llm_graph_para
         // ... 后续 FFN 与残差同标准 LLaMA ...
 ```
 
-### 31.8.2 build_attn_inp_no_cache：无缓存双向注意力的实现
+### 32.8.2 build_attn_inp_no_cache：无缓存双向注意力的实现
 
 **核心差异：`build_attn_inp_no_cache()`**  
 该函数创建的 `llm_graph_input_attn_no_cache` **不包含 KV 缓存指针**，且注意力掩码为**全 1（双向）**。扩散模型每一步都重新计算所有位置的注意力，不依赖历史 KV，因此不需要缓存。
@@ -839,7 +839,7 @@ llm_build_llada::llm_build_llada(const llama_model & model, const llm_graph_para
 自回归：$P(x_t | x_{<t})$，因果掩码保证 $t$ 只看 $<t$。  
 扩散：$P(x_{1:T} | x_{noisy})$，每步去噪预测全序列，注意力矩阵 $A_{ij} = \text{softmax}(Q_i K_j^T / \sqrt{d})$ 无掩码，**每个 token 同时关注所有 token**。
 
-### 31.8.3 扩散与自回归注意力对比图
+### 32.8.3 扩散与自回归注意力对比图
 
 ```mermaid
 flowchart LR
@@ -862,11 +862,11 @@ flowchart LR
     end
 ```
 
-## 31.9 RND1：扩散专家委员会 —— Qwen3MoE 转扩散变体
+## 32.9 RND1：扩散专家委员会 —— Qwen3MoE 转扩散变体
 
 RND1 直接将 Qwen3-MoE 的架构（Q/K Norm、MoE FFN、softmax 门控）迁移到扩散范式，仅将注意力输入改为非因果。这正如给"专家委员会"换了工作模式：从"逐字写作"变成"并行雕刻"，专家分工不变。
 
-### 31.9.1 llm_build_rnd1::llm_build_rnd1()：构建计算图与扩散 MoE 融合
+### 32.9.1 llm_build_rnd1::llm_build_rnd1()：构建计算图与扩散 MoE 融合
 
 源码路径：`src/models/rnd1.cpp` - `llm_build_rnd1`（第1-100行）
 
@@ -935,7 +935,7 @@ llm_build_rnd1::llm_build_rnd1(const llama_model & model, const llm_graph_params
 
 **设计意义：** 证明了 MoE 架构与扩散范式兼容——专家路由在每个去噪步独立计算，无需时序依赖，天然适合并行生成。
 
-### 31.9.2 RND1 架构对比图：Qwen3MoE → 扩散
+### 32.9.2 RND1 架构对比图：Qwen3MoE → 扩散
 
 ```mermaid
 flowchart LR
@@ -957,11 +957,11 @@ flowchart LR
     C1 == C2
 ```
 
-## 31.10 LFM2：双技能工人 —— 模板化混合记忆架构
+## 32.10 LFM2：双技能工人 —— 模板化混合记忆架构
 
 LFM2 将**注意力**与**短卷积**混合在同一模型中，通过模板参数 `iswa` 切换内存类型，通过 `is_recurrent(il)` 逐层决定使用哪种机制。这正如前文类比中的"双技能工人"：既会用锤子（注意力），也会用扳手（短卷积），根据任务自动选工具。
 
-### 31.10.1 llm_build_lfm2<iswa>::llm_build_lfm2()：模板化构建混合记忆计算图
+### 32.10.1 llm_build_lfm2<iswa>::llm_build_lfm2()：模板化构建混合记忆计算图
 
 源码路径：`src/models/lfm2.cpp` - `llm_build_lfm2<iswa>`（第1-135行）
 
@@ -1017,7 +1017,7 @@ llm_build_lfm2<iswa>::llm_build_lfm2(const llama_model & model, const llm_graph_
 }
 ```
 
-### 31.10.2 build_shortconv_block：短卷积与状态管理流程
+### 32.10.2 build_shortconv_block：短卷积与状态管理流程
 
 短卷积块模拟类 SSM 的循环状态更新，使用 `ggml_ssm_conv` 算子：
 
@@ -1044,7 +1044,7 @@ auto build_shortconv_block = [&model, this](ggml_tensor * cur, llm_graph_input_r
 - **`ggml_concat(..., 0)`**：在第 0 维（通道/头维）拼接当前输入 X 与历史状态 R，形成滑动窗口。
 - **`ggml_ssm_conv`**：执行短卷积运算，类似 1D 因果卷积但带门控机制。
 
-### 31.10.3 LFM2 层选择与状态流转图
+### 32.10.3 LFM2 层选择与状态流转图
 
 ```mermaid
 flowchart TD
@@ -1067,7 +1067,7 @@ flowchart TD
     style G fill:#f3e5f5
 ```
 
-### 31.10.4 模板显式实例化
+### 32.10.4 模板显式实例化
 
 文件末尾：
 ```cpp
@@ -1078,11 +1078,11 @@ template struct llm_build_lfm2<false>;  // 标准混合内存版本
 
 C++ 模板在编译期实例化为两个独立类，分别对应 `llama_memory_hybrid` 和 `llama_memory_hybrid_iswa` 两种内存后端，避免运行时 `if (iswa)` 分支开销。
 
-## 31.11 MIMO2-ISWA：带缓冲的流水线 —— ISWA 滑动窗口与 Sinks
+## 32.11 MIMO2-ISWA：带缓冲的流水线 —— ISWA 滑动窗口与 Sinks
 
 MIMO2-ISWA 结合了**多模态**、**ISWA 滑动窗口**、**注意力 sinks**、**per-layer RoPE** 与 **sigmoid 门控 MoE**，是长序列多模态的集大成者。这正如前文类比中的"带缓冲的流水线"：滑动窗口让近期信息进"快速通道"，远期信息进"档案室"，sinks 则是"重要便签"，防止长序列生成时模型跑题。
 
-### 31.11.1 llm_build_mimo2_iswa::llm_build_mimo2_iswa()：构建计算图与多重创新融合
+### 32.11.1 llm_build_mimo2_iswa::llm_build_mimo2_iswa()：构建计算图与多重创新融合
 
 源码路径：`src/models/mimo2-iswa.cpp` - `llm_build_mimo2_iswa`（第1-100行）
 
@@ -1113,7 +1113,7 @@ llm_build_mimo2_iswa::llm_build_mimo2_iswa(const llama_model & model, const llm_
 }
 ```
 
-### 31.11.2 核心创新点解析
+### 32.11.2 核心创新点解析
 
 下表总结了 MIMO2-ISWA 的四大核心创新及其工程实现：
 
@@ -1124,7 +1124,7 @@ llm_build_mimo2_iswa::llm_build_mimo2_iswa(const llama_model & model, const llm_
 | **Attention Sinks** | `model.layers[il].attn_sinks` 传给 `build_attn` | 可学习的全局 token，稳定长序列注意力分布，防止注意力熵增 |
 | **Sigmoid MoE 门控** | `LLAMA_EXPERT_GATING_FUNC_TYPE_SIGMOID` | 多标签路由，适合多模态专家并行激活 |
 
-### 31.11.3 ISWA 注意力流程图
+### 32.11.3 ISWA 注意力流程图
 
 ```mermaid
 flowchart TD
@@ -1143,11 +1143,11 @@ flowchart TD
     style E fill:#c8e6c9
 ```
 
-## 31.12 混合内存基础设施：统一的档案管理员
+## 32.12 混合内存基础设施：统一的档案管理员
 
 上述 LFM2、MIMO2-ISWA 依赖的底层内存抽象定义在两个核心文件中，它们实现了 `llama_memory_i` 接口，为上层计算图提供统一的 `get_attn()`、`get_recr()` 访问入口。
 
-### 31.12.1 llama_memory_hybrid：注意力 KV 与循环 R/S 统一管理
+### 32.12.1 llama_memory_hybrid：注意力 KV 与循环 R/S 统一管理
 
 源码路径：`src/llama-memory-hybrid.h/.cpp`（核心类定义第 1-50 行）
 
@@ -1178,7 +1178,7 @@ private:
 - **循环状态管理**：为每个循环层分配 R 状态（隐状态）和 S 状态（短卷积历史），在 `set_n_seq` 时按 batch 扩展。
 - **生命周期同步**：`clear()` 同时重置 KV 与循环状态，保证一致性。
 
-### 31.12.2 llama_memory_hybrid_iswa：ISWA 窗口 + 循环状态
+### 32.12.2 llama_memory_hybrid_iswa：ISWA 窗口 + 循环状态
 
 源码路径：`src/llama-memory-hybrid-iswa.h/.cpp`（核心类定义第 1-50 行）
 
@@ -1202,14 +1202,14 @@ private:
 - **`llama_kv_cache_iswa`**：实现滑动窗口淘汰策略，`get_kv(il)` 返回的 KV 仅包含最近窗口内的 token。
 - **统一上下文 `llama_memory_hybrid_iswa_context`**：在图构建时（`build_inp_mem_hybrid_iswa`）同时绑定 ISWA 注意力输入与循环状态输入。
 
-### 31.12.3 混合内存 KV 缓存对比
+### 32.12.3 混合内存 KV 缓存对比
 
 | 缓存类型 | 实现类 | `get_kv(il)` 返回内容 | 适用场景 |
 |----------|--------|----------------------|----------|
 | 标准统一 KV | `llama_kv_cache_unified` | 完整历史所有 token 的 K/V | 自回归生成、短序列 |
 | ISWA 滑动窗口 KV | `llama_kv_cache_iswa` | 仅最近窗口大小的 K/V | 长序列、流式推理、MIMO2-ISWA |
 
-### 31.12.4 混合内存架构统一访问图
+### 32.12.4 混合内存架构统一访问图
 
 ```mermaid
 flowchart TB
@@ -1239,7 +1239,7 @@ flowchart TB
     B --> C2
 ```
 
-## 31.13 设计中的取舍
+## 32.13 设计中的取舍
 
 **为什么 Chameleon 不像 CogVLM 那样用双权重？**  
 Chameleon 追求**参数效率**：共享骨干网络理解图文，仅在输出层干预。CogVLM 追求**任务解耦**：视觉专家权重专门优化图像推理，避免灾难性遗忘。前者参数少、部署轻；后者上限高、训练灵活。这正如"共用大脑+禁言令" vs "双脑切换"的工程权衡。
@@ -1256,9 +1256,9 @@ Chameleon 追求**参数效率**：共享骨干网络理解图文，仅在输出
 **DeepStack 只注入前 N 层的原因？**  
 视觉特征在浅层语义密度高、空间细节丰富；深层逐渐抽象为高级概念。前 N 层注入保留细节，后层不再注入避免噪声干扰高层推理。实验表明 $N \approx 3\text{-}4$ 为最佳平衡点。
 
-## 31.14 动手练习
+## 32.14 动手练习
 
-### 练习 1：阅读 Chameleon 的 logits 抑制实现
+### 32.14.1 练习 1：阅读 Chameleon 的 logits 抑制实现
 阅读 `src/models/chameleon.cpp` 第 1-119 行（llm_build_chameleon 构造函数）：
 1. 找出 `img_token_start_idx` 和 `img_token_end_idx` 的取值
 2. 跟踪 `img_logits` 张量的创建流程：
@@ -1271,7 +1271,7 @@ Chameleon 追求**参数效率**：共享骨干网络理解图文，仅在输出
 - 如果 `img_token_start_idx = 4`、`img_token_end_idx = 8196`、`vocab_size = 32000`，被抑制的 token 占词表多大比例？
 - 这种方法能否扩展到「抑制特定 text token」？如果要实现「禁止模型输出某个敏感词」，代码需要怎么改？
 
-### 练习 2：对比 CogVLM 与 Chameleon 的输入分流
+### 32.14.2 练习 2：对比 CogVLM 与 Chameleon 的输入分流
 阅读 `src/models/cogvlm.cpp` 第 1-80 行，理解输入判断逻辑：
 1. `is_text` 变量是如何判断的？依据是什么？
 2. 文本路径和图像路径分别使用哪些权重张量？
@@ -1281,7 +1281,7 @@ Chameleon 追求**参数效率**：共享骨干网络理解图文，仅在输出
 - 如果在 `is_text=false`（图像输入）时使用了 `wqkv` 而非 `visexp_attn_wqkv`，会发生什么？
 - 在工程实现上，「切换权重指针」与「运行时重组计算图」相比，各自的优缺点是什么？
 
-### 练习 3：追踪 Qwen3-VL 的 DeepStack 注入路径
+### 32.14.3 练习 3：追踪 Qwen3-VL 的 DeepStack 注入路径
 阅读 `src/models/qwen3vl.cpp` 第 5-100 行，定位 DeepStack 注入代码：
 1. `n_deepstack_layers` 从哪里获取？
 2. `ggml_view_2d(ctx0, res->t_inp_embd, n_embd, n_tokens, res->t_inp_embd->nb[1], (il + 1) * n_embd * sizeof(float))` 这一行的参数含义：
@@ -1294,7 +1294,7 @@ Chameleon 追求**参数效率**：共享骨干网络理解图文，仅在输出
 - 为什么只在 `il < n_deepstack_layers` 的层做注入，而不是所有层？
 - 假设 `t_inp_embd` 总共有 4 层堆叠（n_deepstack_layers=3），最后一层堆叠有什么用途？
 
-### 练习 4：理解 LLaDA 与 RND1 的扩散注意力
+### 32.14.4 练习 4：理解 LLaDA 与 RND1 的扩散注意力
 阅读 `src/models/llada.cpp` 与 `src/models/rnd1.cpp` 第 1-80 行：
 1. 两个模型都使用 `build_attn_inp_no_cache()`，这与 `build_attn_inp_kv()` 有何本质区别？
 2. 找出 LLaDA 和 RND1 在图构建上的所有差异：
@@ -1308,7 +1308,7 @@ Chameleon 追求**参数效率**：共享骨干网络理解图文，仅在输出
 - RND1 是「Qwen3MoE 转扩散」，为什么 MoE 结构能在扩散范式下工作？
 - 如果一个扩散模型的注意力错误地使用了因果掩码（causal mask），生成结果会出什么问题？
 
-### 练习 5：剖析 LFM2 的混合记忆与短卷积
+### 32.14.5 练习 5：剖析 LFM2 的混合记忆与短卷积
 阅读 `src/models/lfm2.cpp` 第 1-150 行：
 1. 模板参数 `iswa` 控制哪些类型的变化？
 2. `build_shortconv_block` 中：
@@ -1323,7 +1323,7 @@ Chameleon 追求**参数效率**：共享骨干网络理解图文，仅在输出
 - 为什么短卷积需要单独维护 R 状态，而不能像注意力那样直接使用 KV 缓存？
 - 如果在 dense FFN 的层错误地调用了 MoE FFN（或反之），会发生什么？代码会 panic 还是静默错误？
 
-### 练习 6：分析混合内存基础设施的统一接口
+### 32.14.6 练习 6：分析混合内存基础设施的统一接口
 阅读 `src/llama-memory-hybrid.h/.cpp` 与 `src/llama-memory-hybrid-iswa.h/.cpp`：
 1. `llama_memory_hybrid` 与 `llama_memory_hybrid_iswa` 共同继承自哪个基类？该基类定义了哪两个核心虚函数？
 2. `llama_memory_hybrid_context` 在图构建时的作用是什么？它如何将注意力输入与循环输入绑定到同一上下文？
@@ -1332,7 +1332,7 @@ Chameleon 追求**参数效率**：共享骨干网络理解图文，仅在输出
 - 为什么要设计统一的 `llama_memory_i` 接口，而不是让每个模型直接操作各自的缓存结构？
 - 在 `build_inp_mem_hybrid_iswa` 中，如何确保注意力 KV 与循环状态的序列长度一致？
 
-## 31.15 本章小结
+## 32.15 本章小结
 
 这一章中我们学习/了解/讨论了 llama.cpp 中多模态与扩散模型的图构建实现。首先我们深入剖析了 Chameleon 如何通过 `ggml_set_1d` 在输出层将图像 token logits 钳制为 `-FLT_MAX` 实现纯文本输出；其次我们对比了 CogVLM 基于 `ubatch.token` 运行时切换双权重集（文本/视觉专家）的分流机制；接着我们详细讲解了 Qwen2-VL 的 MRoPE 多段旋转位置编码（`ggml_rope_multi` + `rope_sections`）如何编码视频时空信息；然后我们追踪了 Qwen3-VL 的 DeepStack 跨层注入（`ggml_view_2d` 切片嵌入 + `ggml_add` 残差注入）及其 MoE 变体；之后我们探讨了 LLaDA 与 RND1 采用 `build_attn_inp_no_cache` 实现非因果注意力的扩散生成范式；紧接着我们剖析了 LFM2 模板化混合记忆架构中注意力与短卷积（`ggml_ssm_conv`）的协同与状态管理；随后我们梳理了 MIMO2-ISWA 的 ISWA 滑动窗口、per-layer RoPE、attention sinks 与 sigmoid 门控 MoE 等高级特性组合；最后我们建立了混合内存基础设施（`llama_memory_hybrid` 与 `llama_memory_hybrid_iswa`）的统一接口视角。
 

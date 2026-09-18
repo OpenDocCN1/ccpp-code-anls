@@ -1,6 +1,6 @@
 
 
-# 量化技术深度解析 —— 模型压缩的"瘦身魔法"
+# 第35章 量化技术深度解析 —— 模型压缩的"瘦身魔法"
 
 ## 学习目标
 
@@ -12,11 +12,11 @@
 - 熟悉MXFP4/NVFP4等新型微缩浮点格式的E8M0/UE4M3编码及其与现代硬件的协同设计
 - 掌握数据校验机制：ggml_validate_row_data如何通过SIMD加速检测NaN/Inf
 
-## 36.1 生活类比
+## 35.1 生活类比
 
 在GGML的量化世界里，整个系统就像一座精密质检与压缩工厂。原料检验科中，FP32（32位浮点数）原料源源不断进入，质检员ggml_validate_row_data时刻检查是否有NaN或Inf残次品，一旦发现立即报告，确保后续工序不会被异常值干扰。量化车间分为多个专业分区：经典区（Q1/Q4/Q5/Q8）像切水果，把连续值切成固定大小的块，Q4_0是标准切割法，Q4_1则多了偏移记录；K-quant精密区中，256元素超级块由16个小组长（sub-block）管理，每个组长配两把秤（scale和min），实现双重精度控制；IQ格点特区不做均匀切割，而是查标准件字典（grid lookup table）找最接近的预定义形状；微缩浮点特区（MXFP4/NVFP4）用科学计数法（E8M0/UE4M3指数），专为NVIDIA Blackwell等新硬件优化；TQ极限区（TQ1_0/TQ2_0）只允许-1/0/+1三个值，像简化到只有大中小三种包装。工艺线分级明确：_ref是慢速精确的手工线，易理解算法、用于验证；_impl是带权重的高速流水线，考虑重要性，优先保护关键零件。最后，还原车间（反量化）把压缩包拆回浮点数据，遵循真实值 ≈ 缩放因子 × (量化值 - 偏移)，虽略有损耗但体积只有原来的1/4甚至1/16。
 
-## 36.2 源码地图
+## 35.2 源码地图
 
 ```
 ggml/src/ggml-quants.c
@@ -230,11 +230,11 @@ ggml/src/ggml-quants.h
     └── iq3xs_free_impl()          # IQ3资源释放
 ```
 
-## 36.3 量化格式全景与基础设施 —— 构建「数值压缩」的双重转换流水线
+## 35.3 量化格式全景与基础设施 —— 构建「数值压缩」的双重转换流水线
 
 在GGML的量化世界中，所有低比特格式都遵循一条双向转换流水线：量化（FP32→低比特）与反量化（低比特→FP32）。这座工厂的基石是固定大小的块（block）结构，每个块内部通过缩放因子（scale/d）与可选的偏移（min/m）将连续值映射到有限整数。无论后续的K-quant超级块、IQ格点还是微缩浮点，都建立在这个基础模型之上。理解这条流水线，就掌握了打开GGML量化大厦的钥匙。
 
-### 36.3.1 `best_index_int8()`：二分查找最近值
+### 35.3.1 `best_index_int8()`：二分查找最近值
 
 源码路径：`ggml/src/ggml-quants.c` - `best_index_int8()`（26-35行）
 
@@ -255,7 +255,7 @@ static inline int best_index_int8(int n, const int8_t * val, float x) {
 
 > 该函数实现了在已排序的int8数组中通过二分查找找到最接近浮点值的索引，复杂度为O(log n)，是格点量化中近邻搜索的基础构建块，常用于在预定义的量化级别表中快速定位最佳匹配值。
 
-### 36.3.2 `nearest_int()`：魔数快速四舍五入
+### 35.3.2 `nearest_int()`：魔数快速四舍五入
 
 源码路径：`ggml/src/ggml-quants.c` - `nearest_int()`（557-562行）
 
@@ -271,7 +271,7 @@ static inline int nearest_int(float fval) {
 
 > 这段代码使用魔数技巧实现无分支快速四舍五入，避免了浮点到整数转换的昂贵开销。12582912.f这个魔数使得加法的结果在整数表示中，尾数部分恰好包含了原始值的整数部分，通过位掩码即可提取。这是量化内核中高频调用的关键优化。
 
-### 36.3.3 量化流水线架构图
+### 35.3.3 量化流水线架构图
 
 ```mermaid
 graph TD
@@ -286,11 +286,11 @@ graph TD
     H -.-> I[误差分析]
 ```
 
-## 36.4 经典量化家族深度剖析 —— 从 1-bit 到 8-bit 的「精度光谱」
+## 35.4 经典量化家族深度剖析 —— 从 1-bit 到 8-bit 的「精度光谱」
 
 从1-bit的符号位到8-bit的精度标杆，经典量化家族构成了GGML量化体系的光谱。Q1_0以极限压缩著称，Q4_0/Q4_1在精度与体积间平衡，Q5_0/Q5_1通过高位存储榨取更多精度，Q8_0/Q8_1则作为质量基准。而Q8_K的超级块设计更是将点积加速推向了新高度。
 
-### 36.4.1 `quantize_row_q1_0_ref()`：极限符号位编码
+### 35.4.1 `quantize_row_q1_0_ref()`：极限符号位编码
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_row_q1_0_ref()`（40-67行）
 
@@ -324,7 +324,7 @@ void quantize_row_q1_0_ref(const float * GGML_RESTRICT x, block_q1_0 * GGML_REST
 
 > 该函数实现了仅存储符号位的极限压缩：每个权重只占用1-bit，缩放因子为块内平均绝对值。它适用于Embedding层等对精度要求不高的场景，能以1/32的体积保留权重的方向信息。
 
-### 36.4.2 `quantize_row_q4_0_ref()`：4-bit对称量化基础版
+### 35.4.2 `quantize_row_q4_0_ref()`：4-bit对称量化基础版
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_row_q4_0_ref()`（72-104行）
 
@@ -357,7 +357,7 @@ void quantize_row_q4_0_ref(const float * GGML_RESTRICT x, block_q4_0 * GGML_REST
 
 > 该函数定义了4-bit对称量化的基本流程：以块内最大绝对值（amax）归一化，将每个元素映射到0-15范围，再通过位操作打包到uint8_t中。它没有最小值偏移，适合一般权重，是后续优化实现的基准。`d = max / -8` 的设计使得量化范围对称于[-8, 7]，解码时减去8即可还原有符号值。
 
-### 36.4.3 `quantize_row_q4_1_ref()`：非对称量化
+### 35.4.3 `quantize_row_q4_1_ref()`：非对称量化
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_row_q4_1_ref()`（108-141行）
 
@@ -392,7 +392,7 @@ void quantize_row_q4_1_ref(const float * GGML_RESTRICT x, block_q4_1 * GGML_REST
 
 > 该函数展示了非对称量化的核心：通过记录最小值（min）和最大值（max），将量化范围精确对齐数据的实际分布，比对称量化精度更高，但需要额外存储min字段。量化公式为 `(x - min) / d`，反量化为 `q * d + min`。
 
-### 36.4.4 `quantize_row_q5_0_ref()`：5-bit量化与高位存储
+### 35.4.4 `quantize_row_q5_0_ref()`：5-bit量化与高位存储
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_row_q5_0_ref()`（145-187行）
 
@@ -428,7 +428,7 @@ void quantize_row_q5_0_ref(const float * GGML_RESTRICT x, block_q5_0 * GGML_REST
 
 > 该函数展示了5-bit量化的关键设计：通过额外的qh数组存储每个元素的第5位，使得5-bit量化值可以兼容4-bit的存储结构，既节省了空间又保持了精度。低4位打包在qs中，高1位（第5位）打包在qh中。
 
-### 36.4.5 `quantize_row_q5_1_ref()`：5-bit带偏移量化
+### 35.4.5 `quantize_row_q5_1_ref()`：5-bit带偏移量化
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_row_q5_1_ref()`（191-234行）
 
@@ -466,7 +466,7 @@ void quantize_row_q5_1_ref(const float * GGML_RESTRICT x, block_q5_1 * GGML_REST
 
 > 该函数将5-bit量化与非对称偏移结合，既获得了5-bit的精度，又通过min字段对齐数据分布，是Q5_0的增强版。
 
-### 36.4.6 `quantize_row_q8_0_ref()` 与 `quantize_row_q8_1_ref()`：8-bit精度标杆
+### 35.4.6 `quantize_row_q8_0_ref()` 与 `quantize_row_q8_1_ref()`：8-bit精度标杆
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_row_q8_0_ref()`（238-259行），`quantize_row_q8_1_ref()`（263-291行）
 
@@ -523,7 +523,7 @@ void quantize_row_q8_1_ref(const float * GGML_RESTRICT x, block_q8_1 * GGML_REST
 
 > Q8_0是8-bit对称量化的基础，而Q8_1额外存储了量化值的和（sum），使得在点积计算时可以直接使用sum来补偿量化误差，大幅提升推理精度。Q8_1的块大小固定为32，便于向量化点积计算。
 
-### 36.4.7 `quantize_row_q8_K_ref()`：超级块8-bit量化
+### 35.4.7 `quantize_row_q8_K_ref()`：超级块8-bit量化
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_row_q8_K_ref()`（2656-2690行）
 
@@ -564,11 +564,11 @@ void quantize_row_q8_K_ref(const float * GGML_RESTRICT x, block_q8_K * GGML_REST
 
 > 该函数引入了超级块（super-block）的概念：256个元素作为一个整体，缩放因子基于全局最大值，同时每16个元素存储一个子块和（bsums），用于在点积计算中快速补偿误差。
 
-### 36.4.8 反量化家族
+### 35.4.8 反量化家族
 
 反量化是量化逆过程，其核心是根据存储的缩放因子和量化值重建浮点值。
 
-#### `dequantize_row_q1_0()`：符号位重建
+#### 35.4.8.1 `dequantize_row_q1_0()`：符号位重建
 
 源码路径：`ggml/src/ggml-quants.c` - `dequantize_row_q1_0()`（375-391行）
 
@@ -590,7 +590,7 @@ void dequantize_row_q1_0(const block_q1_0 * GGML_RESTRICT x, float * GGML_RESTRI
 }
 ```
 
-#### `dequantize_row_q4_0()`：对称解码
+#### 35.4.8.2 `dequantize_row_q4_0()`：对称解码
 
 源码路径：`ggml/src/ggml-quants.c` - `dequantize_row_q4_0()`（395-412行）
 
@@ -611,7 +611,7 @@ void dequantize_row_q4_0(const block_q4_0 * GGML_RESTRICT x, float * GGML_RESTRI
 }
 ```
 
-#### `dequantize_row_q4_1()`：非对称解码
+#### 35.4.8.3 `dequantize_row_q4_1()`：非对称解码
 
 源码路径：`ggml/src/ggml-quants.c` - `dequantize_row_q4_1()`（416-433行）
 
@@ -633,7 +633,7 @@ void dequantize_row_q4_1(const block_q4_1 * GGML_RESTRICT x, float * GGML_RESTRI
 }
 ```
 
-#### `dequantize_row_q5_0()`：合并高位
+#### 35.4.8.4 `dequantize_row_q5_0()`：合并高位
 
 源码路径：`ggml/src/ggml-quants.c` - `dequantize_row_q5_0()`（437-459行）
 
@@ -658,7 +658,7 @@ void dequantize_row_q5_0(const block_q5_0 * GGML_RESTRICT x, float * GGML_RESTRI
 }
 ```
 
-#### `dequantize_row_q5_1()`：合并高位与偏移
+#### 35.4.8.5 `dequantize_row_q5_1()`：合并高位与偏移
 
 源码路径：`ggml/src/ggml-quants.c` - `dequantize_row_q5_1()`（463-486行）
 
@@ -684,7 +684,7 @@ void dequantize_row_q5_1(const block_q5_1 * GGML_RESTRICT x, float * GGML_RESTRI
 }
 ```
 
-#### `dequantize_row_q8_0()`：线性缩放
+#### 35.4.8.6 `dequantize_row_q8_0()`：线性缩放
 
 源码路径：`ggml/src/ggml-quants.c` - `dequantize_row_q8_0()`（490-503行）
 
@@ -702,7 +702,7 @@ void dequantize_row_q8_0(const block_q8_0 * GGML_RESTRICT x, float * GGML_RESTRI
 }
 ```
 
-#### `dequantize_row_q8_K()`：超级块解码
+#### 35.4.8.7 `dequantize_row_q8_K()`：超级块解码
 
 源码路径：`ggml/src/ggml-quants.c` - `dequantize_row_q8_K()`（2692-2703行）
 
@@ -720,7 +720,7 @@ void dequantize_row_q8_K(const block_q8_K * GGML_RESTRICT x, float * GGML_RESTRI
 
 > 反量化公式根据对称与非对称有所不同：对称格式使用`值 = d * (量化值 - bias)`，非对称格式使用`值 = d * 量化值 + min`。无论哪种，都遵循`真实值 ≈ 缩放因子 × (量化值 - 偏移)`的基本模型。
 
-### 36.4.9 优化实现：`quantize_row_q4_0_impl()` 等
+### 35.4.9 优化实现：`quantize_row_q4_0_impl()` 等
 
 优化实现（_impl）在参考实现的基础上引入量化权重（quant_weights），在最小化误差时对不同元素赋予不同重要性，使得对模型输出影响更大的权重获得更高精度。以下为`quantize_row_q4_0_impl`的框架：
 
@@ -740,11 +740,11 @@ static void quantize_row_q4_0_impl(const float * GGML_RESTRICT x, block_q4_0 * G
 }
 ```
 
-### 36.4.10 公共入口分派
+### 35.4.10 公共入口分派
 
 公共入口函数如`quantize_q1_0()`、`quantize_q4_1()`、`quantize_q5_0()`等，都遵循相同的模式：无权重时调用参考实现，有权重时逐行调用优化实现。这种设计保证了API的统一性和功能的可扩展性。
 
-#### `quantize_q1_0()`：Q1_0公共入口
+#### 35.4.10.1 `quantize_q1_0()`：Q1_0公共入口
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_q1_0()`（约2012-2027行）
 
@@ -759,7 +759,7 @@ size_t quantize_q1_0(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst, 
 }
 ```
 
-#### `quantize_q4_0()`：Q4_0公共入口
+#### 35.4.10.2 `quantize_q4_0()`：Q4_0公共入口
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_q4_0()`（约2029-2044行）
 
@@ -780,7 +780,7 @@ size_t quantize_q4_0(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst, 
 }
 ```
 
-#### `quantize_q4_1()`：Q4_1公共入口
+#### 35.4.10.3 `quantize_q4_1()`：Q4_1公共入口
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_q4_1()`（约2079-2094行）
 
@@ -795,7 +795,7 @@ size_t quantize_q4_1(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst, 
 }
 ```
 
-#### `quantize_q5_0()`：Q5_0公共入口
+#### 35.4.10.4 `quantize_q5_0()`：Q5_0公共入口
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_q5_0()`（2168-2179行）
 
@@ -816,7 +816,7 @@ size_t quantize_q5_0(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst, 
 }
 ```
 
-#### `quantize_q5_1()`：Q5_1公共入口
+#### 35.4.10.5 `quantize_q5_1()`：Q5_1公共入口
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_q5_1()`（2208-2219行）
 
@@ -837,7 +837,7 @@ size_t quantize_q5_1(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst, 
 }
 ```
 
-#### `quantize_q8_0()`：Q8_0公共入口
+#### 35.4.10.6 `quantize_q8_0()`：Q8_0公共入口
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_q8_0()`（2221-2227行）
 
@@ -850,7 +850,7 @@ size_t quantize_q8_0(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst, 
 }
 ```
 
-#### `quantize_mxfp4()`：MXFP4公共入口
+#### 35.4.10.7 `quantize_mxfp4()`：MXFP4公共入口
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_mxfp4()`（2229-2235行）
 
@@ -862,7 +862,7 @@ size_t quantize_mxfp4(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst,
 }
 ```
 
-#### `quantize_nvfp4()`：NVFP4公共入口
+#### 35.4.10.8 `quantize_nvfp4()`：NVFP4公共入口
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_nvfp4()`（2237-2243行）
 
@@ -874,11 +874,11 @@ size_t quantize_nvfp4(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst,
 }
 ```
 
-## 36.5 K-quant 超级块体系 —— 多级缩放的「精密秤砣」
+## 35.5 K-quant 超级块体系 —— 多级缩放的「精密秤砣」
 
 K-quant系列是GGML量化的精髓，它引入了256元素超级块（QK_K=256）和16元素子块（sub-block）的二级量化结构。每个子块拥有独立的scale和min，通过4-bit scales数组打包存储，再配合块级的d和dmin缩放因子，实现双重精度控制。这种设计在有限的bit预算下，将量化误差均匀分配到整个超级块，显著提升了压缩质量。
 
-### 36.5.1 K-quant超级块架构图
+### 35.5.1 K-quant超级块架构图
 
 ```mermaid
 graph TD
@@ -892,7 +892,7 @@ graph TD
     F --> H[反量化: d * scale_idx * q - dmin * min_idx]
 ```
 
-### 36.5.2 `quantize_row_q2_K_ref()` 与 `dequantize_row_q2_K()`
+### 35.5.2 `quantize_row_q2_K_ref()` 与 `dequantize_row_q2_K()`
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_row_q2_K_ref()`（851-924行），`dequantize_row_q2_K()`（928-954行）
 
@@ -990,7 +990,7 @@ void dequantize_row_q2_K(const block_q2_K * GGML_RESTRICT x, float * GGML_RESTRI
 
 > 反量化公式为`值 = d * scale_index * q - min_index * min`，通过两级缩放精确还原原始值。scales数组每个字节低4位存scale索引，高4位存min索引。
 
-### 36.5.3 `get_scale_min_k4()`：打包解包工具
+### 35.5.3 `get_scale_min_k4()`：打包解包工具
 
 源码路径：`ggml/src/ggml-quants.c` - `get_scale_min_k4()`（839-846行）
 
@@ -1009,11 +1009,11 @@ static inline void get_scale_min_k4(int j, const uint8_t * GGML_RESTRICT q,
 
 > 这段代码展示了K-quant系列中scale和min的打包技巧：利用4-bit字段的低6位或拆分存储，使得16个子块的scale和min可以紧凑地存放在32字节中。
 
-### 36.5.4 K-quant家族概览：Q3_K 至 Q6_K
+### 35.5.4 K-quant家族概览：Q3_K 至 Q6_K
 
 Q3_K至Q6_K均遵循超级块结构，差异在于量化位数和存储方式。各格式均提供参考实现（_ref）、优化实现（_impl）和公共入口（quantize_q*_K）。
 
-#### Q3_K：3-bit量化
+#### 35.5.4.1 Q3_K：3-bit量化
 
 **参考量化** `quantize_row_q3_K_ref()`（约1167-1231行）
 
@@ -1071,7 +1071,7 @@ size_t quantize_q3_K(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst, 
 
 > Q3_K使用3-bit量化，通过hmask（高位掩码）存储第3位，qs存储低2位。反量化时合并hmask和qs得到完整3-bit值。
 
-#### Q4_K：4-bit量化
+#### 35.5.4.2 Q4_K：4-bit量化
 
 **参考量化** `quantize_row_q4_K_ref()`（约1387-1454行）
 
@@ -1115,7 +1115,7 @@ size_t quantize_q4_K(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst, 
 
 > Q4_K直接存储4-bit量化值，无额外高位数组，结构与Q2_K类似但bit数更多。
 
-#### Q5_K：5-bit量化
+#### 35.5.4.3 Q5_K：5-bit量化
 
 **参考量化** `quantize_row_q5_K_ref()`（约1581-1653行）
 
@@ -1160,7 +1160,7 @@ size_t quantize_q5_K(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst, 
 
 > Q5_K：5-bit量化，需要额外的高位数组（qh）存储第5位，兼容4-bit存储。
 
-#### Q6_K：6-bit量化
+#### 35.5.4.4 Q6_K：6-bit量化
 
 **参考量化** `quantize_row_q6_K_ref()`（约1786-1851行）
 
@@ -1204,15 +1204,15 @@ size_t quantize_q6_K(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst, 
 
 > Q6_K：6-bit量化，使用ql（低4位）和qh（高2位）分离存储，反量化时合并。
 
-### 36.5.5 优化实现与公共入口
+### 35.5.5 优化实现与公共入口
 
 与经典量化类似，K-quant也提供了`_impl`优化版本（如`quantize_row_q2_K_impl`），它们利用量化权重和更复杂的RMSE优化（如`make_qkx3_quants`）来进一步提升精度。公共入口`quantize_q2_K()`、`quantize_q3_K()`等根据是否提供权重自动选择路径。
 
-## 36.6 RMSE 优化家族 —— 误差最小化的「数学工坊」
+## 35.6 RMSE 优化家族 —— 误差最小化的「数学工坊」
 
 量化的核心挑战是在有限bit下最小化重构误差。GGML提供了一套完整的RMSE优化工具集，从通用的`make_qx_quants`到专用的`make_q3_quants`、`make_qkx2_quants`等，它们通过不同的权重策略和迭代搜索，为每种量化格式寻找最优的scale和min。
 
-### 36.6.1 RMSE优化流程图
+### 35.6.1 RMSE优化流程图
 
 ```mermaid
 graph TD
@@ -1227,7 +1227,7 @@ graph TD
     D --> I
 ```
 
-### 36.6.2 `make_qx_quants()`：多策略RMSE优化
+### 35.6.2 `make_qx_quants()`：多策略RMSE优化
 
 源码路径：`ggml/src/ggml-quants.c` - `make_qx_quants()`（565-629行）
 
@@ -1292,7 +1292,7 @@ static float make_qx_quants(int n, int nmax, const float * GGML_RESTRICT x,
 
 > 该函数是RMSE优化的核心：它通过`rmse_type`参数支持5种权重策略（0:无权重, 1:x², 2:1, 3:|x|, 4:√|x|），并通过-9到9的迭代微调scale，找到使加权平方误差最小的缩放因子。
 
-### 36.6.3 `make_q3_quants()`：3-bit专用优化
+### 35.6.3 `make_q3_quants()`：3-bit专用优化
 
 源码路径：`ggml/src/ggml-quants.c` - `make_q3_quants()`（633-700行）
 
@@ -1355,7 +1355,7 @@ static float make_q3_quants(int n, int nmax, const float * GGML_RESTRICT x,
 
 > 该函数针对3-bit量化优化，使用权重x²，最多5次迭代通过检查`n_changed`提前终止，效率更高。
 
-### 36.6.4 `make_qkx1_quants()`：带min优化的k-bit量化
+### 35.6.4 `make_qkx1_quants()`：带min优化的k-bit量化
 
 源码路径：`ggml/src/ggml-quants.c` - `make_qkx1_quants()`（704-750行）
 
@@ -1397,7 +1397,7 @@ static float make_qkx1_quants(int n, int nmax, const float * GGML_RESTRICT x, ui
 
 > 该函数通过迭代联合优化scale和min，`alpha`控制min的更新速度，适用于需要偏移量的量化格式。
 
-### 36.6.5 `make_qkx2_quants()`：加权最小二乘+min优化
+### 35.6.5 `make_qkx2_quants()`：加权最小二乘+min优化
 
 源码路径：`ggml/src/ggml-quants.c` - `make_qkx2_quants()`（754-835行）
 
@@ -1456,7 +1456,7 @@ static float make_qkx2_quants(int n, int nmax, const float * GGML_RESTRICT x, co
 
 > 该函数使用加权最小二乘同时优化scale和min，是K-quant系列的基础。通过网格搜索`iscale`参数，找到使加权误差最小的scale和min组合。
 
-### 36.6.6 `make_qkx3_quants()`：增强版加权优化
+### 35.6.6 `make_qkx3_quants()`：增强版加权优化
 
 源码路径：`ggml/src/ggml-quants.c` - `make_qkx3_quants()`（958-1054行）
 
@@ -1516,7 +1516,7 @@ static float make_qkx3_quants(int n, int nmax, const float * GGML_RESTRICT x, co
 }
 ```
 
-### 36.6.7 `make_qp_quants()`：带权重的尺度优化
+### 35.6.7 `make_qp_quants()`：带权重的尺度优化
 
 源码路径：`ggml/src/ggml-quants.c` - `make_qp_quants()`（1058-1128行）
 
@@ -1541,11 +1541,11 @@ static float make_qp_quants(int n, int nmax, const float * GGML_RESTRICT x, uint
 
 > 该函数专门用于已知min的情况，仅优化scale，通过网格搜索（-4到4）和迭代找到最优值。
 
-## 36.7 IQ 格点量化基础设施 —— 非均匀量化的「初始化与查找」
+## 35.7 IQ 格点量化基础设施 —— 非均匀量化的「初始化与查找」
 
 IQ（Integer Quantization）系列打破了均匀量化的限制，使用预计算的格点（grid）作为量化目标。通过查表（kmap）实现O(1)的格点查找，当输入不在格点上时，通过近邻搜索（find_best_neighbour）找到加权误差最小的替代点。这种非均匀量化在极低比特下能更好地保留权重分布。
 
-### 36.7.1 IQ格点量化架构图
+### 35.7.1 IQ格点量化架构图
 
 ```mermaid
 graph TD
@@ -1560,7 +1560,7 @@ graph TD
     H --> I[IQ量化块]
 ```
 
-### 36.7.2 IQ格点初始化
+### 35.7.2 IQ格点初始化
 
 源码路径：`ggml/src/ggml-quants.c` - `iq2xs_init_impl()`（2729-2845行）
 
@@ -1579,7 +1579,7 @@ void iq2xs_init_impl(enum ggml_type type) {
 
 > 该函数根据类型构建256/512/2048个预定义格点，并建立kmap映射表和近邻表。格点表中的每个值代表8个量化级别的组合模式，预计算好可以实现O(1)的查表。
 
-### 36.7.3 近邻搜索
+### 35.7.3 近邻搜索
 
 源码路径：`ggml/src/ggml-quants.c` - `iq2_find_best_neighbour()`（约2932-2960行）
 
@@ -1607,11 +1607,11 @@ static int iq2_find_best_neighbour(const uint16_t * neighbours, const uint64_t *
 
 > 该函数在候选近邻中计算加权平方误差，选择最佳格点。输入为8个元素的子块，通过预计算的近邻列表大幅缩小搜索空间。
 
-### 36.7.4 IQ系列量化与反量化
+### 35.7.4 IQ系列量化与反量化
 
 IQ系列各格式（IQ2_XXS、IQ2_XS、IQ2_S、IQ1_S、IQ1_M、IQ3_XXS、IQ3_S、IQ4_NL、IQ4_XS）均遵循相同的查找-搜索-编码流程，只是格点表和编码方式不同。
 
-#### `dequantize_row_iq2_xxs()`：查表解码
+#### 35.7.4.1 `dequantize_row_iq2_xxs()`：查表解码
 
 源码路径：`ggml/src/ggml-quants.c` - `dequantize_row_iq2_xxs()`（2392-2415行）
 
@@ -1639,7 +1639,7 @@ void dequantize_row_iq2_xxs(const block_iq2_xxs * x, float * y, int64_t k) {
 }
 ```
 
-#### `dequantize_row_iq2_xs()`：双尺度解码
+#### 35.7.4.2 `dequantize_row_iq2_xs()`：双尺度解码
 
 源码路径：`ggml/src/ggml-quants.c` - `dequantize_row_iq2_xs()`（2417-2437行）
 
@@ -1666,7 +1666,7 @@ void dequantize_row_iq2_xs(const block_iq2_xs * GGML_RESTRICT x, float * GGML_RE
 }
 ```
 
-#### `dequantize_row_iq2_s()`：IQ2_S解码
+#### 35.7.4.3 `dequantize_row_iq2_s()`：IQ2_S解码
 
 源码路径：`ggml/src/ggml-quants.c` - `dequantize_row_iq2_s()`（2439-2464行）
 
@@ -1698,7 +1698,7 @@ void dequantize_row_iq2_s(const block_iq2_s * GGML_RESTRICT x, float * GGML_REST
 }
 ```
 
-#### `dequantize_row_iq3_xxs()`：IQ3_XXS解码
+#### 35.7.4.4 `dequantize_row_iq3_xxs()`：IQ3_XXS解码
 
 源码路径：`ggml/src/ggml-quants.c` - `dequantize_row_iq3_xxs()`（2466-2491行）
 
@@ -1730,7 +1730,7 @@ void dequantize_row_iq3_xxs(const block_iq3_xxs * GGML_RESTRICT x, float * GGML_
 }
 ```
 
-#### `dequantize_row_iq3_s()`：IQ3_S解码
+#### 35.7.4.5 `dequantize_row_iq3_s()`：IQ3_S解码
 
 源码路径：`ggml/src/ggml-quants.c` - `dequantize_row_iq3_s()`（2493-2540行）
 
@@ -1771,7 +1771,7 @@ void dequantize_row_iq3_s(const block_iq3_s * GGML_RESTRICT x, float * GGML_REST
 }
 ```
 
-#### `dequantize_row_iq1_s()`：delta偏移重建
+#### 35.7.4.6 `dequantize_row_iq1_s()`：delta偏移重建
 
 源码路径：`ggml/src/ggml-quants.c` - `dequantize_row_iq1_s()`（2542-2565行）
 
@@ -1799,7 +1799,7 @@ void dequantize_row_iq1_s(const block_iq1_s * GGML_RESTRICT x, float * GGML_REST
 }
 ```
 
-#### `dequantize_row_iq1_m()`：IQ1_M变体解码
+#### 35.7.4.7 `dequantize_row_iq1_m()`：IQ1_M变体解码
 
 源码路径：`ggml/src/ggml-quants.c` - `dequantize_row_iq1_m()`（2567-2615行）
 
@@ -1843,7 +1843,7 @@ void dequantize_row_iq1_m(const block_iq1_m * GGML_RESTRICT x, float * GGML_REST
 }
 ```
 
-#### `dequantize_row_iq4_nl()`：查找表解码
+#### 35.7.4.8 `dequantize_row_iq4_nl()`：查找表解码
 
 源码路径：`ggml/src/ggml-quants.c` - `dequantize_row_iq4_nl()`（2617-2633行）
 
@@ -1864,7 +1864,7 @@ void dequantize_row_iq4_nl(const block_iq4_nl * GGML_RESTRICT x, float * GGML_RE
 }
 ```
 
-#### `dequantize_row_iq4_xs()`：IQ4_XS解码
+#### 35.7.4.9 `dequantize_row_iq4_xs()`：IQ4_XS解码
 
 源码路径：`ggml/src/ggml-quants.c` - `dequantize_row_iq4_xs()`（2635-2654行）
 
@@ -1889,9 +1889,9 @@ void dequantize_row_iq4_xs(const block_iq4_xs * GGML_RESTRICT x, float * GGML_RE
 }
 ```
 
-### 36.7.5 核心量化实现
+### 35.7.5 核心量化实现
 
-#### `quantize_row_iq2_xxs_impl()`：2-bit格点量化
+#### 35.7.5.1 `quantize_row_iq2_xxs_impl()`：2-bit格点量化
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_row_iq2_xxs_impl()`（约2962-3130行）
 
@@ -1916,7 +1916,7 @@ static void quantize_row_iq2_xxs_impl(const float * GGML_RESTRICT x, void * GGML
 }
 ```
 
-#### `quantize_row_iq2_xs_impl()`：16子块优化
+#### 35.7.5.2 `quantize_row_iq2_xs_impl()`：16子块优化
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_row_iq2_xs_impl()`（约3132行起）
 
@@ -1941,7 +1941,7 @@ static void quantize_row_iq2_xs_impl(const float * GGML_RESTRICT x, void * GGML_
 }
 ```
 
-#### `quantize_row_iq2_s_impl()`：带符号2-bit
+#### 35.7.5.3 `quantize_row_iq2_s_impl()`：带符号2-bit
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_row_iq2_s_impl()`（4886-4958行, 5135-5320行）
 
@@ -1963,7 +1963,7 @@ static void quantize_row_iq2_s_impl(const float * GGML_RESTRICT x, void * GGML_R
 }
 ```
 
-#### `quantize_row_iq1_s_impl()`：1-bit三值量化
+#### 35.7.5.4 `quantize_row_iq1_s_impl()`：1-bit三值量化
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_row_iq1_s_impl()`（4382-4523行）
 
@@ -1991,7 +1991,7 @@ static void quantize_row_iq1_s_impl(const float * GGML_RESTRICT x, void * GGML_R
 }
 ```
 
-#### `quantize_row_iq1_m_impl()`：IQ1_M变体
+#### 35.7.5.5 `quantize_row_iq1_m_impl()`：IQ1_M变体
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_row_iq1_m_impl()`（4546-4691行）
 
@@ -2015,7 +2015,7 @@ static void quantize_row_iq1_m_impl(const float * GGML_RESTRICT x, void * GGML_R
 }
 ```
 
-#### `quantize_row_iq3_s_impl()`：IQ3_S实现
+#### 35.7.5.6 `quantize_row_iq3_s_impl()`：IQ3_S实现
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_row_iq3_s_impl()`（约3965-4085行）
 
@@ -2031,7 +2031,7 @@ static void quantize_row_iq3_s_impl(int block_size, const float * GGML_RESTRICT 
 }
 ```
 
-#### `quantize_row_iq4_nl_impl()`：4-bit非线性
+#### 35.7.5.7 `quantize_row_iq4_nl_impl()`：4-bit非线性
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_row_iq4_nl_impl()`（4715-4809行）
 
@@ -2051,9 +2051,9 @@ static void quantize_row_iq4_nl_impl(const int super_block_size, const int block
 }
 ```
 
-### 36.7.6 公共入口
+### 35.7.6 公共入口
 
-#### `quantize_iq2_xxs()`：IQ2_XXS公共入口
+#### 35.7.6.1 `quantize_iq2_xxs()`：IQ2_XXS公共入口
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_iq2_xxs()`（约3510-3520行）
 
@@ -2071,7 +2071,7 @@ size_t quantize_iq2_xxs(const float * GGML_RESTRICT src, void * GGML_RESTRICT ds
 }
 ```
 
-#### `quantize_iq2_xs()`：IQ2_XS公共入口
+#### 35.7.6.2 `quantize_iq2_xs()`：IQ2_XS公共入口
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_iq2_xs()`（约3522-3532行）
 
@@ -2089,7 +2089,7 @@ size_t quantize_iq2_xs(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst
 }
 ```
 
-#### `quantize_iq2_s()`：IQ2_S公共入口
+#### 35.7.6.3 `quantize_iq2_s()`：IQ2_S公共入口
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_iq2_s()`（5322-5337行）
 
@@ -2107,7 +2107,7 @@ size_t quantize_iq2_s(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst,
 }
 ```
 
-#### `quantize_iq1_s()`：IQ1_S公共入口
+#### 35.7.6.4 `quantize_iq1_s()`：IQ1_S公共入口
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_iq1_s()`（4525-4544行）
 
@@ -2125,7 +2125,7 @@ size_t quantize_iq1_s(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst,
 }
 ```
 
-#### `quantize_iq1_m()`：IQ1_M公共入口
+#### 35.7.6.5 `quantize_iq1_m()`：IQ1_M公共入口
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_iq1_m()`（4693-4712行）
 
@@ -2143,7 +2143,7 @@ size_t quantize_iq1_m(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst,
 }
 ```
 
-#### `quantize_iq3_s()`：IQ3_S公共入口
+#### 35.7.6.6 `quantize_iq3_s()`：IQ3_S公共入口
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_iq3_s()`（约4088-4110行）
 
@@ -2164,7 +2164,7 @@ size_t quantize_iq3_s(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst,
 }
 ```
 
-#### `quantize_iq3_xxs()`：IQ3_XXS公共入口
+#### 35.7.6.7 `quantize_iq3_xxs()`：IQ3_XXS公共入口
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_iq3_xxs()`（约3947-3957行）
 
@@ -2182,7 +2182,7 @@ size_t quantize_iq3_xxs(const float * GGML_RESTRICT src, void * GGML_RESTRICT ds
 }
 ```
 
-#### `quantize_iq4_xs()`：IQ4_XS公共入口
+#### 35.7.6.8 `quantize_iq4_xs()`：IQ4_XS公共入口
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_iq4_xs()`（4854-4878行）
 
@@ -2203,7 +2203,7 @@ size_t quantize_iq4_xs(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst
 }
 ```
 
-### 36.7.7 IQ2_S量化核心实现
+### 35.7.7 IQ2_S量化核心实现
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_row_iq2_s_impl()`（5135-5320行）
 
@@ -2326,7 +2326,7 @@ static void quantize_row_iq2_s_impl(const float * GGML_RESTRICT x, block_iq2_s *
 
 > 这是IQ2_S的核心实现，通过穷举40种符号模式，结合格点查表和近邻搜索，为每个16元素子块找到最优的量化方案，最后进行尺度重估计和编码。
 
-#### `quantize_row_iq2_s_ref()`：参考实现
+#### 35.7.7.1 `quantize_row_iq2_s_ref()`：参考实现
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_row_iq2_s_ref()`（5339-5343行）
 
@@ -2337,11 +2337,11 @@ void quantize_row_iq2_s_ref(const float * GGML_RESTRICT x, block_iq2_s * GGML_RE
 }
 ```
 
-## 36.8 MXFP4 与 NVFP4 —— 面向现代加速器的「微缩浮点」
+## 35.8 MXFP4 与 NVFP4 —— 面向现代加速器的「微缩浮点」
 
 MXFP4和NVFP4是面向现代GPU的微缩浮点格式，它们使用E8M0（8位指数，无符号）或UE4M3（无符号4位指数3位尾数）作为缩放因子，将4-bit尾数与指数实现类似浮点的动态范围。这种设计特别适合NVIDIA Blackwell等支持FP4张量核心的硬件。
 
-### 36.8.1 MXFP4/NVFP4架构图
+### 35.8.1 MXFP4/NVFP4架构图
 
 ```mermaid
 graph TD
@@ -2355,7 +2355,7 @@ graph TD
     H --> I[反量化: 指数转FP32 × 查表值]
 ```
 
-### 36.8.2 `best_index_mxfp4()`：线性搜索16值表
+### 35.8.2 `best_index_mxfp4()`：线性搜索16值表
 
 源码路径：`ggml/src/ggml-quants.c` - `best_index_mxfp4()`（295-306行）
 
@@ -2372,7 +2372,7 @@ static inline int best_index_mxfp4(float x, float e) {
 }
 ```
 
-### 36.8.3 `quantize_row_mxfp4_ref()`：MXFP4参考量化
+### 35.8.3 `quantize_row_mxfp4_ref()`：MXFP4参考量化
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_row_mxfp4_ref()`（310-335行）
 
@@ -2402,7 +2402,7 @@ void quantize_row_mxfp4_ref(const float * GGML_RESTRICT x, block_mxfp4 * GGML_RE
 
 > 该函数展示了MXFP4的量化流程：计算块内最大绝对值，将其转换为E8M0格式的指数，然后在该指数下为每个元素搜索最接近的4-bit尾数。这种设计使得缩放因子可以动态适应数据范围。
 
-### 36.8.4 `quantize_row_nvfp4_ref()`：NVFP4子块缩放
+### 35.8.4 `quantize_row_nvfp4_ref()`：NVFP4子块缩放
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_row_nvfp4_ref()`（339-371行）
 
@@ -2435,9 +2435,9 @@ void quantize_row_nvfp4_ref(const float * GGML_RESTRICT x, block_nvfp4 * GGML_RE
 
 > NVFP4将块进一步分为16元素子块，每个子块有独立的UE4M3缩放因子，提供更细粒度的动态范围。
 
-### 36.8.5 反量化
+### 35.8.5 反量化
 
-#### `dequantize_row_mxfp4()`：E8M0转FP32
+#### 35.8.5.1 `dequantize_row_mxfp4()`：E8M0转FP32
 
 源码路径：`ggml/src/ggml-quants.c` - `dequantize_row_mxfp4()`（507-522行）
 
@@ -2458,7 +2458,7 @@ void dequantize_row_mxfp4(const block_mxfp4 * GGML_RESTRICT x, float * GGML_REST
 }
 ```
 
-#### `dequantize_row_nvfp4()`：子块UE4M3解码
+#### 35.8.5.2 `dequantize_row_nvfp4()`：子块UE4M3解码
 
 源码路径：`ggml/src/ggml-quants.c` - `dequantize_row_nvfp4()`（526-551行）
 
@@ -2484,11 +2484,11 @@ void dequantize_row_nvfp4(const block_nvfp4 * GGML_RESTRICT x, float * GGML_REST
 }
 ```
 
-## 36.9 TQ 与极限压缩 —— 三值量化的「Base-3 编码艺术」
+## 35.9 TQ 与极限压缩 —— 三值量化的「Base-3 编码艺术」
 
 TQ（Ternary Quantization）将权重压缩到仅三个值（-1, 0, 1），通过Base-3编码或2-bit存储实现极限压缩。虽然精度损失较大，但在特定场景（如Embedding）中仍有应用价值。
 
-### 36.9.1 `quantize_row_tq1_0_ref()`：Base-3编码
+### 35.9.1 `quantize_row_tq1_0_ref()`：Base-3编码
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_row_tq1_0_ref()`（2245-2297行）
 
@@ -2546,7 +2546,7 @@ void quantize_row_tq1_0_ref(const float * GGML_RESTRICT x, block_tq1_0 * GGML_RE
 
 > 该函数使用Base-3编码将5个三值（0,1,2）打包进1字节，通过243进制转换实现1.25-bit每元素的极限压缩。
 
-### 36.9.2 `quantize_row_tq2_0_ref()`：2-bit存储
+### 35.9.2 `quantize_row_tq2_0_ref()`：2-bit存储
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_row_tq2_0_ref()`（2299-2320行）
 
@@ -2580,9 +2580,9 @@ void quantize_row_tq2_0_ref(const float * GGML_RESTRICT x, block_tq2_0 * GGML_RE
 
 > 该函数将4个三值打包到1字节，每个值2-bit（0,1,2对应-1,0,1），存储效率为2-bit/元素。
 
-### 36.9.3 反量化与公共入口
+### 35.9.3 反量化与公共入口
 
-#### `dequantize_row_tq1_0()`：pow3数组解码
+#### 35.9.3.1 `dequantize_row_tq1_0()`：pow3数组解码
 
 源码路径：`ggml/src/ggml-quants.c` - `dequantize_row_tq1_0()`（2338-2373行）
 
@@ -2622,7 +2622,7 @@ void dequantize_row_tq1_0(const block_tq1_0 * GGML_RESTRICT x, float * GGML_REST
 }
 ```
 
-#### `dequantize_row_tq2_0()`：位移解码
+#### 35.9.3.2 `dequantize_row_tq2_0()`：位移解码
 
 源码路径：`ggml/src/ggml-quants.c` - `dequantize_row_tq2_0()`（2375-2390行）
 
@@ -2644,7 +2644,7 @@ void dequantize_row_tq2_0(const block_tq2_0 * GGML_RESTRICT x, float * GGML_REST
 }
 ```
 
-#### `quantize_tq1_0()`：TQ1_0公共入口
+#### 35.9.3.3 `quantize_tq1_0()`：TQ1_0公共入口
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_tq1_0()`（2322-2328行）
 
@@ -2657,7 +2657,7 @@ size_t quantize_tq1_0(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst,
 }
 ```
 
-#### `quantize_tq2_0()`：TQ2_0公共入口
+#### 35.9.3.4 `quantize_tq2_0()`：TQ2_0公共入口
 
 源码路径：`ggml/src/ggml-quants.c` - `quantize_tq2_0()`（2330-2336行）
 
@@ -2670,13 +2670,13 @@ size_t quantize_tq2_0(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst,
 }
 ```
 
-## 36.10 数据校验与全局入口 —— 量化流程的「质量守门员」
+## 35.10 数据校验与全局入口 —— 量化流程的「质量守门员」
 
 数据校验是量化流程的最后一道防线，确保量化后的数据不包含NaN或Inf，避免推理过程中出现异常。
 
-### 36.10.1 基础校验函数
+### 35.10.1 基础校验函数
 
-#### `validate_float()`：FP32 NaN/Inf检查
+#### 35.10.1.1 `validate_float()`：FP32 NaN/Inf检查
 
 源码路径：`ggml/src/ggml-quants.c` - `validate_float()`（5345-5355行）
 
@@ -2694,7 +2694,7 @@ static bool validate_float(float f, size_t i) {
 }
 ```
 
-#### `isinf_fp16()`：FP16无穷大检查
+#### 35.10.1.2 `isinf_fp16()`：FP16无穷大检查
 
 源码路径：`ggml/src/ggml-quants.c` - `isinf_fp16()`（5357-5359行）
 
@@ -2704,7 +2704,7 @@ static bool isinf_fp16(ggml_fp16_t f) {
 }
 ```
 
-#### `isnan_fp16()`：FP16 NaN检查
+#### 35.10.1.3 `isnan_fp16()`：FP16 NaN检查
 
 源码路径：`ggml/src/ggml-quants.c` - `isnan_fp16()`（5361-5363行）
 
@@ -2716,7 +2716,7 @@ static bool isnan_fp16(ggml_fp16_t f) {
 
 > FP16的无穷大和NaN检测通过位操作实现：指数域全1（0x7c00）且尾数域为0表示无穷大，尾数域非0表示NaN。掩码0x7c00对应指数位，0x03ff对应尾数位。
 
-#### `validate_fp16()`：FP16完整校验
+#### 35.10.1.4 `validate_fp16()`：FP16完整校验
 
 源码路径：`ggml/src/ggml-quants.c` - `validate_fp16()`（5365-5375行）
 
@@ -2734,7 +2734,7 @@ static bool validate_fp16(ggml_fp16_t f, size_t i) {
 }
 ```
 
-#### `validate_e_e8m0()`：MXFP4指数校验
+#### 35.10.1.5 `validate_e_e8m0()`：MXFP4指数校验
 
 源码路径：`ggml/src/ggml-quants.c` - `validate_e_e8m0()`（5377-5383行）
 
@@ -2748,7 +2748,7 @@ static bool validate_e_e8m0(uint8_t e, size_t i) {
 }
 ```
 
-### 36.10.2 `ggml_validate_row_data()`：类型分派与SIMD加速
+### 35.10.2 `ggml_validate_row_data()`：类型分派与SIMD加速
 
 源码路径：`ggml/src/ggml-quants.c` - `ggml_validate_row_data()`（5385-5467行）
 
@@ -2847,7 +2847,7 @@ bool ggml_validate_row_data(enum ggml_type type, const void * data, size_t nbyte
 
 > 这个函数是数据校验的总入口，它根据量化类型分派到相应的校验宏，对于F16和F32类型，使用AVX2或NEON SIMD指令加速检测，对于量化类型则检查其缩放因子（d/m）是否为NaN/Inf。Q8_K因使用FP32 scale而单独处理。
 
-## 36.11 设计中的取舍
+## 35.11 设计中的取舍
 
 **为什么GGML不使用统一的量化格式，而是保留如此多的格式？**  
 因为不同的模型层对精度和压缩率的需求不同。注意力层的V矩阵对量化敏感，需要IQ4_XS等高精度格式；而FFN的权重可以承受更低的比特。统一格式无法在所有场景下取得最佳平衡，格式多样性正是为了针对不同层特性进行优化。
@@ -2861,7 +2861,7 @@ bool ggml_validate_row_data(enum ggml_type type, const void * data, size_t nbyte
 **MXFP4/NVFP4与传统量化格式相比，优势是什么？**  
 它们利用浮点表示，动态范围更大，且能与GPU的FP4张量核心直接对接，避免反量化到FP32的步骤，实现硬件级加速。这使得在Blackwell等新一代GPU上可以获得显著的吞吐量提升。
 
-## 36.12 动手练习
+## 35.12 动手练习
 
 - 阅读 `ggml/src/ggml-quants.c` 第72-104行的 `quantize_row_q4_0_ref` 函数，然后不看代码，自行实现一个简化版：输入float数组（长度必须是32的倍数），对每个32元素块找到绝对值最大值（amax），计算scale = amax / -8.0（注意负号！），将每个元素量化到0-15范围：(x/scale + 8.5) 取整，将两个4-bit值打包到一个uint8_t中（低4位+高4位），输出block_q4_0数组。验证：与参考实现对比，RMSE应小于0.1。
 
@@ -2875,7 +2875,7 @@ bool ggml_validate_row_data(enum ggml_type type, const void * data, size_t nbyte
 
 - 阅读 `make_qx_quants`（565-629行）、`make_q3_quants`（633-700行）和 `make_qkx2_quants`（754-835行），回答以下问题：`rmse_type` 参数的取值（0-4）分别对应什么权重策略？（0: 无权重（均匀量化）, 1: x² (平方误差权重), 2: 1 （均匀权重）, 3: |x| （绝对值权重）, 4: √|x| （平方根权重））。`make_qx_quants` 中的迭代搜索（is = -9 到 9）是如何寻找最优scale的？`make_qkx2_quants` 如何同时优化scale和min？D = sum_w*sum_l2 - sum_l*sum_l 这个公式的含义是什么？为什么 `make_q3_quants` 只用5次迭代（itry），而 `make_qkx2_quants` 用更多步骤（nstep）？编写一个测试程序，对比三种算法在相同输入下的量化误差（RMSE）和运行时间。
 
-## 36.13 本章小结
+## 35.13 本章小结
 
 这一章中，我们深入探索了GGML量化技术的完整生态。首先，我们从量化与反量化的基本流水线出发，理解了块（block）结构、缩放因子（scale/d）与偏移（min/m）的核心作用，以及位打包（bit-packing）的实现细节。接着，我们剖析了从1-bit符号位到8-bit精度标杆的经典量化家族，包括Q4_0的对称量化、Q4_1的非对称量化、Q5_0/Q5_1的高位存储技术，以及Q8_0/Q8_1作为质量基准的设计。在K-quant超级块体系中，我们揭示了256元素超级块与16元素子块的二级量化结构，以及scale和min的打包技巧。RMSE优化家族展示了GGML在误差最小化上的数学功底，从通用的`make_qx_quants`到联合优化scale和min的`make_qkx2_quants`。IQ格点量化则带来了非均匀量化的查表艺术，通过预计算格点、O(1)映射和近邻搜索实现极致压缩。MXFP4/NVFP4等微缩浮点格式展现了面向现代GPU的协同设计，而TQ三值量化则将压缩推向了极限。最后，数据校验机制确保了量化流程的可靠性。
 

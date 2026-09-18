@@ -1,6 +1,6 @@
 
 
-# 49 通用 PEG 解析器框架 —— 从语法定义到结构化解析的完整工程实现
+# 第48章 49 通用 PEG 解析器框架 —— 从语法定义到结构化解析的完整工程实现
 
 ## 学习目标
 
@@ -17,7 +17,7 @@
 - 了解解析器的 JSON 序列化/反序列化（to_json/from_json/save/load）实现机制
 - 理解 `__main__` 全局代码的组织方式与模块初始化流程
 
-## 49.1 生活类比
+## 48.1 生活类比
 
 想象 PEG 解析器系统是一家**智能文档处理工厂**。
 
@@ -32,7 +32,7 @@
 
 就像工厂经理用乐高积木搭建生产线，开发者用 builder 组合解析规则；就像质检员按工序分段验收，executor 按顺序执行子解析器，任一环节失败即整体失败——这正是 PEG 有序选择的精髓。
 
-## 49.2 源码地图
+## 48.2 源码地图
 
 ```
 common/peg-parser.h
@@ -162,11 +162,11 @@ common/peg-parser.cpp
     └── marker() / json_member()               # 标记与JSON成员特化
 ```
 
-## 49.3 基础类型体系与 AST 管理 —— 解析的「数据契约与档案馆」
+## 48.3 基础类型体系与 AST 管理 —— 解析的「数据契约与档案馆」
 
 在构建解析器之前，必须先定好"数据契约"。PEG 解析器框架在头文件前 100 行建立了完整的类型体系：解析结果的三态枚举、携带位置与节点的结果结构体、解析时的上下文环境、以及 AST 节点与竞技场的管理接口。
 
-### 49.3.1 common_peg_parse_result_type 与 common_peg_parse_result —— 三态结果与位置信息
+### 48.3.1 common_peg_parse_result_type 与 common_peg_parse_result —— 三态结果与位置信息
 
 解析结果只有三种状态，这是流式解析的基石。
 
@@ -198,7 +198,7 @@ struct common_peg_parse_result {
 
 这段代码定义了 PEG 解析的"质检报告"。第①行的三态枚举是整个流式解析机制的核心：`NEED_MORE_INPUT` 表示"当前位置匹配成功，但输入在关键处断裂，需要更多数据才能确定最终成败"。第②行的结构体不仅记录成功/失败，还精确记录 `start` 和 `end` 位置，以及产生的 `nodes`（AST 节点 ID 列表）。第③行的三个便利函数让上层代码可以直观地判断结果状态。`end` 位置的设计体现了 PEG 解析器的"位置传递"语义：序列解析器会把上一个子解析器的 `end` 作为下一个子解析器的 `start`，形成流水线。
 
-### 49.3.2 common_peg_parse_context —— 解析时的「环境上下文」
+### 48.3.2 common_peg_parse_context —— 解析时的「环境上下文」
 
 解析上下文把输入字符串、标志位、递归深度、AST 竞技场打包在一起，作为执行引擎的"工作台"。
 
@@ -229,7 +229,7 @@ struct common_peg_parse_context {
 
 这段代码定义了解析执行时的"工作台"。第①行的标志位设计体现了两个正交维度：`DEBUG` 控制是否输出详细的匹配日志（配合 `parser_executor::debug_indent()` 产生缩进层次），`LENIENT` 控制是否启用流式模式。第②行的 `parse_depth` 每进入一层子解析器就加 1，既用于调试输出的缩进，也可作为防栈溢出的守卫。第③行的 `ast` 是解析过程中的"成品收集箱"，所有 `rule`/`tag` 解析器产生的节点都通过 `ctx.ast.add_node()` 登记入册。这种设计让执行引擎不需要显式传递 AST 容器，只需持有 `ctx` 引用即可。
 
-### 49.3.3 common_peg_ast_node 与 common_peg_ast_arena —— AST 节点定义与竞技场管理
+### 48.3.3 common_peg_ast_node 与 common_peg_ast_arena —— AST 节点定义与竞技场管理
 
 AST 节点记录了解析树的语义信息，竞技场提供统一的内存管理与查询接口。
 
@@ -293,11 +293,11 @@ private:
 
 这段代码建立了 AST 的"档案馆"。第①行的节点结构体设计精巧：`rule` 和 `tag` 互补——`rule` 来自语法定义的规则名（如 `"json-object"`），`tag` 来自开发者显式附加的语义标签（如 `"reasoning"`、`"tool-call"`），两者结合让上层应用既能按语法结构查找，又能按业务语义查找。`is_partial` 标记配合流式解析：当 `lenient` 模式下输入中断，`atomic` 包装器会清空半成品节点，但如果上层 `rule`/`tag` 强行包装了部分结果，`is_partial=true` 就能提醒上层"这个节点对应的输入不完整"。第③行的 `add_node()` 用 `nodes_.size()` 作为 ID，利用 `vector` 的连续内存实现 O(1) 索引。第⑤行的 `find_by_tag/find_by_rule` 限定 `max_depth=3`，避免在大型 AST 中全树遍历——聊天场景下通常只需在浅层定位"推理内容"或"工具调用"节点。第⑦行的 `visit()` 支持访问者模式，让上层可以自定义遍历逻辑而不暴露内部结构。
 
-## 49.4 解析器节点类型全景 —— 语法定义的「积木目录」
+## 48.4 解析器节点类型全景 —— 语法定义的「积木目录」
 
 PEG 解析器框架在头文件第 107-230 行定义了 17 种解析器节点类型，它们共同组成了 `common_peg_parser_variant`（一个 `std::variant`）。每种类型对应一种匹配语义，执行引擎通过 `std::visit` 分发到对应的处理逻辑。
 
-### 49.4.1 基础与边界解析器
+### 48.4.1 基础与边界解析器
 
 ```cpp
 // ① 空解析器：总是成功，不消耗输入，相当于正则里的 ε
@@ -312,7 +312,7 @@ struct common_peg_end_parser {};
 
 这三种解析器是组合子的"恒等元素"和"边界守卫"。`epsilon` 在序列中不改变语义，`start`/`end` 配合 `sequence` 可实现"整串匹配"语义。
 
-### 49.4.2 字面量与字符级解析器
+### 48.4.2 字面量与字符级解析器
 
 ```cpp
 // ④ 字面量：逐字节精确匹配指定字符串
@@ -345,7 +345,7 @@ struct common_peg_chars_parser {
 
 第④行的 `literal` 逐字节匹配，适合 ASCII 关键字（如 `{`、`}`、`true`、`null`）。第⑤行的 `any` 调用 `common_parse_utf8_codepoint` 逐码点推进，正确处理多字节字符。第⑥行的 `space` 逐字节检查 `std::isspace`，主要用于 JSON/Python 语法中的格式空白忽略。第⑦行的 `chars` 是功能最丰富的字符级解析器：`ranges` 存储解析后的码点区间（由 `parse_char_classes()` 从模式串生成），`negated` 支持 `[^...]` 否定语义，`min_count`/`max_count` 直接内嵌重复逻辑（避免外层再套 `repetition`），`contains()` 方法提供 O(区间数) 的码点判断。
 
-### 49.4.3 字符串与直到分隔符解析器
+### 48.4.3 字符串与直到分隔符解析器
 
 ```cpp
 // ⑧ 字符串内容解析器：匹配直到指定分隔符，支持 \\ 转义和 \\uXXXX Unicode 转义
@@ -361,7 +361,7 @@ struct common_peg_until_parser {
 
 第⑧行的 `string_parser` 专门处理带转义的引号字符串，执行时逐码点推进，遇到反斜杠委托 `handle_escape_sequence()` 处理。第⑨行的 `until_parser` 是提取标记内容的核心：它持有多个分隔符字符串，执行时构建 Trie 树，在每个码点位置调用 `check_at()` 判断是否匹配任一分隔符。**关键点：它不消费分隔符**，外层通常再用一个 `literal` 收尾（如 `marker()` 的实现：`literal("<") + until(">") + literal(">")`）。
 
-### 49.4.4 组合与控制流解析器
+### 48.4.4 组合与控制流解析器
 
 ```cpp
 // ⑩ 序列：按顺序匹配所有子解析器，任一失败即整体失败
@@ -394,7 +394,7 @@ struct common_peg_not_parser {
 
 这四种组合子构成了 PEG 的核心表达力。第⑩行序列的"全或无"语义、第⑪行选择的"有序选择"语义（第一个成功即锁定，不回溯）、第⑫行重复的上下界控制与零消耗保护、第⑬⑭行前瞻的零消耗特性，共同支撑了复杂语法的构建。注意所有子节点都存储 `common_peg_parser_id`（即 `size_t` 索引），而非直接嵌套对象——这正是"句柄+竞技场"架构的体现。
 
-### 49.4.5 语义包装与引用解析器
+### 48.4.5 语义包装与引用解析器
 
 ```cpp
 // ⑮ 模式：为子解析器附加 JSON Schema 元数据（用于语法生成）
@@ -431,11 +431,11 @@ struct common_peg_tag_parser {
 
 第⑮行的 `schema_parser` 为语法生成提供元数据支撑。第⑯行的 `rule_parser` 是 AST 节点的主要来源：执行时调用 `ctx.ast.add_node()` 打包子解析器的结果，带上规则名。第⑰行的 `ref_parser` 是递归语法的关键——它只存名字，执行时通过 `arena.get_rule(name)` 查表跳转。第⑱行的 `atomic_parser` 解决流式场景下的"半成品污染"问题：当子解析器报告 `NEED_MORE_INPUT` 时，它清空 `result.nodes`，只传递"需要更多输入"的状态。第⑲行的 `tag_parser` 与 `rule_parser` 对称，但打包的是开发者自定义的业务标签，配合 `ast.find_by_tag()` 实现语义检索。
 
-## 49.5 PEG 解析器构建器 —— 语法规则的「乐高拼装台」
+## 48.5 PEG 解析器构建器 —— 语法规则的「乐高拼装台」
 
 `common_peg_parser_builder` 是开发者面向的主要接口。它封装了 arena 的操作，提供了组合子 API、运算符糖、内置语法规则家族、以及构建收尾流程。
 
-### 49.5.1 句柄与竞技场的双层设计：common_peg_parser 与 common_peg_arena
+### 48.5.1 句柄与竞技场的双层设计：common_peg_parser 与 common_peg_arena
 
 `common_peg_parser` 只是轻量级遥控器，真正的节点存放在 arena 的 vector 里。
 
@@ -533,7 +533,7 @@ private:
 
 arena 的设计体现了"集中式存储 + 索引式引用"。`parsers_` vector 存放所有 variant，ID 即下标，缓存局部性极佳。`rules_` 映射支撑 `ref` 的查表跳转。`resolve_refs()` 是构建期的最后一步，把所有 `ref_parser` 替换为 `rule_parser`（持有真实 ID），让递归引用真正生效。
 
-### 49.5.2 组合子的扁平化实现：sequence() 与 choice()
+### 48.5.2 组合子的扁平化实现：sequence() 与 choice()
 
 `sequence()` 和 `choice()` 都会自动拍平嵌套的同类结构，避免冗余层级。
 
@@ -578,7 +578,7 @@ common_peg_parser common_peg_parser_builder::choice(const std::vector<common_peg
 
 这段代码展示了扁平化的核心逻辑。当开发者写 `a + (b + c)` 时，括号内的 `b + c` 已经是一个 `sequence` 节点。如果不拍平，会产生 `sequence[a, sequence[b, c]]` 的嵌套结构——解析时多一层递归，AST 也更深。拍平后变成 `sequence[a, b, c]`，结构扁平，执行高效。`choice()` 的逻辑完全对称：`a | (b | c)` 会被拍成 `choice[a, b, c]`。三种重载（ID向量、句柄向量、初始化列表）让调用风格灵活：`sequence({a, b, c})`、`sequence(a, b, c)` 甚至 `a + b + c` 都能工作。
 
-### 49.5.3 重复组合子家族：repeat/one_or_more/zero_or_more/optional
+### 48.5.3 重复组合子家族：repeat/one_or_more/zero_or_more/optional
 
 builder 提供了语义清晰的重复快捷方式，底层统一构造 `repetition_parser`。
 
@@ -607,7 +607,7 @@ common_peg_parser optional(const common_peg_parser & p) { return repeat(p, 0, 1)
 
 这组函数把正则表达式里的 `+`、`*`、`?`、`{n,m}` 映射为语义明确的函数名。`max_count = -1` 表示无上限。执行引擎在 `operator()(repetition)` 中会根据这两个参数控制循环次数，并检测零消耗匹配防死循环。
 
-### 49.5.4 前瞻组合子：peek() 与 negate()
+### 48.5.4 前瞻组合子：peek() 与 negate()
 
 前瞻是 PEG 的"看家本领"，builder 提供了直观的命名。
 
@@ -625,7 +625,7 @@ common_peg_parser negate(const common_peg_parser & p) { return add(common_peg_no
 
 `peek` 对应 PEG 语法的 `&`，`negate` 对应 `!`。`json_number()` 里的 `not_number_continuation = negate(chars("[0-9.eE+-]"))` 就是典型用法：确保数字后面不能紧跟数字/点/指数符，防止 `123abc` 被误判为数字 `123`。
 
-### 49.5.5 规则注册与递归支持：rule() 的两种重载
+### 48.5.5 规则注册与递归支持：rule() 的两种重载
 
 `rule()` 是构建递归语法的核心。简单版本直接注册，复杂版本支持 lambda 占位回填。
 
@@ -660,7 +660,7 @@ common_peg_parser common_peg_parser_builder::rule(const std::string & name, cons
 
 这段代码是递归规则的"魔法"所在。第②版本的第 7 行创建 `any()` 占位，第 8 行提前注册到 `rules_` 映射——这就意味着在 `builder_fn()` 内部调用 `ref("json-value")` 时，`get_rule()` 能查到这个占位规则，从而让递归引用合法。第 9 行执行用户 lambda 构造真正的解析器，第 10 行用真实规则 ID 替换占位。整套机制让"先有鸡还是先有蛋"的递归定义变成了"先占位、后回填"的两步走。`rule_name()` 负责清洗规则名，确保生成的 GBNF 规则名合法（只含字母、数字、连字符）。
 
-### 49.5.6 内置 JSON 语法规则族：json_number/json_object/json 等
+### 48.5.6 内置 JSON 语法规则族：json_number/json_object/json 等
 
 builder 内置了完整的 JSON 和 Python 语法规则，展示了递归语法的构建范式。
 
@@ -702,7 +702,7 @@ common_peg_parser common_peg_parser_builder::json() {
 
 第①行的 `json_number()` 精心构造了整数、小数、指数三部分，第 6 行的 `not_number_continuation` 是点睛之笔：它是负向前瞻，确保数字后面不能紧跟 `[0-9.eE+-]` 中的字符。第②行的 `json_object()` 在成员定义中调用 `json()`——此时 `json()` 还没有被注册，但由于 `rule()` 的 lambda 版本会提前注册占位规则，`ref("json-value")` 在 `json()` 内部能查到占位，从而让"对象里嵌套对象"成为可能。第③行的 `json()` 是总入口，用 `choice` 把六种值类型并列；`json_object()` 和 `json_array()` 各自又引用 `json()`，形成完整的递归闭环。Python 语法家族（`python_dict`/`python_array`/`python_value` 等）结构完全对称，仅在布尔值（`True/False`）和空值（`None`）上有差异。
 
-### 49.5.7 聊天场景特化：marker() 与 json_member()
+### 48.5.7 聊天场景特化：marker() 与 json_member()
 
 `marker()` 识别 `<...>` 或 `[...]` 形式的标记，`json_member()` 生成固定键的 JSON 成员匹配。
 
@@ -727,7 +727,7 @@ common_peg_parser common_peg_parser_builder::json_member(const std::string & key
 
 `marker()` 用 `until(">")` 读取尖括号内的全部内容——`until` 不消费分隔符，所以外层再用 `literal(">")` 收尾。`json_member()` 则生成一个固定键的 JSON 成员匹配，键被直接拼进字面量，值部分由用户传入的解析器 `p` 决定。这两个函数在聊天 PEG 解析器里被用来构造工具调用和结构化输出的语法规则。
 
-### 49.5.8 构建收尾：set_root() 与 build()
+### 48.5.8 构建收尾：set_root() 与 build()
 
 构建的最后两步：设置根解析器、解析引用、移交 arena。
 
@@ -763,7 +763,7 @@ common_peg_arena build_peg_parser(const std::function<common_peg_parser(common_p
 
 外部代码只需传一个 lambda，里面用 builder API 搭建语法，返回根解析器。`build_peg_parser()` 负责创建 builder、设置根、解析引用、返回 arena。
 
-### 49.5.9 模块依赖图
+### 48.5.9 模块依赖图
 
 ```mermaid
 graph TD
@@ -798,9 +798,9 @@ graph TD
 
 构建器层依赖图：builder 是唯一构建入口，产出句柄只持有 ID，真正节点集中在 arena 的 variant 向量。执行时 executor 拿着 arena 和 AST arena 工作，trie 被 until_parser 用来做多分隔符探测。
 
-## 49.6 PEG 执行引擎与竞技场管理 —— 文本匹配的「裁判与档案馆」
+## 48.6 PEG 执行引擎与竞技场管理 —— 文本匹配的「裁判与档案馆」
 
-### 49.6.1 parser_executor 与 std::visit 分发机制
+### 48.6.1 parser_executor 与 std::visit 分发机制
 
 `parser_executor` 是执行引擎核心，通过 `std::visit` 对 variant 进行零开销类型分发。
 
@@ -821,7 +821,7 @@ std::string parser_executor::debug_indent() const {
 
 执行器持有 arena 引用、上下文引用、起始位置。`debug_indent()` 返回缩进字符串，配合 `ctx.parse_depth` 让调试输出直观体现递归层次。
 
-### 49.6.2 边界解析器：epsilon/start/end
+### 48.6.2 边界解析器：epsilon/start/end
 
 最简单的三种解析器，语义正交。
 
@@ -852,7 +852,7 @@ common_peg_parse_result parser_executor::operator()(const common_peg_end_parser 
 
 `epsilon` 是序列/选择的单位元。`start`/`end` 配合可实现"整串完全匹配"。
 
-### 49.6.3 字面量解析器：逐字节匹配与 lenient 支持
+### 48.6.3 字面量解析器：逐字节匹配与 lenient 支持
 
 源码路径：`common/peg-parser.cpp` - `operator()(literal)`（第 226-239 行）
 核心类：`parser_executor`
@@ -879,7 +879,7 @@ common_peg_parse_result parser_executor::operator()(const common_peg_literal_par
 
 逐字节比对。输入不足时：非 lenient 直接失败，lenient 返回 `NEED_MORE_INPUT` 并保留已消费位置 `pos`。字节不匹配立即失败——这是 PEG 有序选择的基石。
 
-### 49.6.4 序列与选择：PEG 的核心控制流语义
+### 48.6.4 序列与选择：PEG 的核心控制流语义
 
 序列：顺序执行，全或无。选择：有序尝试，首个成功即返。
 
@@ -932,7 +932,7 @@ common_peg_parse_result parser_executor::operator()(const common_peg_choice_pars
 
 序列的关键点：第 7 行任一子解析器失败即整体失败；第 10 行忠实累积 AST 节点；第 12 行流式提前返回（保留已产生的节点）；第 15 行推进位置。选择的关键点：第 7 行**有序选择**——严格按顺序尝试，**第一个成功的分支立即返回**，后续分支完全不尝试。这是 PEG 与 CFG 的根本区别：无歧义、无回溯、高效率。注意选择也会原样返回 `NEED_MORE_INPUT`，保持流式语义。
 
-### 49.6.5 重复与前瞻：零消耗保护与零消耗探测
+### 48.6.5 重复与前瞻：零消耗保护与零消耗探测
 
 重复解析器防零消耗死循环；前瞻解析器零消耗探测。
 
@@ -991,7 +991,7 @@ common_peg_parse_result parser_executor::operator()(const common_peg_not_parser 
 
 重复解析器第 8 行的 `result.end == pos` 检测是防死循环的关键：如果子解析器匹配了空串（如 `zero_or_more(space())` 在无空白时），位置不前进会导致无限循环。第 17 行检查最小次数，lenient 模式下若已到输入末尾则转为 `NEED_MORE_INPUT`。前瞻解析器位置始终保持 `start_pos`，实现零消耗探测。
 
-### 49.6.6 Unicode 感知的字符处理：any/chars/string
+### 48.6.6 Unicode 感知的字符处理：any/chars/string
 
 `any`/`chars`/`string` 都通过 `common_parse_utf8_codepoint` 逐码点推进。
 
@@ -1081,7 +1081,7 @@ static common_peg_parse_result handle_unicode_escape(common_peg_parse_context & 
 
 第①行 `any` 逐码点匹配，正确处理多字节字符。第②行 `chars` 遍历 `ranges` 判断码点归属，支持 `negated` 否定语义，`min_count`/`max_count` 控制重复。第③行 `string` 逐码点消费内容，遇到反斜杠委托 `handle_escape_sequence` 处理 `\\b/\\f/\\n/\\r/\\t/\\\\/\\"` 和 `\\uXXXX`。第④行 `handle_unicode_escape` 严格要求 4 个十六进制数字，任一不合法即失败；lenient 模式下输入中断则返回 `NEED_MORE_INPUT`。
 
-### 49.6.7 Trie 树与 until_parser：高效多分隔符探测
+### 48.6.7 Trie 树与 until_parser：高效多分隔符探测
 
 `trie` 类实现前缀树，`until_parser` 利用它同时监控多个分隔符。
 
@@ -1157,7 +1157,7 @@ graph LR
 
 Trie 流程图：三种状态各司其职，一个循环同时监控多个分隔符。
 
-### 49.6.8 语义包装与清理：rule/tag/atomic
+### 48.6.8 语义包装与清理：rule/tag/atomic
 
 规则与标签生成 AST 节点，atomic 清理半成品。
 
@@ -1200,7 +1200,7 @@ common_peg_parse_result parser_executor::operator()(const common_peg_atomic_pars
 
 `rule` 和 `tag` 都在子解析器不失败时，提取匹配文本并调用 `ctx.ast.add_node()` 打包成新节点，返回单元素节点列表。`atomic` 则相反：当子解析器返回 `NEED_MORE_INPUT` 时清空 `nodes`，只传递状态。这防止了流式场景下 `until` 等解析器产生的部分匹配节点污染上层 `rule`/`tag` 的语义完整性。
 
-### 49.6.9 引用解析：ref 与 resolve_refs()
+### 48.6.9 引用解析：ref 与 resolve_refs()
 
 `ref` 执行时查表跳转；`resolve_refs()` 构建期遍历替换。
 
@@ -1236,7 +1236,7 @@ void common_peg_arena::resolve_refs() {
 
 `ref` 执行时每次都要查表，`resolve_refs()` 在构建期一次性把所有 `ref` 替换为持有真实 ID 的 `rule_parser`，消除了运行时查表开销，也让递归规则的引用链彻底固化。`std::visit` 遍历所有 variant，对每种持有子节点的类型递归调用 `resolve_ref()`。
 
-### 49.6.10 AST 转储与解析器结构转储
+### 48.6.10 AST 转储与解析器结构转储
 
 `bfs_node()` 递归输出 AST，`dump_impl()` 递归输出解析器结构并检测循环。
 
@@ -1282,7 +1282,7 @@ std::string common_peg_arena::dump_impl(common_peg_parser_id id, std::unordered_
 
 `bfs_node()` 生成带缩进的树形文本，`rule`/`tag`/`text` 字段齐全。`dump_impl()` 用 `visited` 集合检测循环引用（递归规则会产生循环），遇到已访问 ID 返回 `[cycle]`，避免无限递归。
 
-### 49.6.11 GBNF 生成：从 PEG 到文法约束
+### 48.6.11 GBNF 生成：从 PEG 到文法约束
 
 `build_grammar()` 收集可达规则，递归生成 GBNF 文本。
 
@@ -1340,7 +1340,7 @@ void common_peg_arena::build_grammar(const common_grammar_builder & builder, boo
 
 `collect_reachable_rules()` 只输出"能被用到"的规则。`gbnf_escape_char_class()` 处理 GBNF 字符类的转义规范。`gbnf_excluding_pattern()` 利用 Trie 的前缀结构生成精确的排除模式，这是 `until` 语义在 BNF 里的等价表达。`build_grammar()` 内部的 `to_gbnf` lambda 递归把每种 PEG 解析器映射为 GBNF 元素，`lazy` 参数控制是否懒加载。
 
-### 49.6.12 JSON 序列化与反序列化：持久化解析器图
+### 48.6.12 JSON 序列化与反序列化：持久化解析器图
 
 `serialize_parser_variant`/`deserialize_parser_variant` 处理单个 variant，`to_json`/`from_json` 处理整体。
 
@@ -1404,7 +1404,7 @@ void common_peg_arena::load(const std::string & data) { *this = from_json(nlohma
 
 序列化的关键点：`chars` 类型必须保存 `ranges`（而非只存 `pattern`），因为 `parse_char_classes()` 重建不一定幂等（转义序列、特殊写法可能导致区间不同）。反序列化的四重校验保证了恢复后的 arena 内存安全：无悬空引用、无越界访问、根节点合法。
 
-### 49.6.13 字符类解析辅助：parse_hex_escape/parse_char_class_char/parse_char_classes
+### 48.6.13 字符类解析辅助：parse_hex_escape/parse_char_class_char/parse_char_classes
 
 这三个函数支撑 `chars()` 解析器从模式串构建区间向量。
 
@@ -1469,7 +1469,7 @@ static std::pair<std::vector<common_peg_chars_parser::char_range>, bool> parse_c
 
 `parse_hex_escape` 解析定长十六进制。`parse_char_class_char` 处理 `\\x`/`\\u`/`\\U` 及常见转义（`\\n`/`\\t`/`\\r`/`\\\\`/`\\]`/`\\[`），其他转义取字面字符。`parse_char_classes` 剥离方括号，识别开头 `^` 作为否定，然后逐字符解析：遇到 `-` 且后面有字符则收区间，否则收单字符。结果返回区间向量和否定标志，直接用于构造 `chars_parser`。
 
-### 49.6.14 __main__ 全局初始化
+### 48.6.14 __main__ 全局初始化
 
 模块级静态初始化，预构建内置语法并缓存。
 
@@ -1497,7 +1497,7 @@ namespace {
 
 `__main__` 在程序启动时自动执行。第①行 `static_assert` 确保 variant 是标准布局，这是 arena 的 vector 安全存放的前提。第②行预构建 JSON 和 Python 语法并缓存到全局 arena，避免每次解析重新构建。它与 `build_peg_parser()` 的调用顺序是：`__main__` 先执行（缓存内置语法），用户代码再调用 `build_peg_parser()` 构建自定义语法。
 
-### 49.6.15 解析执行时序图
+### 48.6.15 解析执行时序图
 
 ```mermaid
 sequenceDiagram
@@ -1530,7 +1530,7 @@ sequenceDiagram
 
 时序图展示完整调用链：构建期 `resolve_refs` 固化引用；运行期 `parse` 构造 executor，`std::visit` 分发执行，`until` 分支与 trie 交互，最终通过 AST arena 打包结果返回。
 
-## 49.7 设计中的取舍
+## 48.7 设计中的取舍
 
 **为什么用 `std::variant + std::visit`，而不是传统的虚函数多态？**
 
@@ -1556,49 +1556,49 @@ PEG 解析器会被高频调用。虚函数动态分发在每个节点产生间�
 
 核心取舍：**用"延迟失败"换"流式能力"**。非 lenient 下输入不足直接判死，语义简单但需整段就绪；lenient 下输入不足返回 `NEED_MORE_INPUT` 保留位置，等更多数据到达续跑。让解析器配合模型"边生成边解析"。代价是结果可能"不完整"，上层必须正确处理 `NEED_MORE_INPUT`。executor 里几乎每个 `operator()` 都有 `if (!ctx.is_lenient())` 分支，是这种取舍的直接体现。
 
-## 49.8 动手练习
+## 48.8 动手练习
 
-### 基础类型与 AST 练习
+### 48.8.1 基础类型与 AST 练习
 1. 阅读 `common/peg-parser.h` 第 1-105 行。编写代码：创建 `common_peg_parse_context`，设置 `flags = COMMON_PEG_PARSE_FLAG_DEBUG | COMMON_PEG_PARSE_FLAG_LENIENT`，手动向 `ctx.ast` 添加几个节点（不同 rule/tag），调用 `ast.dump()` 观察输出格式，再用 `ast.find_by_tag()` 和 `ast.find_by_rule()` 检索。
 2. 对比 `common_peg_ast_node` 的 `rule` 与 `tag` 字段：前者来自语法定义，后者来自开发者显式附加。在聊天场景下，哪个字段更适合标记"推理内容"？为什么？
 
-### 构建器与组合子练习
+### 48.8.2 构建器与组合子练习
 3. 阅读 `common/peg-parser.cpp` 第 1143-1213 行（sequence/choice 实现）与第 1286-1350 行（JSON 解析器构建）。
    - 思考：`sequence()` 和 `choice()` 为什么要「扁平化」？不扁平化会导致什么性能与结构问题？
    - 分析 `json_number()` 中的 `not_number_continuation` 解决了什么具体误匹配场景？
    - 实践：用 `rule()` 的 lambda 重载编写匹配成对括号（如 `((()))`）的递归规则，解释占位规则的工作机制。
 
-### 执行引擎练习
+### 48.8.3 执行引擎练习
 4. 阅读 `common/peg-parser.cpp` 第 183-541 行 `parser_executor` 的各个 `operator()` 重载。
    - 对比 `sequence` 与 `choice` 在子节点失败处理上的差异，解释为何体现 PEG「有序选择」特性。
    - 分析 `repetition` 中的 `if (result.end == pos) break;` 防死循环机制，说明何时出现零消耗匹配。
    - 解释 `atomic` 在 `NEED_MORE_INPUT` 时清空 `nodes` 的设计意图，不清理会导致什么后果？
 
-### Trie 与 until_parser 练习
+### 48.8.4 Trie 与 until_parser 练习
 5. 阅读第 46-77 行 `trie` 类实现，以及第 467-491 行 `until_parser` 执行逻辑。
    - `check_at()` 返回的三种状态分别对应 `until_parser` 中什么处理分支？
    - lenient 模式下，输入在分隔符中间被截断（如 `</tag>` 只收到 `</t`），解析器返回什么状态？为什么这样设计？
    - `handle_unicode_escape` 如何确保 `\\uXXXX` 严格性？输入 `\\u12` 且 `lenient=true` 时会发生什么？
 
-### 引用解析与序列化练习
+### 48.8.5 引用解析与序列化练习
 6. 阅读第 960-1006 行 `resolve_refs()` 和第 1841-1992 行 JSON 序列化相关。
    - `resolve_refs()` 为什么必须在 `build()` 阶段调用？若在构建过程中（如 `rule()` 内部）就解析引用，会遇到什么困难？
    - 序列化 `common_peg_chars_parser` 时需保存哪些字段？为什么 `ranges` 必须序列化？
    - `from_json()` 恢复 `rules_` 映射时做了哪些合法性校验？这些校验防止了什么内存安全问题？
 
-### AST 实战练习
+### 48.8.6 AST 实战练习
 7. 阅读 `common/peg-parser.h` 第 79-105 行 `common_peg_ast_arena` 接口，以及 `common/peg-parser.cpp` 第 951-958 行 `dump()` 实现。
    - 用 `build_peg_parser` 构建解析简单算术表达式（如 `1+2*3`）的解析器，要求包含 `rule()` 和 `tag()`。
    - 解析成功后，用 `ast.find_by_tag()` 查找特定标签节点，打印其文本区间（`node.text`）。
    - 开启调试模式（`ctx.flags |= COMMON_PEG_PARSE_FLAG_DEBUG`），观察 `parser_executor` 解析 `sequence` 时的日志输出，注意 `debug_indent()` 如何体现递归深度。
 
-### 模块初始化练习
+### 48.8.7 模块初始化练习
 8. 定位并阅读 `common/peg-parser.cpp` 中的 `__main__` 相关代码段。
    - `__main__` 承担了哪些初始化职责？与 `build_peg_parser()` 调用顺序有何关联？
    - 若将 `__main__` 初始化改为惰性加载，会对解析器的线程安全性产生什么影响？
    - 绘制 `__main__` 执行完成后的内存布局示意图，标注 arena、builder 和全局规则表的位置关系。
 
-## 49.9 本章小结
+## 48.9 本章小结
 
 本章系统学习了 llama.cpp 通用 PEG 解析器框架的完整设计与实现。
 

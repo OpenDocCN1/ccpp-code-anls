@@ -1,5 +1,5 @@
 
-# 第75章 聊天模板与结构化生成 —— 对话格式的「翻译官」
+# 第74章 聊天模板与结构化生成 —— 对话格式的「翻译官」
 
 ## 学习目标
 
@@ -10,11 +10,11 @@
 - 具备验证模板生成 PEG Parser / GBNF Grammar 合法性的工程能力
 - 能利用 7 种消息场景构建器系统测试模板的多模态、工具调用与推理链特性
 
-## 75.1 生活类比
+## 74.1 生活类比
 
 想象 llama.cpp 的聊天模板工具链是一家多语言翻译质量检测中心。debug-template-parser 就像一台 X 光透视仪，能够透过模板文件或 GGUF 模型的外壳，直接观察到内部的 Jinja 模板逻辑：它支持双通道加载，既能读取普通的 .jinja 文件，也能通过零拷贝方式从 GGUF 元数据中提取 tokenizer.chat_template；它内置了 7 种消息场景构造器，从纯文本回复到推理加工具调用的复合场景，覆盖了对话系统中可能出现的各种情况；render_scenario 函数负责将这些场景实际渲染，观察输出是否符合预期；prepare_params 则负责打包 autoparser 所需的参数，包括工具定义、推理格式和生成提示开关；最终，工具还能自动生成 PEG Parser 和 GBNF Grammar，并验证语法的合法性，就像为翻译设备检测其支持的语言规则手册。而 template-analysis 则像一台对比显微镜，专门用于横向对比不同模板的行为差异：diff_split 算法如同一支版本对比高亮笔，能够自动标出两个模板输出的公共前缀、公共后缀以及真正差异的部分；check_reasoning_variables 采用污染标记法，故意将 enable_thinking 等隐式变量设为 undefined，观察模板是否去查询它们，从而探测模板对隐式契约的依赖；9 组对照实验则构成了压力测试，分别调整工具数量、推理开关、多轮对话等参数，展示模板在不同配置下的输出变化。就像质检员需要同时检测单个耳机的音质和对比不同品牌耳机的差异，llama.cpp 也需要同时验证单个模板的渲染正确性和不同模板家族的行为一致性，确保 Llama、DeepSeek、Gemma 等不同"翻译官"都能准确理解用户的对话意图。
 
-## 75.2 源码地图
+## 74.2 源码地图
 
 ```
 tools/parser/debug-template-parser.cpp
@@ -100,7 +100,7 @@ tools/parser/template-analysis.cpp
 
 这段代码实现了单个场景的渲染，负责拼装消息、设置参数并调用模板引擎，同时处理异常，保证单个场景的失败不影响整体测试。
 
-### 75.7.2 render_all_scenarios()：批量场景执行器
+### 74.2.1 render_all_scenarios()：批量场景执行器
 
 源码路径：`tools/parser/debug-template-parser.cpp` - `render_all_scenarios()`（328-358行）
 
@@ -139,11 +139,11 @@ static void render_all_scenarios(const common_chat_template & tmpl,
 
 这段代码根据指定的消息类型批量调用 render_scenario，覆盖所有预定义场景，并额外测试生成提示场景，是模板渲染的调度中心。
 
-## 75.8 分析模式与语法生成 —— 模板的「结构化解剖报告」
+## 74.3 分析模式与语法生成 —— 模板的「结构化解剖报告」
 
 debug-template-parser 的分析模式采用双模分析引擎：先通过 common_chat_try_specialized_template() 检测是否有模型专用解析器（如 Llama-3、Gemma 等），若有则直接使用；否则走通用分析路径，由 autoparser::autoparser 深度分析模板 AST 结构。接着调用 peg_generator::generate_parser() 从模板反向推导 PEG 语法，输出三件套：Parser（解析规则）、Grammar（GBNF 语法）、Trigger（触发词）。最后通过 llama_grammar_init_impl() 将 GBNF 语法实例化为可执行语法对象，验证通过则输出「Grammar successfully created」，确保约束生成可用。
 
-### 75.8.1 prepare_params()：autoparser 参数打包
+### 74.3.1 prepare_params()：autoparser 参数打包
 
 源码路径：`tools/parser/debug-template-parser.cpp` - `prepare_params()`（360-375行）
 
@@ -169,15 +169,15 @@ static autoparser::generation_params prepare_params(const debug_options & opts, 
 
 这段代码将调试选项转换为 autoparser 所需的参数结构，包括消息、推理格式、工具选择等，是连接命令行开关与分析引擎的桥梁。
 
-### 75.8.2 main() 中的分析流程
+### 74.3.2 main() 中的分析流程
 
 在 Unit 75.3.2 的 main() 中，⑩-⑯ 步实现了分析模式：使用 autoparser::autoparser 分析模板，调用 peg_generator::generate_parser 生成 PEG 解析器和 GBNF 语法，最后通过 llama_grammar_init_impl 验证语法。分析模式输出包括解析器、语法、lazy grammar、触发器和保留 token，为模板的结构化输出提供约束基础。
 
-## 75.9 template-analysis：差异分析工具 —— 模板行为的「对比显微镜」
+## 74.4 template-analysis：差异分析工具 —— 模板行为的「对比显微镜」
 
 与 debug 工具的「深度体检」不同，template-analysis 专注于多模板的「横向对比」：它通过 ALL_TEMPLATE_PATHS 访问 llama.cpp 测试套件中的标准模板，支持 --template 模式匹配（如 deepseek）和 --template-file 自定义路径。其复用了与 debug 工具相同的 read_file() 和 print_usage() 确保一致性，核心价值在于通过 9 组对照实验和 diff_split 算法定位模板行为差异。
 
-### 75.9.1 read_file()：文件读取
+### 74.4.1 read_file()：文件读取
 
 源码路径：`tools/parser/template-analysis.cpp` - `read_file()`（62-70行）
 
@@ -195,7 +195,7 @@ static std::string read_file(const std::string & path) {
 
 与 debug 版本完全相同的文件读取逻辑，确保两个工具在模板加载上行为一致。
 
-### 75.9.2 print_usage()：帮助信息
+### 74.4.2 print_usage()：帮助信息
 
 源码路径：`tools/parser/template-analysis.cpp` - `print_usage()`（72-82行）
 
@@ -215,7 +215,7 @@ static void print_usage(const char * program_name) {
 
 打印分析工具的使用说明，支持模板匹配和自定义文件，使工具自文档化。
 
-### 75.9.3 parse_options()：参数解析
+### 74.4.3 parse_options()：参数解析
 
 源码路径：`tools/parser/template-analysis.cpp` - `parse_options()`（84-123行）
 
@@ -280,7 +280,7 @@ static bool parse_options(int argc, char ** argv, analysis_options & opts) {
 
 这段代码解析命令行，支持 --all、--template 模式匹配和 --template-file 自定义路径，为批量分析提供灵活的输入。
 
-### 75.9.4 main()：入口与批量分析
+### 74.4.4 main()：入口与批量分析
 
 源码路径：`tools/parser/template-analysis.cpp` - `main()`（380-398行）
 
@@ -313,11 +313,11 @@ int main(int argc, char ** argv) {
 
 程序入口负责解析参数，遍历所有指定模板并调用 analyze_template，最后输出完成信息，是批量分析的总调度。
 
-## 75.10 diff_split 差异算法 —— 文本对比的「精准手术刀」
+## 74.5 diff_split 差异算法 —— 文本对比的「精准手术刀」
 
 diff_split 算法将两段文本的差异分解为三部分：Common Prefix（最长公共前缀）找到「从哪开始不同」，Common Suffix（最长公共后缀）找到「到哪里恢复相同」，Left/Right Diff 则是中间真正不同的核心差异部分。print_diff_split() 使用 ANSI 颜色编码：前缀紫色、后缀青色、左差异绿色、右差异橙色，以标题 + 三行数据的格式清晰展示。这种设计在对比「with_tools=true vs false」或「enable_reasoning=true vs false」时尤为有效，能迅速定位模板行为的变化点。
 
-### 75.10.1 print_diff_split()：差异可视化
+### 74.5.1 print_diff_split()：差异可视化
 
 源码路径：`tools/parser/template-analysis.cpp` - `print_diff_split()`（222-229行）
 
@@ -333,11 +333,11 @@ static void print_diff_split(const std::string & title, const diff_split & diff)
 
 这段代码以彩色方式输出差异分析结果，包括公共前缀、后缀和左右差异，便于快速定位模板行为的不同，是 template-analysis 的核心可视化工具。
 
-## 75.11 推理变量探测 —— 模板「隐式依赖」的探测器
+## 74.6 推理变量探测 —— 模板「隐式依赖」的探测器
 
 模板开发者不知道 llama.cpp 会注入哪些变量（如 enable_thinking、add_generation_prompt），这些「隐式契约」缺失会导致运行时错误。check_reasoning_variables() 采用污染标记法：先开启 jinja::context 的 is_get_stats 统计变量访问，然后将候选变量设为 undefined 值，执行模板后检查哪些变量被标记为 used。如果模板查询了 enable_thinking，说明它支持思维链开关；如果未查询任何推理变量，则说明它是「简单模板」。这种方法能捕获包括防御性写法在内的隐式访问，比静态解析 AST 更稳健。
 
-### 75.11.1 check_reasoning_variables()：污染标记探测法
+### 74.6.1 check_reasoning_variables()：污染标记探测法
 
 源码路径：`tools/parser/template-analysis.cpp` - `check_reasoning_variables()`（231-270行）
 
@@ -388,11 +388,11 @@ static void check_reasoning_variables(const common_chat_template & tmpl) {
 
 这段代码通过污染标记法探测模板是否依赖隐式推理变量，利用 jinja::context 的统计功能记录变量访问，从而揭示模板的隐式契约，是模板兼容性分析的关键技术。
 
-## 75.12 测试消息构造器家族 —— 对话场景的「标准化试题库」
+## 74.7 测试消息构造器家族 —— 对话场景的「标准化试题库」
 
 template-analysis 的消息构造器比 debug 版本更丰富：用户消息有三兄弟（make_user_msg、make_user_msg2、make_user_msg2_continue），助手消息覆盖无工具、单工具、双工具、无推理、带推理、推理+工具复合等多种变体。工具调用通过 build_tool_call() 标准化构造，支持自定义函数名、参数和 ID；工具定义 build_tools_definition() 采用双参数必填的 Schema，测试 required 字段处理。这些构造器为 9 组对照实验提供了标准化的输入。
 
-### 75.12.1 build_tool_call()：标准化工具调用构造
+### 74.7.1 build_tool_call()：标准化工具调用构造
 
 源码路径：`tools/parser/template-analysis.cpp` - `build_tool_call()`（142-149行）
 
@@ -411,7 +411,7 @@ static json build_tool_call(const std::string & name, const json & args_object, 
 
 构造符合 OpenAI 格式的工具调用对象，支持自定义函数名、参数和 ID，是工具调用场景的基础构件。
 
-### 75.12.2 make_user_msg()：第一条用户消息
+### 74.7.2 make_user_msg()：第一条用户消息
 
 源码路径：`tools/parser/template-analysis.cpp` - `make_user_msg()`（152-157行）
 
@@ -426,7 +426,7 @@ static json make_user_msg() {
 
 创建标准的用户提问消息，作为多轮对话的起点。
 
-### 75.12.3 make_user_msg2()：第二条用户消息
+### 74.7.3 make_user_msg2()：第二条用户消息
 
 源码路径：`tools/parser/template-analysis.cpp` - `make_user_msg2()`（159-164行）
 
@@ -441,7 +441,7 @@ static json make_user_msg2() {
 
 创建第二轮用户消息，用于多轮对话测试。
 
-### 75.12.4 make_user_msg2_continue()：继续对话用户消息
+### 74.7.4 make_user_msg2_continue()：继续对话用户消息
 
 源码路径：`tools/parser/template-analysis.cpp` - `make_user_msg2_continue()`（166-171行）
 
@@ -456,7 +456,7 @@ static json make_user_msg2_continue() {
 
 创建继续对话的用户消息，测试模板的续写能力。
 
-### 75.12.5 make_assistant_no_tool()：无工具助手回复
+### 74.7.5 make_assistant_no_tool()：无工具助手回复
 
 源码路径：`tools/parser/template-analysis.cpp` - `make_assistant_no_tool()`（173-178行）
 
@@ -471,7 +471,7 @@ static json make_assistant_no_tool() {
 
 创建不包含工具调用的助手回复，用于基础模板行为测试。
 
-### 75.12.6 make_assistant_one_tool()：单工具调用助手
+### 74.7.6 make_assistant_one_tool()：单工具调用助手
 
 源码路径：`tools/parser/template-analysis.cpp` - `make_assistant_one_tool()`（180-187行）
 
@@ -489,7 +489,7 @@ static json make_assistant_one_tool() {
 
 创建包含单次工具调用的助手消息，测试模板对单个工具调用的渲染。
 
-### 75.12.7 make_assistant_two_tools()：双工具调用助手
+### 74.7.7 make_assistant_two_tools()：双工具调用助手
 
 源码路径：`tools/parser/template-analysis.cpp` - `make_assistant_two_tools()`（189-196行）
 
@@ -508,7 +508,7 @@ static json make_assistant_two_tools() {
 
 创建包含两次并行工具调用的助手消息，测试模板对工具数组的处理能力。
 
-### 75.12.8 make_assistant_no_reasoning()：无推理助手回复
+### 74.7.8 make_assistant_no_reasoning()：无推理助手回复
 
 源码路径：`tools/parser/template-analysis.cpp` - `make_assistant_no_reasoning()`（198-203行）
 
@@ -523,7 +523,7 @@ static json make_assistant_no_reasoning() {
 
 创建不包含推理内容的简洁助手回复，用于对比带推理的模板行为。
 
-### 75.12.9 make_assistant_with_reasoning()：带推理助手回复
+### 74.7.9 make_assistant_with_reasoning()：带推理助手回复
 
 源码路径：`tools/parser/template-analysis.cpp` - `make_assistant_with_reasoning()`（205-211行）
 
@@ -539,7 +539,7 @@ static json make_assistant_with_reasoning() {
 
 创建带有 reasoning_content 的助手回复，模拟思维链场景。
 
-### 75.12.10 make_assistant_one_tool_with_reasoning()：推理+工具复合
+### 74.7.10 make_assistant_one_tool_with_reasoning()：推理+工具复合
 
 源码路径：`tools/parser/template-analysis.cpp` - `make_assistant_one_tool_with_reasoning()`（213-220行）
 
@@ -558,7 +558,7 @@ static json make_assistant_one_tool_with_reasoning() {
 
 创建同时包含工具调用和推理内容的助手消息，模拟复杂决策场景。
 
-### 75.12.11 build_tools_definition()：工具 Schema 定义
+### 74.7.11 build_tools_definition()：工具 Schema 定义
 
 源码路径：`tools/parser/template-analysis.cpp` - `build_tools_definition()`（125-139行）
 
@@ -588,11 +588,11 @@ static json build_tools_definition() {
 
 构造双参数必填的工具定义，用于测试 required 字段处理，是工具调用测试的标准输入。
 
-## 75.13 能力检测与批量分析 —— 模板家族的「全面体检」
+## 74.8 能力检测与批量分析 —— 模板家族的「全面体检」
 
 analyze_template() 是 template-analysis 的核心流程：先读取模板文件并构造 common_chat_template，然后通过 jinja::caps 检测模板的标准化能力（supports_tools、supports_tool_calls、supports_reasoning 等），接着执行 9 组对照实验，分别调整工具数量、推理开关、多轮对话、系统提示词等参数，每组实验输出配置 A vs 配置 B 的差异对比并自动归类变化模式，最后调用 check_reasoning_variables() 探测隐式变量依赖。配合 --all 模式遍历所有内置模板，可生成「模板兼容性报告」，为模板选型和调试提供数据支持。
 
-### 75.13.1 analyze_template()：单模板深度分析
+### 74.8.1 analyze_template()：单模板深度分析
 
 源码路径：`tools/parser/template-analysis.cpp` - `analyze_template()`（272-378行）
 
@@ -633,7 +633,7 @@ static void analyze_template(const std::string & template_path) {
 
 这段代码执行单模板的深度分析，包括能力检测、9 组对照实验和推理变量探测，输出详细的差异报告，是模板分析的主入口。
 
-## 75.14 设计中的取舍
+## 74.9 设计中的取舍
 
 为什么 debug-template-parser 要同时支持普通文件和 GGUF 两种加载方式？因为聊天模板可能存储在不同的位置：有些模型以 .jinja 文件单独提供，有些则直接嵌入 GGUF 文件的元数据中。为了覆盖这两种常见场景，工具需要双通道加载。GGUF 加载采用 no_alloc=true 的零拷贝方式，只读取元数据而不加载权重，避免了大模型文件带来的内存开销，但这也意味着它无法处理需要张量数据的场景，因此对于普通文件，直接读取是更简单高效的方案。
 
@@ -643,7 +643,7 @@ template-analysis 中 diff_split 算法为什么要分别计算 Common Prefix �
 
 为什么工具集成了 PEG Parser 和 GBNF Grammar 两种语法表示？PEG Parser 用于运行时解析模型输出，将非结构化文本转为结构化数据；GBNF Grammar 则用于采样阶段约束 token 生成，确保输出符合语法。两者相辅相成：PEG 负责"理解"，GBNF 负责"约束"，共同构成结构化输出的完整闭环。但这也带来了额外的复杂度，需要工具同时验证两者的合法性，对于简单模板可能过度设计，但对于需要严格结构化输出的场景是必要的。
 
-## 75.15 动手练习
+## 74.10 动手练习
 
 1. **GGUF 模板提取与验证**
    - 使用 debug-template-parser 工具分析一个真实 GGUF 模型文件中的聊天模板：
@@ -711,7 +711,7 @@ template-analysis 中 diff_split 算法为什么要分别计算 Common Prefix �
      - 为什么需要同时验证 PEG Parser 和 GBNF Grammar？它们在结构化输出中分别扮演什么角色？
      - 如果某个模板在 `analysis` 模式下正常但在 `template` 模式下渲染失败，可能的原因是什么？
 
-## 75.16 本章小结
+## 74.11 本章小结
 
 这一章中我们学习了聊天模板调试工具链，首先了解了 debug-template-parser 的整体架构和双模式分析能力，然后深入了模板加载、命令行解析、消息构造、渲染引擎和分析模式；接着切换到 template-analysis 工具，掌握了 diff_split 算法、推理变量探测、消息构造器家族和批量分析流程。通过这些工具，我们能够验证单模板的渲染正确性和多模板的行为一致性，确保 Llama、DeepSeek、Gemma 等不同模型都能准确理解用户的对话意图。
 

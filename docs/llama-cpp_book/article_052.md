@@ -1,6 +1,6 @@
 
 
-# 第5章 模型下载体系 —— 智能物流调度中心的四车道高速公路
+# 第52章 模型下载体系 —— 智能物流调度中心的四车道高速公路
 
 ## 学习目标
 
@@ -15,11 +15,11 @@
 - 理解 HF API 交互层：统一 `api_get` 封装、分支解析、文件树递归获取、本地 refs 读取与离线缓存扫描
 - 了解缓存落盘与旧版迁移：符号链接三级降级策略、manifest 解析、逐文件校验收集与迁移执行
 
-## 生活类比
+## 52.1 生活类比
 
 想象 llama.cpp 的模型下载系统是一家智能物流调度中心。下载抽象层（`download.h`）就像货运总柜台，统一受理 Hugging Face 专线、URL 直送、Docker 集装箱三种托运单；ETag 缓存好比快递单号比对，已签收过的包裹不再重复取件；断点续传（Range 请求）犹如搬家中途休息，记住已搬到第几箱，下次接着搬；ProgressBar 则是多条流水线的电子看板，同时显示多个包裹的配送进度；mmproj 配对就像为相机选配镜头，同品牌、焦距越接近越好；HF 缓存目录是标准化仓库货架，统一编码为 `models--user--repo`；`finalize_file` 是包裹上架策略，优先挂链接牌→同区搬运→跨区快递；旧版迁移则像老仓库改造，先验货、再搬入新货架、最后撕旧标签。就像物流中心需要处理多种运输方式、确保包裹安全送达、管理库存货架，llama.cpp 的下载系统也需要统一调度多种模型来源、保证文件完整性、管理本地缓存。本章后续各单元都会回到这个类比：下载引擎是「搬运工」，进度条是「电子看板」，GGUF 选择是「智能导购」，缓存管理是「仓库货架」，而整个调度中心的核心，就是把异构输入统一转化为「本地文件路径 + 可选 mmproj 路径」的输出。
 
-## 源码地图
+## 52.2 源码地图
 
 ```
 common/download.h
@@ -122,7 +122,7 @@ common/hf-cache.cpp
     └── migrate_old_cache_to_hf_cache()# 主迁移流程（manifest解析/校验/迁移）
 ```
 
-## 5.1 下载体系总览 —— 模型到家的「四车道高速公路」
+## 52.3 下载体系总览 —— 模型到家的「四车道高速公路」
 
 在日常物流中，一个高效的调度中心需要统一受理各种托运单，将其转化为具体的搬运任务。llama.cpp 的下载体系正是这样一个调度中心：用户通过命令行指定模型来源时，面临的是一个碎片化的输入集合——可以是从 Hugging Face 仓库按 `user/repo:tag` 拉取，可以是一个直连 URL，甚至可以是 Docker Registry 上的 OCI 镜像。下载体系的核心任务，就是把这些异构的输入统一抽象为「本地文件路径 + 可选 mmproj 路径」的输出，让上层推理逻辑无需感知来源差异。`common/download.h` 作为这一层的门面，以纯函数声明的形式暴露能力，把网络传输的复杂性封装在 `download.cpp` 内部。对于调度中心的调度员来说，这个抽象层就像货运总柜台：托运人只需提交「收货地址」（模型参数），柜台内部再决定走专线、直送还是集装箱，最终通知你「货已到架」。
 
@@ -137,7 +137,7 @@ graph LR
     G --> H[本地文件 + mmproj 路径]
 ```
 
-### 5.1.1 __main__：头文件公共类型别名与前置声明
+### 52.3.1 __main__：头文件公共类型别名与前置声明
 
 源码路径：`common/download.h` 第 1–6 行（`__main__` 区域，含头文件守卫与类型别名定义）
 
@@ -157,7 +157,7 @@ using common_header_list = std::vector<common_header>;
 
 这段代码定义了下载模块的公共类型别名与前置声明，是整个下载体系对外暴露的最小依赖面。`#pragma once` 保证头文件只被编译一次；两个 `using` 别名把「字符串对」与「字符串对向量」统一为 `common_header` 与 `common_header_list`，使上层调用者可以在不依赖具体 HTTP 库的情况下传递自定义头信息；前置声明 `common_params_model` 则避免下载头文件连锁拉取整个参数模型定义，起到降低编译耦合的作用。
 
-### 5.1.2 common_cached_model_info：缓存模型 DTO
+### 52.3.2 common_cached_model_info：缓存模型 DTO
 
 源码路径：`common/download.h` 第 22–26 行（结构体定义与 `to_string()` 成员函数）
 
@@ -175,7 +175,7 @@ struct common_cached_model_info {
 
 这个 DTO（Data Transfer Object）把缓存中的模型信息封装成一个轻量结构，`to_string()` 输出的 `repo:tag` 字符串既用于日志展示，也用于命令行 `--list-models` 的输出格式，方便用户快速识别已缓存的模型版本。
 
-### 5.1.3 common_download_model：统一下载入口
+### 52.3.3 common_download_model：统一下载入口
 
 源码路径：`common/download.h` 第 47–52 行（函数声明，含默认参数）
 
@@ -193,7 +193,7 @@ common_download_model_result common_download_model(
 
 这个声明是整个下载体系的「总开关」。它隐藏了 HF 仓库、URL、Docker Registry 三种来源的差异，让上层的 `common_params_handle_model` 只需调用这一个函数即可完成模型就位，是上层逻辑与底层下载细节之间的关键抽象边界。对调度中心而言，这个声明就是总柜台的受理窗口：托运人不必关心内部走哪条车道。
 
-### 5.1.4 下载体系架构图：三路来源的汇聚与分发
+### 52.3.4 下载体系架构图：三路来源的汇聚与分发
 
 下图从架构分层角度展示下载体系的依赖关系：用户输入的三种异构来源经 `download.h` 统一抽象后，由 `download.cpp` 内部的 HF 集成、URL 引擎、Docker Registry 解析三条路径分别处理，最终都汇聚到 `common_download_file_single` 这个单文件落地函数，输出为「本地文件路径 + 可选 mmproj 路径」的统一结果。
 
@@ -211,11 +211,11 @@ graph TD
     G --> I[ProgressBar 进度看板]
 ```
 
-## 5.2 HTTP 基础设施 —— 网络世界的「翻译与安全官」
+## 52.4 HTTP 基础设施 —— 网络世界的「翻译与安全官」
 
 在生活的海关口岸，翻译官负责将不同语言的报关单转换为标准格式，安全官则确保敏感信息不被泄露。下载体系的底层依赖 HTTP 客户端，`common/http.h` 提供的 URL 解析、客户端工厂与安全显示三大工具，构成了所有网络交互的公共底座。URL 解析不仅拆分 scheme/host/port，还要处理 `user:pass@host` 形式的认证信息，并为 HTTP/HTTPS 自动补全默认端口。客户端工厂在编译时检测 OpenSSL 支持，避免运行时才发现 HTTPS 不可用。安全显示函数则在所有日志输出中把凭据替换为 `****:****@`，防止 token 泄露。对调度中心来说，这套基础设施就像口岸的翻译与安检通道：不管报关单来自哪个国家（哪种 scheme），都要翻译成标准格式，且任何敏感字段都要脱敏后才能进日志。
 
-### 5.2.1 common_http_url：URL 解析结果结构体
+### 52.4.1 common_http_url：URL 解析结果结构体
 
 源码路径：`common/http.h` 第 8–14 行（结构体定义）
 
@@ -233,7 +233,7 @@ struct common_http_url {
 
 这个结构体把 URL 字符串拆解为语义化的字段，供 `common_http_client` 等函数使用。例如客户端工厂会根据 `scheme` 和 `host` 构造 `httplib::Client` 实例，而 `common_http_show_masked_url` 只读取 `user` 是否为空来决定是否拼接掩码段。
 
-### 5.2.2 common_http_parse_url()：URL 语义解析
+### 52.4.2 common_http_parse_url()：URL 语义解析
 
 源码路径：`common/http.h` 第 15–68 行
 
@@ -295,7 +295,7 @@ static common_http_url common_http_parse_url(const std::string & url) {
 
 这段代码把一个完整的 URL 字符串分解为语义化的 `common_http_url` 结构体。它依次处理了 scheme 校验（只允许 http/https）、认证段提取（`user:pass@`）、主机与路径分割、端口补全（http→80、https→443）四个步骤，正确应对了无 path、无端口、无认证等边界情况，每一步失败都抛出带上下文的异常，方便上层定位问题。
 
-### 5.2.3 common_http_client()：客户端工厂
+### 52.4.3 common_http_client()：客户端工厂
 
 源码路径：`common/http.h` 第 70–96 行
 
@@ -332,7 +332,7 @@ static std::pair<httplib::Client, common_http_url> common_http_client(const std:
 
 这个工厂函数把 URL 解析、客户端构造与 HTTPS 兼容性检查封装在一起。它在编译期通过 `CPPHTTPLIB_OPENSSL_SUPPORT` 宏判断 HTTPS 能力，避免运行时才发现无法建立 TLS 连接；`set_follow_location(true)` 使客户端自动跟随 CDN 重定向；Basic Auth 仅在 URL 包含认证信息时设置。下载逻辑只需调用一次即可获得可用的 HTTP 客户端，避免了在多个调用点重复编写样板代码。
 
-### 5.2.4 common_http_show_masked_url()：安全显示
+### 52.4.4 common_http_show_masked_url()：安全显示
 
 源码路径：`common/http.h` 第 98–100 行
 
@@ -346,7 +346,7 @@ static std::string common_http_show_masked_url(const common_http_url & parts) {
 
 所有涉及 URL 的日志输出都经过这个函数处理，确保用户的 HF token 或 Basic Auth 凭据不会出现在终端历史、日志文件或 CI 输出中。它根据 `parts.user` 是否为空决定是否拼接掩码段，既不泄露用户名，也不泄露密码，是保障用户隐私的重要防线。
 
-### 5.2.5 HTTP 基础设施流程图：URL 到客户端的完整转换链路
+### 52.4.5 HTTP 基础设施流程图：URL 到客户端的完整转换链路
 
 下图展示从输入 URL 字符串到构造可用 HTTP 客户端的完整流程，清晰标注了 scheme 校验、认证提取、端口补全与 HTTPS 检测四个关键决策点。
 
@@ -375,11 +375,11 @@ flowchart TD
     T --> U[返回 Client + parts]
 ```
 
-## 5.3 单文件下载引擎 —— 带断点续传的「可靠搬运工」
+## 52.5 单文件下载引擎 —— 带断点续传的「可靠搬运工」
 
 快递行业中，搬运工不仅要把包裹送到，还要应对中途抛锚、地址变更等意外。下载体系的核心是单文件下载，`common/download.cpp` 中的 `write_file`、`write_etag`、`read_etag`、`is_http_status_ok` 构成了可靠写入与 ETag 缓存的基础；`common_pull_file` 与 `common_download_file_single_online` 则实现了完整的流式下载、断点续传与重试逻辑。对调度中心而言，这个下载引擎就像一位经验丰富的搬运工：随时记住已搬到第几箱（断点续传），看到快递单号没变就直接签收（ETag 304 协商），中途抛锚还能换车道重试，而且 always 把包裹放进临时托盘再整体上架，确保不会出现「半个包裹」。
 
-### 5.3.1 write_file()：临时文件 + 原子重命名
+### 52.5.1 write_file()：临时文件 + 原子重命名
 
 源码路径：`common/download.cpp` 第 39–66 行
 
@@ -411,7 +411,7 @@ static void write_file(const std::string & fname, const std::string & content) {
 
 这个模式确保即使写入过程中崩溃，目标文件也不会被污染——要么完整的新文件，要么保持旧文件不变，代价仅仅是多了一次文件系统调用。对搬运工来说，这就是「先放托盘、再上架」的规矩：托盘没摆好，货架不动。
 
-### 5.3.2 write_etag() / read_etag()：ETag 缓存读写
+### 52.5.2 write_etag() / read_etag()：ETag 缓存读写
 
 源码路径：`common/download.cpp` 第 68–88 行
 
@@ -446,7 +446,7 @@ static std::string read_etag(const std::string & path) {
 
 这两个函数与 `write_file` 配合，把远端 ETag 落到本地文件系统，为后续的 HTTP 304 协商提供依据。`.etag` 文件与目标文件同名、仅后缀不同，读写逻辑都做了防御性处理：文件缺失、打开失败一律返回空字符串，交由上层按「需要重新下载」处理，避免异常传播中断下载流程。
 
-### 5.3.3 is_http_status_ok()：状态码判定
+### 52.5.3 is_http_status_ok()：状态码判定
 
 源码路径：`common/download.cpp` 第 90–92 行
 
@@ -459,7 +459,7 @@ static bool is_http_status_ok(int status) {
 
 这个简单判定避免了在多个调用点重复书写状态码范围判断，增强了代码的可读性与一致性。它把 2xx 与 3xx 统一视为「OK」，正好与客户端工厂已开启的 `follow_location` 行为相呼应：重定向已由库自动跟随，最终落在这两个区间的响应都代表内容可用。
 
-### 5.3.4 common_pull_file()：流式下载与断点续传
+### 52.5.4 common_pull_file()：流式下载与断点续传
 
 源码路径：`common/download.cpp` 第 137–207 行
 
@@ -503,7 +503,7 @@ static bool common_pull_file(httplib::Client & cli,
 
 这个函数把「请求-流式写入-进度感知」封装在一个接口内，供上层多次重试复用，是下载引擎的心脏。它的关键设计点有三：以 `std::ios::app` 追加模式打开临时文件，保证重试时不会覆盖已下载的字节；通过 `supports_ranges && existing_size > 0` 条件判断是否发送 `Range` 请求头；响应体经由 lambda 回调逐块写入，避免大文件下载时内存暴涨。对搬运工而言，这就是「记住从第几箱开始搬，边搬边往托盘里放，搬完核对单据」的标准动作。
 
-### 5.3.5 common_download_file_single_online()：在线下载完整流程
+### 52.5.5 common_download_file_single_online()：在线下载完整流程
 
 源码路径：`common/download.cpp` 第 209–348 行
 
@@ -562,7 +562,7 @@ static int common_download_file_single_online(const std::string & url,
 
 这个函数把「HEAD 检查 → ETag 协商 → 断点续传 → 重试」完整链路封装在一起，是单文件在线下载的对外接口。它先用 HEAD 请求获取远端元信息与 ETag，若本地文件已存在且 ETag 匹配则直接返回 304（对应快递单号未变、包裹已签收的场景）；否则以 `.tmp` 为后缀的临时文件为目标，最多重试 3 次，每次通过 `common_pull_file` 流式下载并携带 `Range` 头实现断点续传；成功后用 `rename` 把临时文件原子替换为目标文件，并写入新的 `.etag` 缓存。整个流程对上层屏蔽了网络传输的全部细节。
 
-### 5.3.6 common_download_file_single()：离线/在线路由
+### 52.5.6 common_download_file_single()：离线/在线路由
 
 源码路径：`common/download.cpp` 第 386–404 行
 
@@ -588,7 +588,7 @@ int common_download_file_single(const std::string & url,
 
 这个路由函数让上层逻辑无需感知网络状态，统一通过 `offline` 开关控制行为。离线模式下它不发起任何网络请求，仅检查本地文件是否存在：存在返回 304（表示「已就绪」），不存在返回 -1。对调度中心来说，这就像「仓库已封网，只查本地货架」的应急模式。
 
-### 5.3.7 单文件下载时序图：HEAD → ETag → 续传 → 落盘
+### 52.5.7 单文件下载时序图：HEAD → ETag → 续传 → 落盘
 
 下图以时序图形式展示在线下载的完整交互链路，清晰标注了 HEAD 元数据检查、ETag 缓存判断、流式下载与原子重命名四个阶段。
 
@@ -614,11 +614,11 @@ sequenceDiagram
     end
 ```
 
-## 5.4 进度条系统 —— 终端里的「多任务仪表盘」
+## 52.6 进度条系统 —— 终端里的「多任务仪表盘」
 
 在繁忙的物流中心，多条流水线同时作业，需要一块电子看板实时显示每个包裹的配送进度。并发下载多个分片文件时，单行进度条无法胜任。`ProgressBar` 类基于静态成员 `lines` 与 `max_line` 管理所有活跃进度条的行号映射，利用 ANSI 转义序列实现多行刷新。构造函数从 URL 提取并截断文件名（UTF-8 安全，最多 40 字符），析构时释放行号。拷贝构造与拷贝赋值被显式 delete，防止两个实例共享同一行号导致竞态。对调度中心的监控员来说，这个进度条系统就是那块电子看板：多条流水线各自独立刷新，互不遮挡，完成即熄灭。
 
-### 5.4.1 ProgressBar()：构造与文件名截断
+### 52.6.1 ProgressBar()：构造与文件名截断
 
 源码路径：`common/download.cpp` 第 74–92 行
 
@@ -649,7 +649,7 @@ ProgressBar(const std::string & url = "") : filename(url) {
 
 这个构造函数确保进度条中显示的文件名既美观又不会因过长而破坏终端布局。它依次完成三件事：从 URL 尾部提取纯文件名、剔除查询参数、按 UTF-8 字符边界截断至最多 40 个字符（39 个可见字符 + 省略号）。截断时通过 `(filename[i] & 0xC0) != 0x80` 判断当前字节是否为多字节字符的后续字节，避免在汉字、emoji 等多字节字符中间截断导致乱码。
 
-### 5.4.2 ~ProgressBar()：析构与行号清理
+### 52.6.2 ~ProgressBar()：析构与行号清理
 
 源码路径：`common/download.cpp` 第 94–97 行
 
@@ -665,7 +665,7 @@ ProgressBar(const std::string & url = "") : filename(url) {
 
 析构函数确保进度条生命周期结束时，其占用的行号被正确释放。它通过 `std::lock_guard` 加锁保护共享状态，避免多线程环境下析构与 `update()` 并发修改行号映射。对电子看板而言，这就是流水线完工后熄灭对应的指示灯，把位置留给下一条待命的流水线。
 
-### 5.4.3 update()：ANSI 转义多行刷新
+### 52.6.3 update()：ANSI 转义多行刷新
 
 源码路径：`common/download.cpp` 第 99–132 行
 
@@ -712,7 +712,7 @@ void update(size_t current, size_t total) {
 
 这个绘制算法确保多个进度条在终端中各自独立刷新，不会互相覆盖。其核心技巧是：首次更新时分配一个递增的行号并输出换行预留空间；每次刷新时先用 `\033[N A` 上移光标到目标行，输出完成后用 `\033[N B` 下移回原位；行尾用 `\033[K` 清除残留，避免上次进度条更长时留下脏字符。完成时（`current == total`）立即释放行号，让后续任务复用。
 
-### 5.4.4 禁用拷贝语义
+### 52.6.4 禁用拷贝语义
 
 源码路径：`common/download.cpp` 第 134–135 行
 
@@ -725,7 +725,7 @@ ProgressBar & operator=(const ProgressBar &) = delete;
 
 `ProgressBar` 类管理着全局共享的行号映射 `lines`，如果允许拷贝，两个实例将持有相同的行号，导致一个进度条刷新时另一个也被覆盖，终端输出就会出现错行与闪烁。显式 delete 拷贝操作后，编译器会在编译期捕获此类误用，避免了运行时难以调试的并发问题。这种「编译期拦截」的设计理念，正是电子看板系统可靠性的第一道防线。
 
-### 5.4.5 进度条多行刷新时序图
+### 52.6.5 进度条多行刷新时序图
 
 下图展示多个 `ProgressBar` 实例在共享静态状态下的刷新时序，标注了行号分配、光标跳跃与行号释放的完整生命周期。
 
@@ -753,11 +753,11 @@ sequenceDiagram
     PB2->>SH: 完成时释放行号 1
 ```
 
-## 5.5 GGUF 分片与选择策略 —— 模型文件的「智能导购」
+## 52.7 GGUF 分片与选择策略 —— 模型文件的「智能导购」
 
 大型商超中，商品按品类分区陈列，方便顾客快速找到所需物品。Hugging Face 上的大模型常被切分为多个 GGUF 分片（如 `model-00001-of-00008.gguf`）。下载体系提供了一组函数来解析分片命名、归拢同组文件、甄别主模型与 mmproj，并按量化优先级自动选择最佳文件。对调度中心的库管员来说，这套策略就像一位智能导购：从琳琅满目的货架（仓库文件列表）中，按量化标签优先级挑出最合适的主模型，并为多模态模型自动配对最匹配的投影器。
 
-### 5.5.1 get_gguf_split_info()：分片命名解析
+### 52.7.1 get_gguf_split_info()：分片命名解析
 
 源码路径：`common/download.cpp` 第 412–443 行
 
@@ -794,7 +794,7 @@ static gguf_split_info get_gguf_split_info(const std::string & path) {
 
 这个函数把文件名字符串分解为结构化的 `gguf_split_info`，使得上层逻辑可以轻松判断是否为分片文件，并获取其序号与总数。正则 `^(.+)-([0-9]{5})-of-([0-9]{5})$` 精确匹配 5 位数字的分片编号格式，不区分大小写；非分片文件（如单文件模型）去除后缀后匹配失败，返回 `index=1, count=1` 的默认结构，保证后续逻辑统一处理。
 
-### 5.5.2 extract_quant_bits()：量化位数提取
+### 52.7.2 extract_quant_bits()：量化位数提取
 
 源码路径：`common/download.cpp` 第 445–455 行
 
@@ -814,7 +814,7 @@ static int extract_quant_bits(const std::string & filename) {
 
 量化位数是衡量模型精度与体积之间平衡的关键指标。在 mmproj 配对时，它作为相似度度量的一部分：两个文件的量化位数越接近，越认为它们是「同品牌、同焦距」的配套镜头。
 
-### 5.5.3 get_split_files()：同组分片归队
+### 52.7.3 get_split_files()：同组分片归队
 
 源码路径：`common/download.cpp` 第 457–474 行
 
@@ -841,7 +841,7 @@ static hf_cache::hf_files get_split_files(const hf_cache::hf_files & files,
 
 这个函数确保下载计划中包含模型的所有分片，避免遗漏任何一个分片导致模型文件不完整。它以「前缀 + 总数」作为分组键，保证同模型的分片被正确归拢，即使分片文件在仓库中不连续排列也能全部收集。
 
-### 5.5.4 gguf_filename_is_model()：模型文件甄别
+### 52.7.4 gguf_filename_is_model()：模型文件甄别
 
 源码路径：`common/download.cpp` 第 511–523 行
 
@@ -865,7 +865,7 @@ static bool gguf_filename_is_model(const std::string & filepath) {
 
 这个函数在 `find_best_model` 中用于过滤候选文件，避免误选投影器（mmproj）或重要性矩阵（imatrix）文件，确保主模型选择的准确性。它只依据文件名关键字做排除，不依赖文件内容检测，兼顾效率与正确性。
 
-### 5.5.5 find_best_mmproj()：mmproj 智能配对
+### 52.7.5 find_best_mmproj()：mmproj 智能配对
 
 源码路径：`common/download.cpp` 第 476–509 行
 
@@ -902,7 +902,7 @@ static hf_cache::hf_file find_best_mmproj(const hf_cache::hf_files & files,
 
 这个配对策略确保多模态模型自动找到最匹配的投影器文件。它采用两级排序：第一级按目录深度（`/` 的数量）优先，因为同目录下的 mmproj 与模型文件通常来自同一发布批次；第二级按量化位数差最小，因为量化位数越接近，投影器与模型的精度匹配度越高。对选镜头的导购来说，这就是「同品牌优先、焦距越接近越好」。
 
-### 5.5.6 find_best_model()：主模型优先级匹配
+### 52.7.6 find_best_model()：主模型优先级匹配
 
 源码路径：`common/download.cpp` 第 525–552 行
 
@@ -932,7 +932,7 @@ static hf_cache::hf_file find_best_model(const hf_cache::hf_files & files,
 
 这个函数确保在没有用户指令时，自动选择社区最常用的量化格式。默认优先级 `Q4_K_M → Q4_0` 反映了 llama.cpp 社区的主流推荐：`Q4_K_M` 在质量与体积间取得最佳平衡，`Q4_0` 则是更保守的低比特选择。正则 `t + "[.-]"` 确保匹配到标签后紧跟 `.` 或 `-` 的文件名变体（如 `llama-2-7b.Q4_K_M.gguf`），避免误匹配到 `Q4_K_MX` 之类相近标签。
 
-### 5.5.7 list_available_gguf_files()：可用文件清单
+### 52.7.7 list_available_gguf_files()：可用文件清单
 
 源码路径：`common/download.cpp` 第 554–561 行
 
@@ -950,7 +950,7 @@ static void list_available_gguf_files(const hf_cache::hf_files & files) {
 
 这个辅助函数在用户指定的 tag 不匹配时打印仓库中的可用文件，帮助用户拼对量化标签。它只输出 `.gguf` 结尾的文件路径，不区分模型与 mmproj，方便用户一眼看到全部可选项。
 
-### 5.5.8 GGUF 分片选择流程图：从仓库文件到下载计划
+### 52.7.8 GGUF 分片选择流程图：从仓库文件到下载计划
 
 下图展示从仓库文件列表到最终下载计划的完整决策链路，标注了分片解析、主模型匹配、mmproj 配对与分片收集四个关键环节。
 
@@ -972,11 +972,11 @@ flowchart TD
     M --> N
 ```
 
-## 5.6 Hugging Face 集成 —— 仓库到本地的「直通车」
+## 52.8 Hugging Face 集成 —— 仓库到本地的「直通车」
 
 高速公路收费站设有专门的 ETC 通道，车辆无需停车即可快速通过。Hugging Face 是 llama.cpp 最主要的模型来源，下载体系在 `common/download.cpp` 的 HF 集成部分提供了 `get_hf_plan`、`get_url_tasks`、`common_download_model` 与 `common_list_cached_models` 四个核心函数，覆盖从仓库解析、计划构建、并发调度到缓存汇总的完整链路。对调度中心而言，HF 集成就是那条从仓库直通本地缓存的高铁专线：刷卡（repo:tag 解析）进站，系统自动配齐全部分片与投影器，到站即卸货。
 
-### 5.6.1 common_download_split_repo_tag()：repo:tag 解析
+### 52.8.1 common_download_split_repo_tag()：repo:tag 解析
 
 源码路径：`common/download.cpp` 第 94–103 行
 
@@ -997,7 +997,7 @@ std::pair<std::string, std::string> common_download_split_repo_tag(const std::st
 
 这个函数把用户输入的 `TheBloke/Llama-2-7B-GGUF:Q4_K_M` 解析为仓库与量化标签。它先用冒号分割出可选的 tag，再校验仓库部分必须恰好包含一个 `/`，确保符合 `user/repo` 格式，不合法时抛出 `std::invalid_argument`，由上层转换为用户友好的错误提示。
 
-### 5.6.2 get_hf_plan()：下载计划构建
+### 52.8.2 get_hf_plan()：下载计划构建
 
 源码路径：`common/download.cpp` 第 563–613 行
 
@@ -1034,7 +1034,7 @@ static hf_plan get_hf_plan(const common_params_model & model,
 
 这个函数把仓库文件列表转化为具体的下载任务列表。它先解析 `repo:tag`，再按在线/离线模式获取文件树，在线模式调用 `hf_cache::get_repo_files` 走 API，离线模式回退到 `hf_cache::get_cached_files` 扫本地；随后按优先级匹配主模型，若找不到则打印可用文件列表并抛异常；最后用 `get_split_files` 收集全部分片，并在 `download_mmproj` 开关开启时调用 `find_best_mmproj` 配对投影器。
 
-### 5.6.3 get_url_tasks()：URL 分片展开
+### 52.8.3 get_url_tasks()：URL 分片展开
 
 源码路径：`common/download.cpp` 第 619–641 行
 
@@ -1063,7 +1063,7 @@ static std::vector<download_task> get_url_tasks(const common_params_model & mode
 
 这个函数处理直连 URL 场景下的分片展开，与 HF 仓库的 `get_split_files` 对应。它根据 URL 中的分片信息，按 `-NNNNN-of-NNNNN.gguf` 格式生成所有分片的远程 URL 与本地路径，确保 URL 来源的模型也能正确处理分片。
 
-### 5.6.4 common_download_model()：并发下载调度
+### 52.8.4 common_download_model()：并发下载调度
 
 源码路径：`common/download.cpp` 第 643–704 行
 
@@ -1121,7 +1121,7 @@ common_download_model_result common_download_model(const common_params_model & m
 
 这个函数是下载体系的对外总入口。它根据模型来源自动选择策略：HF 仓库分支通过 `get_hf_plan` 构建计划并展开为任务列表（主模型分片 + mmproj），URL 分支调用 `get_url_tasks` 展开分片，本地路径分支直接返回。随后使用 `std::async(std::launch::async)` 并发执行所有下载任务，每个任务调用 `common_download_file_single` 完成单文件下载，最后根据来源填充 `model_path` 与 `mmproj_path` 并返回统一结果。
 
-### 5.6.5 common_list_cached_models()：缓存模型汇总
+### 52.8.5 common_list_cached_models()：缓存模型汇总
 
 源码路径：`common/download.cpp` 第 822–839 行
 
@@ -1148,7 +1148,7 @@ std::vector<common_cached_model_info> common_list_cached_models() {
 
 这个函数为 `--list-models` 类调试功能提供数据支撑。它扫描本地 HF 缓存，只保留每个模型的首个分片（`index == 1`）以避免重复计数，跳过 mmproj 文件，并以 `repo:tag` 为键去重，最终返回已缓存模型的简洁清单。
 
-### 5.6.6 Hugging Face 集成架构图：从 repo:tag 到并发调度
+### 52.8.6 Hugging Face 集成架构图：从 repo:tag 到并发调度
 
 下图展示 HF 集成的完整架构链路，标注了仓库解析、文件树获取、主模型匹配、分片收集、mmproj 配对与并发调度六个环节。
 
@@ -1168,11 +1168,11 @@ graph LR
     K --> L[本地缓存 + 快照链接]
 ```
 
-## 5.7 Docker Registry 支持 —— OCI 镜像中的「GGUF 寻宝」
+## 52.9 Docker Registry 支持 —— OCI 镜像中的「GGUF 寻宝」
 
 集装箱运输允许货物以标准格式跨洋运输，Docker Registry 则将模型打包为 OCI 镜像。下载体系支持从 Docker Registry 的 OCI 镜像中提取 GGUF 模型。`common_docker_get_token` 向 auth.docker.io 请求匿名拉取令牌，`common_docker_resolve_model` 解析 OCI Manifest 中的 GGUF 层并下载到本地缓存。对调度中心的库管员来说，这就像从集装箱中开箱寻宝：先拿到通关文牒（token），再按装箱单（Manifest）找到目标层，最后开箱取货。
 
-### 5.7.1 common_docker_get_token()：获取拉取令牌
+### 52.9.1 common_docker_get_token()：获取拉取令牌
 
 源码路径：`common/download.cpp` 第 710–727 行
 
@@ -1198,7 +1198,7 @@ static std::string common_docker_get_token(const std::string & repo) {
 
 这个函数为后续的匿名拉取获取 bearer token。它遵循 Docker Registry Auth API 规范，向 `auth.docker.io` 请求包含 `repository:<repo>:pull` scope 的令牌，解析 JSON 响应并提取 `token` 字段，缺失或非 200 状态时抛出异常。
 
-### 5.7.2 common_docker_resolve_model()：OCI Manifest 解析与下载
+### 52.9.2 common_docker_resolve_model()：OCI Manifest 解析与下载
 
 源码路径：`common/download.cpp` 第 729–820 行
 
@@ -1269,7 +1269,7 @@ std::string common_docker_resolve_model(const std::string & docker) {
 
 这个函数把 Docker Registry 的 OCI 协议适配到 llama.cpp 的下载体系。它先解析引用中的 repo 与 tag（无 `/` 时插入 `ai/` 命名空间），再获取 token、请求 OCI Manifest，遍历 `layers` 数组按 mediaType 匹配 GGUF 层，校验 digest 格式（`sha256:` + 64 位十六进制），最后构造 blob URL 并调用 `common_download_file_single` 下载到 HF 缓存路径，使用户可以直接从 Docker 镜像中拉取模型。
 
-### 5.7.3 Docker Registry 解析时序图
+### 52.9.3 Docker Registry 解析时序图
 
 下图展示从用户输入 Docker 引用到本地缓存路径返回的完整时序，标注了 token 获取、Manifest 解析、GGUF 层识别与 blob 下载四个阶段。
 
@@ -1287,11 +1287,11 @@ sequenceDiagram
     B-->>U: 本地缓存路径
 ```
 
-## 5.8 HF 缓存目录管理 —— 本地模型的「标准化仓库」
+## 52.10 HF 缓存目录管理 —— 本地模型的「标准化仓库」
 
 现代化的仓库需要统一的货架编码与严格的门禁管理，才能高效地存取货物。`common/hf-cache.cpp` 的缓存目录管理部分负责确定本地缓存位置、转换仓库 ID 与目录名、执行安全校验以及原子写文件。对调度中心的库管员来说，这套体系就是标准化仓库：货架编码统一（`models--user--repo`），门禁严格（格式校验），存取原子（临时文件+重命名），确保模型文件在本地有一个安全、标准、可互操作的存放空间。
 
-### 5.8.1 hf_file：HF 文件元数据结构
+### 52.10.1 hf_file：HF 文件元数据结构
 
 源码路径：`common/hf-cache.h` 第 6–15 行（结构体定义）
 
@@ -1310,7 +1310,7 @@ struct hf_file {
 
 这个结构体把远程文件与本地缓存之间的映射关系完整地描述出来。`repo_id` 与 `path` 标识远端文件，`oid` 与 `size` 来自 LFS 元信息，`local_path` 指向 `blobs/<oid>` 缓存位置，`final_path` 指向 `snapshots/<commit>/<path>` 快照位置，是下载计划与缓存落盘的统一数据载体。
 
-### 5.8.2 get_cache_directory()：缓存目录决策链
+### 52.10.2 get_cache_directory()：缓存目录决策链
 
 源码路径：`common/hf-cache.cpp` 第 34–69 行
 
@@ -1352,7 +1352,7 @@ static fs::path get_cache_directory() {
 
 这个决策链确保 llama.cpp 的缓存目录与 Hugging Face 生态标准兼容，同时允许用户通过 `LLAMA_CACHE` 自定义位置。它使用静态局部变量保证进程内只计算一次，避免每次调用都遍历环境变量表。对仓库来说，这就是选址决策：先看有没有指定位置（环境变量），没有就用默认货架（用户主目录）。
 
-### 5.8.3 repo_to_folder_name() / folder_name_to_repo()：目录名与仓库 ID 互转
+### 52.10.3 repo_to_folder_name() / folder_name_to_repo()：目录名与仓库 ID 互转
 
 源码路径：`common/hf-cache.cpp` 第 71–91 行
 
@@ -1382,7 +1382,7 @@ static std::string repo_to_folder_name(const std::string & repo_id) {
 
 这两个互逆转换确保仓库 ID `user/repo` 与缓存目录名 `models--user--repo` 之间的无损映射。选择 `--` 而非单个 `-` 作为分隔符，是因为仓库 ID 本身可能包含 `-`（如 `TheBloke/Llama-2-7B-GGUF`），用 `--` 可以在目录名中唯一区分命名空间边界与仓库名内部的连字符，避免转换歧义。
 
-### 5.8.4 get_repo_path()：仓库缓存根路径获取
+### 52.10.4 get_repo_path()：仓库缓存根路径获取
 
 源码路径：`common/hf-cache.cpp` 第 89–91 行
 
@@ -1395,7 +1395,7 @@ static fs::path get_repo_path(const std::string & repo_id) {
 
 这个函数组合缓存根目录与仓库目录名，得到仓库在本地缓存中的完整根路径，后续的 `blobs/`、`snapshots/`、`refs/` 子目录都相对于此路径构造。
 
-### 5.8.5 is_hex_char() / is_hex_string() / is_alphanum() / is_special_char()：基础字符判定
+### 52.10.5 is_hex_char() / is_hex_string() / is_alphanum() / is_special_char()：基础字符判定
 
 源码路径：`common/hf-cache.cpp` 第 93–119 行
 
@@ -1435,7 +1435,7 @@ static bool is_special_char(char c) {
 
 这四个基础判定函数是所有合法性格式校验的积木。`is_hex_char` 与 `is_hex_string` 用于 commit/oid 校验；`is_alphanum` 与 `is_special_char` 被 `is_valid_repo_id` 复用，分别判断字符属于字母数字还是允许的特殊字符集合。
 
-### 5.8.6 is_valid_repo_id()：仓库 ID 格式校验
+### 52.10.6 is_valid_repo_id()：仓库 ID 格式校验
 
 源码路径：`common/hf-cache.cpp` 第 125–148 行
 
@@ -1469,7 +1469,7 @@ static bool is_valid_repo_id(const std::string & repo_id) {
 
 这个校验函数是安全防护的第一道防线。它通过状态机确保仓库 ID 满足：长度合法、字符合法（字母数字下划线加 `/.-`）、特殊字符不连续出现（防止 `//` 路径拼接）、不以特殊字符结尾（防止目录名歧义）、恰好包含一个 `/`（`user/repo` 格式）。这些规则共同防止非法仓库 ID 被用于路径遍历或注入攻击。
 
-### 5.8.7 is_valid_hf_token() / is_valid_commit() / is_valid_oid()：令牌与哈希校验
+### 52.10.7 is_valid_hf_token() / is_valid_commit() / is_valid_oid()：令牌与哈希校验
 
 源码路径：`common/hf-cache.cpp` 第 150–169 行
 
@@ -1502,7 +1502,7 @@ static bool is_valid_oid(const std::string & oid) {
 
 这些校验函数防止脏数据进入缓存目录。`is_valid_hf_token` 确保 token 格式正确（`hf_` 前缀 + 字母数字），非法 token 会在 `api_get` 中被警告并跳过认证；`is_valid_commit` 与 `is_valid_oid` 分别校验 40 位与 40/64 位十六进制，避免非法哈希被写入 refs 或用于 blob 路径构造。
 
-### 5.8.8 is_valid_subpath()：路径遍历防护
+### 52.10.8 is_valid_subpath()：路径遍历防护
 
 源码路径：`common/hf-cache.cpp` 第 171–181 行
 
@@ -1522,7 +1522,7 @@ static bool is_valid_subpath(const fs::path & path, const fs::path & subpath) {
 
 这个函数是防止 `../../etc/passwd` 路径遍历攻击的关键防线。它拒绝绝对路径，再将基础路径与子路径拼接后做词法规范化，通过 `std::compare` 比较前缀：若基础路径不是规范化后路径的前缀，则说明子路径越界，直接拒绝。在 `get_repo_files` 中，每个从 API 获取的文件路径都经过此校验后才被接受。
 
-### 5.8.9 safe_write_file()：原子写文件
+### 52.10.9 safe_write_file()：原子写文件
 
 源码路径：`common/hf-cache.cpp` 第 183–202 行
 
@@ -1552,7 +1552,7 @@ static void safe_write_file(const fs::path & path, const std::string & data) {
 
 这个函数确保元数据的写入是原子的。它先创建父目录，再向 `.tmp` 临时文件写入数据，最后通过 `fs::rename` 原子替换为目标路径。即使写入过程中崩溃，也不会留下损坏的 refs 或 manifest 文件，保障了缓存目录的整体一致性。对仓库来说，这就是「先放托盘、再上架」的规矩。
 
-### 5.8.10 缓存目录管理架构图：环境变量到仓库根路径的完整链路
+### 52.10.10 缓存目录管理架构图：环境变量到仓库根路径的完整链路
 
 下图展示缓存目录管理的完整架构链路，标注了环境变量优先级决策、目录名与仓库 ID 互转、安全校验与原子写文件四个层次。
 
@@ -1575,11 +1575,11 @@ flowchart TD
     P --> Q[safe_write_file 原子写入]
 ```
 
-## 5.9 HF API 交互层 —— 与 Hugging Face Hub 的「对话协议」
+## 52.11 HF API 交互层 —— 与 Hugging Face Hub 的「对话协议」
 
 国际物流中，货物追踪需要与承运商系统实时交互。`common/hf-cache.cpp` 的 HF API 交互部分封装了与 Hugging Face Hub 的所有 HTTP 交互。`api_get` 提供统一的带认证 GET 请求与 JSON 解析；`get_repo_commit` 解析分支并写入本地 refs；`get_repo_files` 递归获取文件树并提取 LFS 元信息；`get_cached_ref` 与 `get_cached_files` 则为离线模式提供缓存扫描能力。对调度中心的调度员来说，这套协议就像与远程仓库的对话标准：每次查询都带身份证（token），响应统一解析为 JSON，错误统一抛异常。
 
-### 5.9.1 api_get()：统一 API 封装
+### 52.11.1 api_get()：统一 API 封装
 
 源码路径：`common/hf-cache.cpp` 第 204–238 行
 
@@ -1617,7 +1617,7 @@ static nl::json api_get(const std::string & url,
 
 这个封装把 HTTP 请求、认证、JSON 解析与错误处理统一在一个函数中。它设置 `User-Agent` 与 `Accept: application/json` 标准头，仅在 token 格式合法时附加 `Authorization: Bearer`，避免非法 token 污染请求；200 响应直接解析 JSON，非 200 尝试从响应体提取 `error` 字段后抛出带状态码的异常，连接失败时抛出 HTTPLIB 错误。它是 HF API 交互的唯一入口，极大地简化了上层调用。
 
-### 5.9.2 get_repo_commit()：分支解析
+### 52.11.2 get_repo_commit()：分支解析
 
 源码路径：`common/hf-cache.cpp` 第 240–298 行
 
@@ -1675,7 +1675,7 @@ static std::string get_repo_commit(const std::string & repo_id,
 
 这个函数把远程分支信息落地为本地缓存。它请求 `/api/models/<repo>/refs` 端点，遍历响应中的 `branches` 数组，优先选择 `main` 分支，每个分支的名称与 commit 都经过 `is_valid_subpath` 与 `is_valid_commit` 校验，防止非法值写入 refs 文件；选中后通过 `safe_write_file` 原子写入 `refs/<branch>`，是后续文件树获取的前提。
 
-### 5.9.3 get_repo_files()：文件树递归获取
+### 52.11.3 get_repo_files()：文件树递归获取
 
 源码路径：`common/hf-cache.cpp` 第 300–377 行（声明位于 `common/hf-cache.h` 第 20–23 行）
 
@@ -1742,7 +1742,7 @@ hf_files get_repo_files(const std::string & repo_id,
 
 这个函数把 Hugging Face 的文件树 API 响应转化为 `hf_file` 结构体列表。它先校验仓库 ID 与获取 commit，再请求 `/tree/<commit>?recursive=true` 递归端点，对每个 `type=file` 的条目提取路径、LFS oid/size，构造远程 URL（`/resolve/<commit>/<path>`）、快照最终路径（`snapshots/<commit>/<path>`）与缓存 blob 路径（`blobs/<oid>`），是下载计划的数据来源。
 
-### 5.9.4 get_cached_ref() / get_cached_files()：离线缓存扫描
+### 52.11.4 get_cached_ref() / get_cached_files()：离线缓存扫描
 
 源码路径：`common/hf-cache.cpp` 第 379–448 行（`get_cached_files` 声明位于 `common/hf-cache.h` 第 25 行）
 
@@ -1804,7 +1804,7 @@ hf_files get_cached_files(const std::string & repo_id) {
 
 这两个函数构成了离线模式的缓存扫描能力。`get_cached_ref` 遍历仓库的 `refs/` 目录，优先返回 `main` 分支的 commit，否则返回第一个有效 commit；`get_cached_files` 遍历缓存根目录下的所有仓库目录，通过 `folder_name_to_repo` 还原仓库 ID，再递归遍历 `snapshots/<commit>/` 下的所有文件与符号链接，构造 `hf_file` 列表。整个流程不发起任何网络请求，确保无网络时仍能使用已下载的模型。
 
-### 5.9.5 HF API 交互时序图
+### 52.11.5 HF API 交互时序图
 
 下图展示客户端与 Hugging Face API 的完整交互时序，标注了 api_get 统一封装、分支解析、文件树获取与离线缓存扫描四个环节。
 
@@ -1830,11 +1830,11 @@ sequenceDiagram
     G-->>C: 返回已缓存文件列表
 ```
 
-## 5.10 缓存落盘与旧版迁移 —— 历史包袱的「搬运工」
+## 52.12 缓存落盘与旧版迁移 —— 历史包袱的「搬运工」
 
 仓库管理中，新货上架需要根据货架特点选择策略：有悬挂条件的优先挂链接，同区的直接搬运，跨区的委托快递。`common/hf-cache.cpp` 的最后部分处理两项特殊任务：`finalize_file` 的三级落盘策略，以及将旧版 llama.cpp 缓存迁移到标准 HF 缓存目录的完整流程。对调度中心的库管员来说，`finalize_file` 就是包裹上架策略：优先挂链接牌（符号链接），同区失败就直接搬（rename），跨区再委托快递（copy）；旧版迁移则像老仓库改造，先验货（SHA256 校验）、再搬入新货架、最后撕旧标签（删除 manifest）。
 
-### 5.10.1 finalize_file()：三级落盘策略
+### 52.12.1 finalize_file()：三级落盘策略
 
 源码路径：`common/hf-cache.cpp` 第 450–487 行（声明位于 `common/hf-cache.h` 第 28 行）
 
@@ -1878,7 +1878,7 @@ std::string finalize_file(const hf_file & file) {
 
 这个三级策略确保在不同文件系统与权限环境下都能完成缓存落盘。第一级优先创建相对路径符号链接（`blobs/<oid>` → `snapshots/<commit>/<path>`），节省磁盘空间；第二级使用 `rename` 移动文件，适合同文件系统场景；第三级使用 `copy` 复制，作为跨分区的万无一失方案。`symlinks_disabled` 静态原子标志确保符号链接失败后只打印一次警告，后续调用直接跳过符号链接尝试，避免重复失败与日志刷屏。
 
-### 5.10.2 旧版缓存迁移
+### 52.12.2 旧版缓存迁移
 
 源码路径：`common/hf-cache.cpp` 第 498–723 行（`migrate_old_cache_to_hf_cache` 声明位于 `common/hf-cache.h` 第 31 行）
 
@@ -2045,7 +2045,7 @@ void migrate_old_cache_to_hf_cache(const std::string & token, bool offline) {
 
 这个函数把旧版 `~/.cache/llama.cpp/<owner>_<repo>_<filename>` 格式迁移到标准 HF 缓存结构。它先获取旧缓存目录，跳过离线模式，再遍历所有 `manifest=owner=repo=*.json` 文件，解析 owner/repo，获取远程文件列表，按 `ggufFile` 与 `mmprojFile` 两个键收集待迁移文件（分片文件按 prefix+count 整组收集），每个文件校验 SHA256 与大小后执行移动+finalize，全部成功后删除旧 manifest。整个过程先验货、再搬入新货架、最后撕旧标签，确保用户无缝升级到新版本。
 
-### 5.10.3 缓存落盘与迁移流程图
+### 52.12.3 缓存落盘与迁移流程图
 
 下图展示 `finalize_file` 三级策略与旧版迁移的完整流程，标注了符号链接、rename、copy 三级降级与 manifest 解析、校验、迁移三个阶段。
 
@@ -2074,7 +2074,7 @@ flowchart TD
     Q -->|否| O
 ```
 
-## 5.11 设计中的取舍
+## 52.13 设计中的取舍
 
 在下载体系的设计中，有几个关键决策值得深入探讨。这些决策并非孤立的工程选择，而是围绕「可靠、安全、兼容、高效」四个目标反复权衡的结果，每一个都能在物流调度中心的日常运作中找到对应：搬运工的托盘规矩、看板的编译期拦截、调度中心的并发策略、仓库的上架方案，以及快递单号的比对机制。
 
@@ -2102,7 +2102,7 @@ flowchart TD
 
 答：CI 环境的输出通常被重定向到日志文件或管道，没有关联的终端设备，此时 ANSI 转义序列会原样输出，导致日志中出现大量 `\033[NA` 之类的乱码，污染构建日志。进度条通过 `is_output_a_tty()` 函数检测标准输出是否关联 TTY 设备，非 TTY 时直接返回，避免输出任何转义序列。这个检测通常基于 `isatty(STDOUT_FILENO)` 系统调用，是命令行工具在 CI 环境中保持日志整洁的通用做法。
 
-## 5.12 动手练习
+## 52.14 动手练习
 
 - 阅读 `common/download.cpp` 第 137–207 行的 `common_pull_file()`、第 209–348 行的 `common_download_file_single_online()`，以及第 68–92 行的 `write_etag()` / `read_etag()` / `is_http_status_ok()`。
 - 回答问题：
@@ -2150,7 +2150,7 @@ flowchart TD
   - 迁移成功后旧文件和 manifest 会被删除吗？失败时如何处理现场？
   - 设计一个测试用例矩阵，覆盖：正常迁移、SHA256 不匹配、大小不匹配、目标已存在四种场景。
 
-## 5.13 本章小结
+## 52.15 本章小结
 
 本章系统地梳理了 llama.cpp 下载体系的完整架构与关键实现细节。从 `download.h` 的统一抽象层，到 `download.cpp` 内部的单文件下载引擎、进度条系统、GGUF 分片选择、Hugging Face 集成与 Docker Registry 支持，再到 `hf-cache.cpp` 的缓存目录管理、HF API 交互、缓存落盘与旧版迁移，整个体系在可靠、安全、兼容、高效四个目标上达到了良好的平衡。为了便于回顾，下表总结了本章涉及的核心概念及其解释：
 

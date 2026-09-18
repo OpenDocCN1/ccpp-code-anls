@@ -1,5 +1,5 @@
 
-# 第18章 上下文与运行时 —— 推理引擎的"驾驶舱"
+# 第17章 上下文与运行时 —— 推理引擎的"驾驶舱"
 
 ## 学习目标
 
@@ -13,11 +13,11 @@
 - 理解采样器链与graph_params/can_reuse机制的协同工作
 - 能阅读并理解轻量级训练相关的opt_init/opt_epoch实现
 
-## 18.1 生活类比
+## 17.1 生活类比
 
 想象 `llama_context` 是一家餐厅的「中央厨房总监」：**llama_cparams** = 餐厅的运营手册（座位数、菜量、营业时段、是否开启外卖窗口）；**后端初始化** = 招募各路厨师（GPU主厨、CPU副厨、加速器小工），并登记他们的特长；**sched_reserve** = 餐厅开业前的「试菜大会」——预演最繁忙时段的菜谱，确定设备容量；**encode/decode** = 日常营业：接到订单（batch）→ 拆分给厨师（ubatch）→ 上菜（logits/embeddings）；**graph_reserve** = 提前准备好的「万能菜谱模板」，相同菜式直接复用模板；**process_ubatch** = 后厨工位：检查是否可复用旧菜谱（can_reuse），否则现做，并最终摆盘；**can_reuse / graph_reuse** = 经验丰富的厨师对相同菜式直接沿用上次做法（省时）；**attach_threadpool** = 给厨房分配帮工数量（提示处理 vs 单token生成帮工数不同）；**set_abort_callback** = 安装火警按钮，紧急时所有厨师立刻停手；**set_adapters_lora** = 餐厅推出新口味（LoRA），需要重新培训厨师（触发reserve）；**state_serialize** = 把当前所有菜品半成品（KV缓存）打包冷冻，恢复时解冻继续烹饪；**state_seq_save_file** = 把某一桌的半成品单独打包外卖，下次回来继续吃；**opt_init/opt_epoch** = 后厨研发新菜品（小规模训练/微调）；**memory_breakdown** = 月底盘点：模型原料、餐桌占用、临时工位各占多少储物空间；**output_reorder** = 出餐顺序按顾客订单调整（循环模型的特殊排序）；**set_sampler** = 给餐厅配备不同口味品鉴师（采样器），不同桌配不同口味。就像总监需要协调厨师、菜谱、储物与上菜节奏，`llama_context` 也在后端、调度器、内存与图执行之间精细调度，确保推理又快又稳。
 
-## 18.2 源码地图
+## 17.2 源码地图
 
 src/llama-cparams.h
 ├── struct llama_cparams        # 推理上下文参数（n_ctx/n_batch/flash_attn等）
@@ -137,11 +137,11 @@ src/llama-adapter.cpp
 ├── llama_adapter_get_alora_n_invocation_tokens/invocation_tokens # alora调用
 └── llama_adapter_lora_free         # 释放适配器
 
-## 18.3 上下文参数结构 —— 推理引擎的"驾驶舱仪表盘"
+## 17.3 上下文参数结构 —— 推理引擎的"驾驶舱仪表盘"
 
 `llama_cparams` 是推理上下文的"设计图纸"，集中管理了所有可配置参数。它不包含任何运行时状态，只是一组纯数据字段，供 `llama_context` 构造时合并模型超参数与用户传入的 `llama_context_params` 后使用。理解这些字段的含义，就是掌握了推理引擎的"驾驶舱仪表盘"。
 
-### 18.3.1 `llama_cparams`：上下文参数完整定义
+### 17.3.1 `llama_cparams`：上下文参数完整定义
 
 源码路径：`src/llama-cparams.h` - `llama_cparams`（第1-55行）
 
@@ -210,7 +210,7 @@ struct llama_cparams {
 
 这段代码定义了推理上下文的所有可配置参数，涵盖了上下文容量、线程配置、RoPE/YaRN、注意力策略、输出模式、量化类型、回调与自动检测等十大类字段，是 `llama_context` 构造时的唯一配置来源。
 
-### 18.3.2 `LLAMA_MAX_SEQ` 与最大并行序列数
+### 17.3.2 `LLAMA_MAX_SEQ` 与最大并行序列数
 
 源码路径：`src/llama-cparams.h` - `LLAMA_MAX_SEQ`（第1-55行）；`src/llama-cparams.cpp` - `llama_max_parallel_sequences()`（第1-10行）
 
@@ -226,11 +226,11 @@ size_t llama_max_parallel_sequences(void) {
 
 `LLAMA_MAX_SEQ` 是一个硬编码常量（256），限制了单个上下文能同时服务的最大序列数。`llama_max_parallel_sequences()` 仅返回该常量，供外部查询。构造函数会校验 `n_seq_max` 不超过此值。
 
-## 18.4 生命周期管理 —— "驾驶舱"的建造与拆除
+## 17.4 生命周期管理 —— "驾驶舱"的建造与拆除
 
 `llama_context` 的构造函数完成了从参数合并到后端初始化、内存模块创建、调度器预热的全流程；析构函数则负责清理后端缓冲区与优化器上下文。
 
-### 18.4.1 `llama_context()`：构造函数全流程
+### 17.4.1 `llama_context()`：构造函数全流程
 
 源码路径：`src/llama-context.cpp` - `llama_context::llama_context()`（第30-380行）
 
@@ -282,7 +282,7 @@ llama_context::llama_context(
 
 这段代码实现了上下文构造的完整流程：参数合并与校验 → YaRN 参数计算 → 后端初始化（GPU优先、ACCEL单独添加、CPU兜底） → 输出缓冲区预分配 → 内存模块创建 → 采样器映射初始化 → pipeline_parallel 判定 → 词表初始化 → 调度器预热。
 
-### 18.4.2 `~llama_context()`：析构函数
+### 17.4.2 `~llama_context()`：析构函数
 
 源码路径：`src/llama-context.cpp` - `llama_context::~llama_context()`（第380-410行）
 
@@ -302,11 +302,11 @@ llama_context::~llama_context() {
 
 析构函数首先检查并记录各后端计算缓冲区的实际大小与预期是否一致（用于诊断内存泄漏或分配异常），然后释放 `ggml_opt_context`，其余资源由智能指针自动管理。
 
-## 18.5 调度器与图预留 —— "发动机"的启动与预热
+## 17.5 调度器与图预留 —— "发动机"的启动与预热
 
 `sched_reserve()` 是推理引擎的"试菜大会"：它负责创建后端调度器、自动检测 Flash Attention 与 Gated Delta Net 支持、预留最坏情况下的计算图，确保后续推理无需重新分配内存。
 
-### 18.5.1 `sched_reserve()`：调度器预留与自动检测
+### 17.5.1 `sched_reserve()`：调度器预留与自动检测
 
 源码路径：`src/llama-context.cpp` - `llama_context::sched_reserve()`（第412-660行）
 
@@ -359,18 +359,18 @@ void llama_context::sched_reserve() {
 
 这段代码实现了调度器的完整预留流程：快速返回检查 → 同步旧调度器 → 创建新调度器（含 pipeline_parallel 配置） → 初始化内存上下文 → Flash Attention 自动检测 → Gated Delta Net 自动检测 → 最坏情况 pp/tg 图预留 → 失败回退 → 标记预留完成。
 
-### 18.5.2 Flash Attention 自动检测细节
+### 17.5.2 Flash Attention 自动检测细节
 
 Flash Attention 检测的核心逻辑是：构造一个单 token 的解码器图，检查图中是否包含 `FLASH_ATTN_EXT` 节点，并验证该节点所在的设备是否与 K/V 缓存设备一致。若不一致，则禁用 FA 并记录日志，避免跨设备数据传输开销。
 
-### 18.5.3 Gated Delta Net 自动检测细节
+### 17.5.3 Gated Delta Net 自动检测细节
 
 Gated Delta Net 检测分两条路径：
 - **AR 模式**（自回归）：预留 1 token 图，验证是否有融合 GDN 节点
 - **CH 模式**（分块）：预留 `16 * n_seqs` tokens 图，验证分块路径融合支持
 根据检测结果分别设置 `fused_gdn_ar` 和 `fused_gdn_ch` 标志。
 
-### 18.5.4 `synchronize()`：后端同步与统计更新
+### 17.5.4 `synchronize()`：后端同步与统计更新
 
 源码路径：`src/llama-context.cpp` - `llama_context::synchronize()`（第660-700行）
 
@@ -384,7 +384,7 @@ void llama_context::synchronize() {
 
 同步所有后端的异步计算，并更新内部性能计数器。
 
-### 18.5.5 `memory_update()`：内存模块更新与图重预留
+### 17.5.5 `memory_update()`：内存模块更新与图重预留
 
 源码路径：`src/llama-context.cpp` - `llama_context::memory_update()`（第820-870行）
 
@@ -402,7 +402,7 @@ bool llama_context::memory_update(bool optimize) {
 
 当内存模块发生更新（如 KV 缓存移位、碎片整理）时，重置 `gf_res_prev` 并标记需要重新预留图。
 
-### 18.5.6 `graph_max_nodes()`：最大图节点数估算
+### 17.5.6 `graph_max_nodes()`：最大图节点数估算
 
 源码路径：`src/llama-context.cpp` - `llama_context::graph_max_nodes()`（第2780-2800行）
 
@@ -424,11 +424,11 @@ uint32_t llama_context::graph_max_nodes(uint32_t n_tokens) const {
 
 针对特定架构（Qwen3Next、Kimi Linear、Qwen35 等）返回 `n_tokens * 40` 的较大估值，其他模型按 `max(1024, 8 * n_tensors)` 加上 LoRA 节点开销估算，避免调度器预留节点不足导致构建失败。
 
-## 18.6 编码与解码 —— "交通指挥中心"的日常调度
+## 17.6 编码与解码 —— "交通指挥中心"的日常调度
 
 `encode()` 用于编码器模型（BERT、T5 等），`decode()` 用于自回归解码器（LLaMA、Qwen 等）。两者都通过 `process_ubatch` 执行计算图，但 KV 缓存管理、注意力类型、输出提取方式截然不同。
 
-### 18.6.1 `process_ubatch()`：微批次处理核心
+### 17.6.1 `process_ubatch()`：微批次处理核心
 
 源码路径：`src/llama-context.cpp` - `llama_context::process_ubatch()`（第940-1040行）
 
@@ -486,7 +486,7 @@ llm_graph_result * llama_context::process_ubatch(
 
 这段代码是微批次处理的核心：**应用内存上下文 → 判断图复用（can_reuse） → 复用则同步并 set_inputs，否则重建图并分配 → 执行图计算**。`graph_reuse_disable` 环境变量可强制关闭复用。
 
-### 18.6.2 `encode()`：编码器主循环
+### 17.6.2 `encode()`：编码器主循环
 
 源码路径：`src/llama-context.cpp` - `llama_context::encode()`（第1050-1300行）
 
@@ -506,7 +506,7 @@ int llama_context::encode(const llama_batch & batch_inp) {
 
 编码器模式的关键点：**非因果注意力**、**无 KV 缓存**、**一次性处理全 batch**、**支持多种 pooling**、**T5 交叉注意力暂存**。
 
-### 18.6.3 `decode()`：解码器主循环
+### 17.6.3 `decode()`：解码器主循环
 
 源码路径：`src/llama-context.cpp` - `llama_context::decode()`（第1300-1750行）
 
@@ -531,7 +531,7 @@ int llama_context::decode(const llama_batch & batch_inp) {
 
 解码器主循环的关键点：**KV 缓存管理（init_batch/mctx）** → **分 ubatch 循环** → **后端采样支持** → **输出重排（output_swaps）** → **失败回滚 KV**。
 
-### 18.6.4 `build_seq_to_output_row()`：序列到输出行映射
+### 17.6.4 `build_seq_to_output_row()`：序列到输出行映射
 
 源码路径：`src/llama-context.cpp` - `build_seq_to_output_row()`（第1305-1335行）
 
@@ -552,7 +552,7 @@ static std::map<llama_seq_id, uint32_t> build_seq_to_output_row(
 
 构建 `seq_id` 到 `output_row` 的映射，配合 `copy_tensor_async_*` 实现后端采样结果的正确归档。
 
-### 18.6.5 `needs_raw_logits()` 与 `copy_tensor_async_*`
+### 17.6.5 `needs_raw_logits()` 与 `copy_tensor_async_*`
 
 源码路径：`src/llama-context.cpp` - `needs_raw_logits()`（第1440-1460行）、`copy_tensor_async_ints/floats/candidates()`（第1335-1440行）
 
@@ -585,9 +585,9 @@ static void copy_tensor_async_candidates(...) { ... }  // candidates
 
 `needs_raw_logits` 判断是否有序列未配置后端采样器，需拷回原始 logits；`copy_tensor_async_*` 系列函数异步将后端采样结果（token/logits/probs/candidates）拷回 host buffer。
 
-## 18.7 线程池与中止回调 —— "方向盘"与"刹车系统"
+## 17.7 线程池与中止回调 —— "方向盘"与"刹车系统"
 
-### 18.7.1 `attach_threadpool()` / `detach_threadpool()` / `set_n_threads()`
+### 17.7.1 `attach_threadpool()` / `detach_threadpool()` / `set_n_threads()`
 
 源码路径：`src/llama-context.cpp` - 对应方法（第2200-2240行）
 
@@ -615,7 +615,7 @@ void llama_context::set_n_threads(int32_t n_threads, int32_t n_threads_batch) {
 
 线程池区分提示处理（`threadpool_batch`）与生成阶段（`threadpool`），缺省时共用。`set_n_threads` 修改配置后立即通过函数指针数组下发到所有已注册后端。
 
-### 18.7.2 `set_abort_callback()`：中止回调注入
+### 17.7.2 `set_abort_callback()`：中止回调注入
 
 源码路径：`src/llama-context.cpp` - `llama_context::set_abort_callback()`（第2240-2270行）
 
@@ -638,7 +638,7 @@ void llama_context::set_abort_callback(
 
 通过动态库符号查找 `ggml_backend_set_abort_callback` 并注入每个后端，后端在计算过程中可检查中止信号并提前退出。
 
-### 18.7.3 `set_warmup()`：预热模式
+### 17.7.3 `set_warmup()`：预热模式
 
 源码路径：`src/llama-context.cpp` - `llama_context::set_warmup()`（第2270-2280行）
 
@@ -653,9 +653,9 @@ void llama_context::set_warmup(bool value) {
 
 预热模式通常用小 batch 运行，不触发图重预留。
 
-## 18.8 适配器配置 —— "个性化座椅"的安装与调节
+## 17.8 适配器配置 —— "个性化座椅"的安装与调节
 
-### 18.8.1 `set_adapters_lora()`：LoRA 运行时管理
+### 17.8.1 `set_adapters_lora()`：LoRA 运行时管理
 
 源码路径：`src/llama-context.cpp` - `llama_context::set_adapters_lora()` / `adapters_lora_are_same()`（第2300-2380行）
 
@@ -691,7 +691,7 @@ bool llama_context::adapters_lora_are_same(
 
 通过 `adapters_lora_are_same` 快速比对新旧适配器集合（忽略 scale=0 的项），相同则直接返回；否则重建映射并触发 `sched_need_reserve`。
 
-### 18.8.2 `set_adapter_cvec()`：控制向量应用
+### 17.8.2 `set_adapter_cvec()`：控制向量应用
 
 源码路径：`src/llama-context.cpp` - `llama_context::set_adapter_cvec()`（第2380-2440行）
 
@@ -707,7 +707,7 @@ bool llama_context::set_adapter_cvec(
 
 委托给 `llama_adapter_cvec::apply` 校验 `n_embd` 并按层写入数据，同样触发调度器重预留。
 
-### 18.8.3 `set_sampler()`：后端采样器挂载
+### 17.8.3 `set_sampler()`：后端采样器挂载
 
 源码路径：`src/llama-context.cpp` - `llama_context::set_sampler()`（第2380-2440行）
 
@@ -743,7 +743,7 @@ bool llama_context::set_sampler(llama_seq_id seq_id, llama_sampler * sampler) {
 
 仅支持 `llama_sampler_chain` 类型且实现了 `backend_init`/`backend_apply` 的采样器才能后端化；否则退化为 CPU 采样并触发重预留。
 
-### 18.8.4 `set_embeddings()` / `set_causal_attn()`
+### 17.8.4 `set_embeddings()` / `set_causal_attn()`
 
 源码路径：`src/llama-context.cpp` - 对应方法（第2280-2300行）
 
@@ -762,11 +762,11 @@ void llama_context::set_causal_attn(bool value) {
 
 切换因果/非因果注意力会触发图重预留，embeddings 模式切换暂不触发。
 
-## 18.9 状态序列化 —— "驾驶记忆"的存档与读档
+## 17.9 状态序列化 —— "驾驶记忆"的存档与读档
 
 状态序列化通过 `llama_io_write_i` / `llama_io_read_i` 抽象屏蔽底层 buffer/file 差异，支持全局状态与单序列状态的保存/加载。
 
-### 18.9.1 核心序列化接口
+### 17.9.1 核心序列化接口
 
 源码路径：`src/llama-context.cpp` - `state_get_size/data/set_data`、`state_load/save_file`、`state_seq_*`（第1750-2050行）
 
@@ -789,7 +789,7 @@ size_t llama_context::state_set_data(const uint8_t * src, size_t size) {
 
 `state_get_size` 使用 `llama_io_write_dummy` 只计算所需字节数；`state_get_data`/`state_set_data` 分别委托给 buffer 实现。
 
-### 18.9.2 文件格式：`state_save_file` / `state_load_file`
+### 17.9.2 文件格式：`state_save_file` / `state_load_file`
 
 源码路径：`src/llama-context.cpp` - `state_load_file` / `state_save_file`（第1750-1950行）
 
@@ -832,11 +832,11 @@ bool llama_context::state_load_file(
 
 文件格式：**魔数 `LLAMA_SESSION_MAGIC` → 版本 → token 数量 → token 数组 → KV 缓存数据**。加载时先校验魔数和版本，再恢复上下文状态。
 
-### 18.9.3 单序列状态：`state_seq_save_file` / `state_seq_load_file`
+### 17.9.3 单序列状态：`state_seq_save_file` / `state_seq_load_file`
 
 单序列状态使用 `LLAMA_STATE_SEQ_MAGIC` 区分，`flags` 参数控制包含的字段，适用于单独保存/恢复某一对话轮次。
 
-### 18.9.4 抽象 IO 类层次
+### 17.9.4 抽象 IO 类层次
 
 | 类名 | 用途 | 关键实现 |
 |------|------|----------|
@@ -846,9 +846,9 @@ bool llama_context::state_load_file(
 | `llama_io_read_buffer` | 从内存 buffer 读取 | 指针移动读取，校验溢出 |
 | `llama_io_read_file` | 从文件读取 | `read_to` 直接读入目标，`read` 用临时缓冲 |
 
-## 18.10 性能与内存 —— "车辆仪表"的监控与诊断
+## 17.10 性能与内存 —— "车辆仪表"的监控与诊断
 
-### 18.10.1 `perf_get_data()` / `perf_reset()`
+### 17.10.1 `perf_get_data()` / `perf_reset()`
 
 源码路径：`src/llama-context.cpp` - 对应方法（第2440-2530行）
 
@@ -866,7 +866,7 @@ void llama_context::perf_reset() {
 
 收集并重置性能计数器。
 
-### 18.10.2 `memory_breakdown()` 与 `llama_memory_breakdown_print()`
+### 17.10.2 `memory_breakdown()` 与 `llama_memory_breakdown_print()`
 
 源码路径：`src/llama-context.cpp` - `memory_breakdown()`（第2440-2530行）、`llama_memory_breakdown_print()`（第2750-2870行）
 
@@ -887,9 +887,9 @@ void llama_memory_breakdown_print(const struct llama_context * ctx) {
 
 按后端缓冲区类型统计内存使用，表格化输出每个设备的 total/free/self/unaccounted，便于诊断内存占用和优化硬件卸载。
 
-## 18.11 训练优化 —— "驾驶技术"的训练模式
+## 17.11 训练优化 —— "驾驶技术"的训练模式
 
-### 18.11.1 `opt_init()`：优化器初始化
+### 17.11.1 `opt_init()`：优化器初始化
 
 源码路径：`src/llama-context.cpp` - `llama_context::opt_init()` / `llama_set_param()`（第2530-2750行）
 
@@ -914,7 +914,7 @@ static void llama_set_param(ggml_tensor * cur, const char * name, void * user_da
 
 `opt_init` 创建 `ggml_opt_context`，`llama_set_param` 过滤 F32 张量并跳过 `token_embd` 与 `rope_freqs`，其余标记为可训练。
 
-### 18.11.2 `opt_epoch()` / `opt_epoch_iter()`：训练循环
+### 17.11.2 `opt_epoch()` / `opt_epoch_iter()`：训练循环
 
 ```cpp
 void llama_context::opt_epoch(...) {
@@ -933,9 +933,9 @@ void llama_context::opt_epoch_iter(...) {
 
 `opt_epoch` 将数据集划分训练/评估，`opt_epoch_iter` 在 `n_ctx` 窗口内按 `n_batch`/`n_ubatch` 构建 opt 图并执行训练/评估迭代。
 
-## 18.12 图执行与控制向量 —— "引擎室"的精密齿轮
+## 17.12 图执行与控制向量 —— "引擎室"的精密齿轮
 
-### 18.12.1 `graph_reserve()`：手动图预留
+### 17.12.1 `graph_reserve()`：手动图预留
 
 源码路径：`src/llama-context.cpp` - `llama_context::graph_reserve()`（第2900-3100行）
 
@@ -952,7 +952,7 @@ ggml_cgraph * llama_context::graph_reserve(
 
 手动预留图用于基准测试或预热，构造 dummy ubatch 激活所有后端采样器，支持 `split_only` 与 `no_alloc` 模式。
 
-### 18.12.2 `graph_compute()`：图执行入口
+### 17.12.2 `graph_compute()`：图执行入口
 
 源码路径：`src/llama-context.cpp` - `llama_context::graph_compute()`（第2900-3100行）
 
@@ -972,7 +972,7 @@ ggml_status llama_context::graph_compute(ggml_cgraph * gf, bool batched) {
 
 根据 `batched` 参数选择线程池与线程数，下发到所有后端，调用调度器异步执行图。
 
-### 18.12.3 `graph_get_cb()`：图节点命名与后端亲和性
+### 17.12.3 `graph_get_cb()`：图节点命名与后端亲和性
 
 源码路径：`src/llama-context.cpp` - `llama_context::graph_get_cb()`（第2900-3100行）
 
@@ -1003,7 +1003,7 @@ llm_graph_cb llama_context::graph_get_cb() const {
 
 对 norm 层做后端亲和性调度（仅小 batch 或全 offload 时），将 norm 分配到该层所在设备，减少跨后端数据传输开销。
 
-### 18.12.4 `graph_params()`：打包图构建参数
+### 17.12.4 `graph_params()`：打包图构建参数
 
 源码路径：`src/llama-context.cpp` - `llama_context::graph_params()`（第2900-3100行）
 
@@ -1035,7 +1035,7 @@ llm_graph_params llama_context::graph_params(
 
 将所有图构建所需的上下文打包为 `llm_graph_params`，作为 `model.build_graph` 的唯一输入，确保图结构由该参数集唯一确定。
 
-### 18.12.5 `output_reserve()` 与 `output_reorder()`
+### 17.12.5 `output_reserve()` 与 `output_reorder()`
 
 源码路径：`src/llama-context.cpp` - `output_reserve()` / `output_reorder()` / `output_resolve_row()`（第1820-2050行）
 
@@ -1061,7 +1061,7 @@ int64_t llama_context::output_resolve_row(int32_t i) const {
 
 `output_reserve` 统一分配输出缓冲区；`output_reorder` 在读取输出时按 `output_swaps` 懒重排，避免立即拷贝；`output_resolve_row` 将用户索引映射到物理行号。
 
-### 18.12.6 控制向量适配器 `llama_adapter_cvec`
+### 17.12.6 控制向量适配器 `llama_adapter_cvec`
 
 源码路径：`src/llama-adapter.cpp` - `llama_adapter_cvec::init/apply/apply_to/tensor_for`（第30-130行）
 
@@ -1091,7 +1091,7 @@ ggml_tensor * llama_adapter_cvec::apply_to(ggml_context * ctx,
 
 控制向量按层存储 1D F32 方向张量，`init` 为每个 buft 分配独立 ctx/buffer，`apply` 校验并写入数据，`apply_to` 在图构建时直接 `ggml_add` 到激活。
 
-## 18.13 设计中的取舍
+## 17.13 设计中的取舍
 
 **为什么用 `llama_io_write_dummy` 计算序列化大小而不是预先计算？**
 
@@ -1109,9 +1109,9 @@ GGUF 状态包含动态的 KV 缓存数据，其大小取决于当前内存模�
 
 后端采样需要采样器实现特定的后端接口（初始化、应用），且链式结构便于统一管理多个采样阶段。单一采样器或不支持后端接口的采样器无法安全卸载，强制退化到 CPU 采样保证正确性。
 
-## 18.14 动手练习
+## 17.14 动手练习
 
-### 练习1：阅读llama_context构造与析构
+### 17.14.1 练习1：阅读llama_context构造与析构
 阅读 `src/llama-context.cpp` 第30-380行的 `llama_context::llama_context()` 实现：
 1. 构造函数如何处理 `n_seq_max` 超出 `LLAMA_MAX_SEQ` 的情况？
 2. YaRN 缩放参数 (yarn_attn_factor) 是如何根据 `rope_yarn_log_mul` 计算的？
@@ -1123,7 +1123,7 @@ GGUF 状态包含动态的 KV 缓存数据，其大小取决于当前内存模�
 - 构造失败时哪些异常会被抛出？调用方如何处理？
 - 为何 `sched_reserve()` 在构造函数末尾而非更早调用？
 
-### 练习2：解析sched_reserve中的自动检测逻辑
+### 17.14.2 练习2：解析sched_reserve中的自动检测逻辑
 阅读 `src/llama-context.cpp` 中 `llama_context::sched_reserve()` 第412-660行：
 1. `cparams.auto_fa` 检测 Flash Attention 支持的完整流程是什么？
 2. 如何判断 `fa_device_mismatch`？它对 `cparams.flash_attn` 有什么影响？
@@ -1135,7 +1135,7 @@ GGUF 状态包含动态的 KV 缓存数据，其大小取决于当前内存模�
 - 为何先做 FA 检测再做 GDN 检测？顺序有依赖吗？
 - `gf_res_prev` 与 `gf_res_reserve` 两个图结果实例的职责分别是什么？
 
-### 练习3：理解decode主循环的KV缓存交互
+### 17.14.3 练习3：理解decode主循环的KV缓存交互
 阅读 `src/llama-context.cpp` 中 `llama_context::decode()` 第1100-1500行：
 1. `memory_update(false)` 与 `init_batch()` 的关系是什么？
 2. `mctx->get_status()` 返回 `FAILED_PREPARE` 时如何尝试缓存优化（`memory_update(true)`）？
@@ -1147,7 +1147,7 @@ GGUF 状态包含动态的 KV 缓存数据，其大小取决于当前内存模�
 - 为何 `decode()` 内层循环用 `do { } while (mctx->next())` 而非 `while`？
 - 后端采样（`sampling.samplers`）存在时对 `n_outputs` 有什么约束？
 
-### 练习4：状态序列化文件格式解读
+### 17.14.4 练习4：状态序列化文件格式解读
 阅读 `src/llama-context.cpp` 第1500-1900行的状态序列化代码：
 1. 写出 `state_save_file` 写入文件的字节布局（按顺序）。
 2. `llama_io_write_dummy` 的作用是什么？它如何计算所需大小？
@@ -1159,7 +1159,7 @@ GGUF 状态包含动态的 KV 缓存数据，其大小取决于当前内存模�
 - 魔数 `LLAMA_SESSION_MAGIC` 与 `LLAMA_STATE_SEQ_MAGIC` 的区分意义？
 - 如果KV缓存类型发生变化，旧的session文件能否正确恢复？
 
-### 练习5：LoRA适配器加载与运行时应用
+### 17.14.5 练习5：LoRA适配器加载与运行时应用
 阅读 `src/llama-adapter.cpp` 中 `llama_adapter_lora_init_impl` 全文：
 1. 加载GGUF时如何校验 `general.type == adapter` 与 `adapter.type == lora`？
 2. 如何将 `*.lora_a` 与 `*.lora_b` 张量配对成 `ab_map`？
@@ -1171,7 +1171,7 @@ GGUF 状态包含动态的 KV 缓存数据，其大小取决于当前内存模�
 - LoRA 应用后 `sched_need_reserve = true` 会带来什么开销？
 - 如果两个 LoRA 适配同一层，GGML 计算图如何同时叠加它们的缩放？
 
-### 练习6：图复用与can_reuse的边界
+### 17.14.6 练习6：图复用与can_reuse的边界
 阅读 `src/llama-context.cpp` 中 `process_ubatch` 与 `graph_reserve` 实现：
 1. `res->can_reuse(gparams)` 的判等条件是什么？哪些参数变化会强制重建图？
 2. `graph_reuse_disable` 环境变量在何处被读取？其作用范围是什么？
@@ -1183,7 +1183,7 @@ GGUF 状态包含动态的 KV 缓存数据，其大小取决于当前内存模�
 - 为何 `gf_res_prev` 在 `memory_update` 中要被 reset？
 - `graph_max_nodes` 为 Qwen3Next/Kimi Linear/Qwen35 等模型返回的特殊值是什么含义？
 
-### 练习7：训练接口opt_init与opt_epoch
+### 17.14.7 练习7：训练接口opt_init与opt_epoch
 阅读 `src/llama-context.cpp` 中 `opt_init`、`opt_epoch`、`opt_epoch_iter` 实现：
 1. `llama_set_param` 过滤张量的规则是什么？哪些张量会被显式跳过？
 2. `opt_params.opt_period = n_batch / n_ubatch` 的意义是什么？
@@ -1195,7 +1195,7 @@ GGUF 状态包含动态的 KV 缓存数据，其大小取决于当前内存模�
 - `idata_split` 如何划分训练集与评估集？
 - 训练结束后 `opt_ctx` 何时被释放？
 
-### 练习8：运行时控制接口与采样器挂载
+### 17.14.8 练习8：运行时控制接口与采样器挂载
 阅读 `src/llama-context.cpp` 中 `attach_threadpool`、`detach_threadpool`、`set_n_threads`、`set_abort_callback`、`set_sampler` 实现：
 1. 线程池的 `threadpool_batch` 为何在缺省时退化为 `threadpool`？
 2. `set_n_threads` 修改 cparams 后如何通知所有后端？
@@ -1205,7 +1205,7 @@ GGUF 状态包含动态的 KV 缓存数据，其大小取决于当前内存模�
 回答问题：
 - 当采样器无法后端化时会发生什么？为什么需要 `sched_need_reserve`？
 
-## 18.15 本章小结
+## 17.15 本章小结
 
 这一章中我们学习了 llama.cpp 核心推理上下文 `llama_context` 的完整实现。首先剖析了 `llama_cparams` 这一"驾驶舱仪表盘"结构体，理解其如何统管上下文容量、线程、RoPE/YaRN、注意力策略、输出模式、量化类型、自动检测开关等十大类配置。其次深入构造与析构流程，看参数合并、后端初始化（GPU优先、ACCEL单独添加、CPU兜底）、内存模块创建、采样器映射、调度器预热的全链路。接着详细解读 `sched_reserve` 的"试菜大会"：Flash Attention 与 Gated Delta Net 自动检测、最坏情况 pp/tg 图预留、pipeline_parallel 回退机制。然后对比 `encode` 与 `decode` 两大主循环：编码器走非因果注意力、无KV缓存、一次性处理；解码器管理KV缓存、分ubatch循环、支持后端采样、输出懒重排。随后讲解 `process_ubatch` 的图复用核心（`can_reuse` 判等、`graph_reuse_disable` 强制关闭）、线程池与中止回调的运行时控制、LoRA/cvec 适配器的动态挂载与触发重预留、状态序列化的抽象 IO 体系与文件格式（魔数、版本、token数组、KV数据）、性能统计与内存分布诊断、以及轻量级训练接口 `opt_init/opt_epoch` 的实现细节。最后梳理了图执行入口 `graph_compute`、参数打包 `graph_params`、后端亲和性回调 `graph_get_cb`、输出缓冲区管理与控制向量适配器的实现。
 

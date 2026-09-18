@@ -1,5 +1,5 @@
 
-# 第5章 Gemma 家族深度解析 —— Google 模型的「转换四部曲」
+# 第4章 Gemma 家族深度解析 —— Google 模型的「转换四部曲」
 
 ## 学习目标
 
@@ -12,7 +12,7 @@
 - 掌握 Gemma3/Gemma4 多模态转换器（mmproj）的实现差异，包括 Gemma3VisionModel 的 soft_emb_norm +1 与 Gemma3nVisionAudioModel 的 MobileNetV5 block_tensor_mapping
 - 熟悉 Gemma4VisionAudioModel 的 audio Conformer（softplus + per_dim_key_scale）与 vision（patch_embedder 2D→4D conv）处理流程
 
-## 5.1 生活类比
+## 4.1 生活类比
 
 想象 Gemma 家族是一座「Google 大厦的四代升级工程」：
 - **Gemma 基础款** = 一栋毛坯公寓，每间房（norm 层）需要开发商偷偷给家具加 1cm 垫片（norm.weight+1），搬进 GGML 大厦时必须把垫片拆加
@@ -25,7 +25,7 @@
 - **Gemma4 Audio Conformer** = 语音管家用 softplus 给每个旋钮（per_dim_key_scale）加软化滤镜，让声音更圆润；patch_embedder 则把 2D 拼图重新拼成 3D 立体画
 就像四代大厦不断迭代，大堂经理（norm_shift）从「+1 垫片」变成「不加垫片」，电梯工（AltUp）从无到有，旋转门工程师（RoPE）也在不断换新工艺。
 
-## 5.2 源码地图
+## 4.2 源码地图
 
 ./convert_hf_to_gguf.py
 ├── GemmaModel (基础款)
@@ -77,25 +77,25 @@
 ├── tensor_force_quant()                         # audio conv 强制 F32
 └── modify_tensors()                             # batch_norm 折叠 + conv 形状重塑
 
-## 5.3 Gemma 家族解码器的「转换四部曲」—— 从基础归一化到前沿 AltUp、滑动窗口
+## 4.3 Gemma 家族解码器的「转换四部曲」—— 从基础归一化到前沿 AltUp、滑动窗口
 
-### 为什么需要 Gemma 家族章节？
+### 4.3.1 为什么需要 Gemma 家族章节？
 
 - 统一解析 Gemma、Gemma3、Gemma3N、Gemma4 在 GGUF 转换中的差异点
 - 理解不同代次的 norm_shift（+1 偏移）机制
 - 看 AltUp 投影、共享 KV 层、滑动窗口模式如何被特殊处理
 
-### 为什么 norm_shift = +1 是 Gemma 的标志？
+### 4.3.2 为什么 norm_shift = +1 是 Gemma 的标志？
 
 - Gemma RMSNorm 在 forward 时执行 `weight * (1.0 + w)`，因此存储时减去 1
 - 在 `convert_hf_to_gguf.py` 中通过 `norm_shift()` 方法做反向补偿
 - Gemma3 默认为 1.0，但 Gemma3N/Gemma4 关闭（0.0），因为其 NormScale shift 在 forward 已隐含
 
-### GemmaModel 基础款：norm.weight +1 的艺术
+### 4.3.3 GemmaModel 基础款：norm.weight +1 的艺术
 
 `modify_tensors` 中检查 `name.endswith("norm.weight")`，`data_torch = data_torch + 1` 反向补偿回 GGML 端期望的值。`set_vocab` 标记 `add_space_prefix = False`，符合 SentencePiece 规范。
 
-#### GemmaModel.modify_tensors()：基础归一化权重补偿
+#### 4.3.3.1 GemmaModel.modify_tensors()：基础归一化权重补偿
 
 源码路径：`./convert_hf_to_gguf.py` - `GemmaModel.modify_tensors()`（3106-3132行）
 
@@ -113,7 +113,7 @@
 
 这段代码实现了 Gemma 特有的归一化层权重反向补偿：HF 模型在推理时执行 `x * (1 + w)`，权重存储时已预减 1，转换回 GGUF 时必须加回 1。
 
-#### GemmaModel.set_vocab()：SentencePiece 词表与 CodeGemma 特殊 token
+#### 4.3.3.2 GemmaModel.set_vocab()：SentencePiece 词表与 CodeGemma 特殊 token
 
 源码路径：`./convert_hf_to_gguf.py` - `GemmaModel.set_vocab()`（3081-3104行）
 
@@ -135,15 +135,15 @@
 
 这段代码完成 Gemma 基础款的词表装配：先用 `_set_vocab_sentencepiece` 读取 tokenizer.model，再显式注入 FIM（Fill-in-the-Middle）任务所需的特殊 token。
 
-### Gemma2Model：soft-capping 与滑动窗口的继承者
+### 4.3.4 Gemma2Model：soft-capping 与滑动窗口的继承者
 
 沿用 `norm.weight +1`，新增 `attn_logit_softcapping`、`final_logit_softcapping` 和 `sliding_window` 三个 GGUF 参数。
 
-### Gemma3Model：因果 vs 非因果与 vocab 截断
+### 4.3.5 Gemma3Model：因果 vs 非因果与 vocab 截断
 
 通过 `is_causal` 自动写入 `causal_attention` 元数据。OOV 行裁剪：`embed_tokens.weight` 只保留真实 vocab 大小。`sliding_window_pattern != 1` 时写入 `sliding_window` KV 元数据。
 
-#### Gemma3Model.norm_shift()：保持 +1 偏移
+#### 4.3.5.1 Gemma3Model.norm_shift()：保持 +1 偏移
 
 源码路径：`./convert_hf_to_gguf.py` - `Gemma3Model.norm_shift()`（3242-3243行）
 
@@ -153,7 +153,7 @@
         return 1.0 if name.endswith("norm.weight") else 0.0
 ```
 
-#### Gemma3Model.set_vocab()：SPM/GPT2 双轨制
+#### 4.3.5.2 Gemma3Model.set_vocab()：SPM/GPT2 双轨制
 
 源码路径：`./convert_hf_to_gguf.py` - `Gemma3Model.set_vocab()`（3235-3240行）
 
@@ -168,7 +168,7 @@
             self._set_vocab_gpt2()
 ```
 
-#### Gemma3Model.set_gguf_parameters()：因果注意力与滑动窗口元数据
+#### 4.3.5.3 Gemma3Model.set_gguf_parameters()：因果注意力与滑动窗口元数据
 
 源码路径：`./convert_hf_to_gguf.py` - `Gemma3Model.set_gguf_parameters()`（3245-3269行）
 
@@ -195,7 +195,7 @@
 
 这段代码展示了 Gemma3 的核心特性配置：支持因果/非因果双模式、显式写入 KV 头数、条件性启用滑动窗口。
 
-#### Gemma3Model.modify_tensors()：词表裁剪与归一化补偿
+#### 4.3.5.4 Gemma3Model.modify_tensors()：词表裁剪与归一化补偿
 
 源码路径：`./convert_hf_to_gguf.py` - `Gemma3Model.modify_tensors()`（3295-3322行）
 
@@ -219,7 +219,7 @@
 
 这段代码完成三件事：多模态前缀清洗、视觉张量分流、词表 OOV 行裁剪、归一化权重补偿。
 
-### Gemma3NModel：AltUp 多通道与 vision/audio token 嵌入填充
+### 4.3.6 Gemma3NModel：AltUp 多通道与 vision/audio token 嵌入填充
 
 `_altup_proj` 与 `_altup_unembd` 缓冲三组 AltUp 投影矩阵，堆叠为 3D 张量：
 - 通过 `if ".0." / ".1." / ".2."` 分支识别索引
@@ -244,41 +244,41 @@
 - `input_projection/input_proj` 强制 F16 精度（避免 quantization 精度损失）
 - `.embeddings.` 和 `stem` 强制 F32 精度（保护位置编码与 stem 卷积）
 
-### Gemma4Model：共享 KV 层与 per-layer 输入嵌入
+### 4.3.7 Gemma4Model：共享 KV 层与 per-layer 输入嵌入
 
 `add_shared_kv_layers(num_kv_shared_layers)` 标记最后 N 层为 KV 共享。`add_embedding_length_per_layer_input` 写入 per-layer 投影维度。区分 `head_dim_full`（global）与 `head_dim_swa`（sliding）写入 `add_key_length(_swa)`。
 
-### Gemma4Model：Proportional RoPE 频率因子的精妙
+### 4.3.8 Gemma4Model：Proportional RoPE 频率因子的精妙
 
 `generate_extra_tensors` 中：rotary_dim 取 head_dim_full 一半。用 `1e30` 标记不旋转的维度，让 ggml 跳过对应位置。生成 `ROPE_FREQS` 张量，与 Llama3 RoPE 频率因子机制一致。
 
-### Gemma3VisionModel / Gemma3nVisionAudioModel / Gemma4VisionAudioModel
+### 4.3.9 Gemma3VisionModel / Gemma3nVisionAudioModel / Gemma4VisionAudioModel
 
 - `Gemma3VisionModel` 写入 GEMMA3 projector 并修正 `soft_emb_norm.weight` +1
 - `Gemma3nVisionAudioModel` 通过 `block_tensor_mapping` 模板化 MobileNetV5 `{bid}.{sid}` 双层路径
 - `Gemma4VisionAudioModel` 对 audio `per_dim_key_scale` 做 `softplus` 变换并把 2D conv 折叠成 4D 格式
 
-## 5.4 Gemma 词表与特殊 token —— GGUF 转换中的「token 翻译官」
+## 4.4 Gemma 词表与特殊 token —— GGUF 转换中的「token 翻译官」
 
-### GemmaModel 的词表特殊性
+### 4.4.1 GemmaModel 的词表特殊性
 
 - 使用 SentencePiece，`_set_vocab_sentencepiece` 读取 tokenizer.model
 - 显式注入 `prefix/suffix/middle/fsep/eot` 特殊 token（CodeGemma 专属）
 - `chat_template = None` 避免 SpecialVocab 重复注入
 
-### Gemma3Model 词表双轨制
+### 4.4.2 Gemma3Model 词表双轨制
 
 - 若存在 `tokenizer.model`，调用 SentencePiece 路径并关闭 add_space_prefix
 - 否则 fallback 到 `_set_vocab_gpt2`（支持 Gemma3 多模态版本）
 - 自动通过 `get_vocab_base_pre` 验证预分词器哈希
 
-### Gemma4Model：LlamaHfVocab 抽象的复用
+### 4.4.3 Gemma4Model：LlamaHfVocab 抽象的复用
 
 - 直接构造 `gguf.LlamaHfVocab(self.dir_model)`
 - 通过 `visible_tokens` 集合强制 `<|channel|>` 等控制 token 标记为 USER_DEFINED
 - 这样 chat parser 能正确读取 channel 标签
 
-#### Gemma4Model.set_vocab()：LlamaHfVocab + visible_tokens
+#### 4.4.3.1 Gemma4Model.set_vocab()：LlamaHfVocab + visible_tokens
 
 源码路径：`./convert_hf_to_gguf.py` - `Gemma4Model.set_vocab()`（3823-3851行）
 
@@ -314,11 +314,11 @@
 
 这段代码展示了 Gemma4 如何复用 Llama 词表基础设施，同时通过 `visible_tokens` 机制确保对话控制 token 被正确识别。
 
-### Gemma3nVisionAudioModel：MobileNetV5 双层映射
+### 4.4.4 Gemma3nVisionAudioModel：MobileNetV5 双层映射
 
 `block_tensor_mapping` 字典实现 `{bid}.{sid}` 双层 block 路径映射。`custom_map` 解析 `model.vision_tower.timm_model.blocks.{bid}.{sid}.suffix`。视觉 encoder 走 MobileNetV5 的 timm 风格，文本 mmproj 走 ggml 标准路径。
 
-#### Gemma3nVisionAudioModel.custom_map()：双层路径模板化
+#### 4.4.4.1 Gemma3nVisionAudioModel.custom_map()：双层路径模板化
 
 源码路径：`./convert_hf_to_gguf.py` - `Gemma3nVisionAudioModel.custom_map()`（3573-3581行）
 
@@ -334,7 +334,7 @@
 
 这段代码实现了 timm 命名空间到 GGUF 标准命名的双层索引转换。
 
-#### Gemma3nVisionAudioModel.modify_tensors()：timm 块路由与 Audio Conformer
+#### 4.4.4.2 Gemma3nVisionAudioModel.modify_tensors()：timm 块路由与 Audio Conformer
 
 源码路径：`./convert_hf_to_gguf.py` - `Gemma3nVisionAudioModel.modify_tensors()`（3583-3605行）
 
@@ -353,11 +353,11 @@
         yield from super().modify_tensors(data_torch, name, bid)
 ```
 
-### Gemma4VisionAudioModel：post layernorm 偏移为 1
+### 4.4.5 Gemma4VisionAudioModel：post layernorm 偏移为 1
 
 `_per_dim_key_scale` 后应用 `softplus` 变换。通过 `unsqueeze` 把 scalar 扩展成 1D 张量。patch_embedder.input_proj 从 2D 折叠成 (C, 3, H, W) 标准 conv2d 格式。
 
-#### Gemma4VisionAudioModel.modify_tensors()：audio softplus + vision conv2d 折叠
+#### 4.4.5.1 Gemma4VisionAudioModel.modify_tensors()：audio softplus + vision conv2d 折叠
 
 源码路径：`./convert_hf_to_gguf.py` - `Gemma4VisionAudioModel.modify_tensors()`（3987-4015行）
 
@@ -381,25 +381,25 @@
             yield from super().modify_tensors(data_torch, name, bid)
 ```
 
-### Gemma3NModel.set_vocab 的特殊覆盖逻辑
+### 4.4.6 Gemma3NModel.set_vocab 的特殊覆盖逻辑
 
 临时删除 `vocab_size_per_layer_input` 字段，强制读取 `vocab_size`。调用父类后恢复 `vocab_size_per_layer_input`，供后续 padding 流程使用。这样才能正确支持 vision/audio token 区间 262144-262399。
 
-## 5.5 Gemma3N AltUp 投影器 —— 解读「多通道并行预测」转换管线
+## 4.5 Gemma3N AltUp 投影器 —— 解读「多通道并行预测」转换管线
 
-### 为什么 Gemma3N 单独处理 AltUp？
+### 4.5.1 为什么 Gemma3N 单独处理 AltUp？
 
 - AltUp 是 Google 的多通道预测机制：每个 token 维护 4 个并行表示
 - 在 GGUF 中被压缩为 3D 张量（hidden_size, hidden_size, num_inputs-1）
 - `altup_active_idx` 决定哪一通道参与当前推理
 
-### AltUp 投影张量的捕获
+### 4.5.2 AltUp 投影张量的捕获
 
 - `_altup_proj = [Tensor(), Tensor(), Tensor()]` 三元素列表作为 buffer
 - `modify_tensors` 中 `if ".0." / ".1." / ".2."` 按 index 写入对应槽
 - 全部到齐后调用 `_stack_matrices` 一次性 stack 出 3D 输出
 
-#### Gemma3NModel.__init__()：初始化空张量缓冲
+#### 4.5.2.1 Gemma3NModel.__init__()：初始化空张量缓冲
 
 源码路径：`./convert_hf_to_gguf.py` - `Gemma3NModel.__init__()`（3627-3637行）
 
@@ -411,7 +411,7 @@
         self._altup_unembd = [torch.Tensor(), torch.Tensor(), torch.Tensor()]
 ```
 
-#### Gemma3NModel._stack_matrices()：3D 堆叠工具
+#### 4.5.2.2 Gemma3NModel._stack_matrices()：3D 堆叠工具
 
 源码路径：`./convert_hf_to_gguf.py` - `Gemma3NModel._stack_matrices()`（3681-3687行）
 
@@ -423,7 +423,7 @@
         return name, stacked
 ```
 
-#### Gemma3NModel.modify_tensors()：AltUp 缓冲与 embed_tokens padding
+#### 4.5.2.3 Gemma3NModel.modify_tensors()：AltUp 缓冲与 embed_tokens padding
 
 源码路径：`./convert_hf_to_gguf.py` - `Gemma3NModel.modify_tensors()`（3707-3767行）
 
@@ -465,19 +465,19 @@
         yield from super().modify_tensors(data_torch, name, bid)
 ```
 
-### Vision/Audio 特殊 Token 的嵌入 padding
+### 4.5.3 Vision/Audio 特殊 Token 的嵌入 padding
 
 - 因 `vocab_size_per_layer_input = 262144`，但真实模型含视觉 token 到 262400
 - `embed_tokens.weight` 与 `embed_tokens_per_layer` 都需 zero-pad 到 `vocab_size`
 - `name.replace("language_model.", "")` 去除多模态命名空间
 
-### Activation Sparsity Pattern 的统计近似
+### 4.5.4 Activation Sparsity Pattern 的统计近似
 
 - 通过 `torch.distributions.normal.Normal(0, 1).icdf(sparsity)` 还原 multiplier
 - `add_activation_sparsity_scale(activation_sparsity_scale)` 写入元数据
 - 用于在 GGML 推理时跳过低激活维度的计算
 
-#### Gemma3NModel.set_gguf_parameters()：AltUp/稀疏/滑动窗口元数据
+#### 4.5.4.1 Gemma3NModel.set_gguf_parameters()：AltUp/稀疏/滑动窗口元数据
 
 源码路径：`./convert_hf_to_gguf.py` - `Gemma3NModel.set_gguf_parameters()`（3654-3679行）
 
@@ -504,40 +504,40 @@
             self.gguf_writer.add_sliding_window_pattern(swa_pattern)
 ```
 
-### Sliding Window Pattern 与 layer_types 严格对齐
+### 4.5.5 Sliding Window Pattern 与 layer_types 严格对齐
 
 遍历 `hparams["layer_types"]`，生成布尔列表 `t == "sliding_attention"`。`add_sliding_window_pattern(...)` 与 sliding_window 长度匹配。让运行时精准区分 ISWA 双缓存策略。
 
-### Gemma3nVisionAudioModel.tensor_force_quant 行为
+### 4.5.6 Gemma3nVisionAudioModel.tensor_force_quant 行为
 
 - `input_projection/input_proj` 强制 F16 精度（避免 quantization 精度损失）
 - `.embeddings.` 和 `stem` 强制 F32 精度（保护位置编码与 stem 卷积）
 
-## 5.6 Gemma4 共享 KV 与滑动窗口 —— 双缓存机制与 RoPE 比例
+## 4.6 Gemma4 共享 KV 与滑动窗口 —— 双缓存机制与 RoPE 比例
 
-### 为什么 Gemma4 有共享 KV 层？
+### 4.6.1 为什么 Gemma4 有共享 KV 层？
 
 - 节省长推理的 KV cache 占用
 - `hparams["num_kv_shared_layers"]` 标记末尾 N 层共享 KV
 - `add_shared_kv_layers(...)` 让 C++ 端识别哪些层可以共享
 
-### Gemma4 的 per-layer 输入嵌入（PL Embedding）
+### 4.6.2 Gemma4 的 per-layer 输入嵌入（PL Embedding）
 
 `hidden_size_per_layer_input` 是辅助输入的维度。通过 `add_embedding_length_per_layer_input` 写入。用于 `project_per_layer_inputs` 投影层。
 
-### dual head_dim：global vs sliding 双轨并行
+### 4.6.3 dual head_dim：global vs sliding 双轨并行
 
 `global_head_dim` 与 `head_dim` 在 Gemma4 中并存。写入 `add_key_length` (global) 与 `add_key_length_swa` (sliding)。运行时根据 layer_types 决定读哪个。
 
-### use_double_wide_mlp 与 FFN 双倍扩容
+### 4.6.4 use_double_wide_mlp 与 FFN 双倍扩容
 
 当 `use_double_wide_mlp = True` 时，shared KV 层用 2 倍 FFN。动态生成 `n_ff_arr` 数组，写入 `add_feed_forward_length(n_ff_arr)`。让 C++ 端按 per-layer 维度调整。
 
-### Proportional RoPE 频率因子的精妙
+### 4.6.5 Proportional RoPE 频率因子的精妙
 
 `partial_rotary_factor = 0.25`，即只有 25% 维度参与旋转。`freqs = 1.0 / (base ** (arange(0, dim, 2) / dim))` 生成基础频率。未旋转维度用 `1e30` 标记，让 ggml 在 RoPE 公式中跳过。
 
-#### Gemma4Model.generate_extra_tensors()：Proportional RoPE 与 1e30 哨兵
+#### 4.6.5.1 Gemma4Model.generate_extra_tensors()：Proportional RoPE 与 1e30 哨兵
 
 源码路径：`./convert_hf_to_gguf.py` - `Gemma4Model.generate_extra_tensors()`（3938-3955行）
 
@@ -562,7 +562,7 @@
 
 这段代码生成了 Gemma4 独有的 Proportional RoPE 频率因子张量：前 25% 维度正常旋转，后 75% 维度用 1e30 标记，告诉 GGML 内核“这些维度不参与旋转”。
 
-#### Gemma4Model.set_gguf_parameters()：共享 KV、dual head_dim、双倍 FFN
+#### 4.6.5.2 Gemma4Model.set_gguf_parameters()：共享 KV、dual head_dim、双倍 FFN
 
 源码路径：`./convert_hf_to_gguf.py` - `Gemma4Model.set_gguf_parameters()`（3884-3936行）
 
@@ -595,7 +595,7 @@
             self.gguf_writer.add_sliding_window_pattern(swa_pattern)
 ```
 
-#### Gemma4Model.modify_tensors()：per_expert_scale → FFN_DOWN_EXP.scale
+#### 4.6.5.3 Gemma4Model.modify_tensors()：per_expert_scale → FFN_DOWN_EXP.scale
 
 源码路径：`./convert_hf_to_gguf.py` - `Gemma4Model.modify_tensors()`（3957-3977行）
 
@@ -615,14 +615,14 @@
         yield from super().modify_tensors(data_torch, name, bid)
 ```
 
-### Gemma4VisionAudioModel.audio / vision 处理差异
+### 4.6.6 Gemma4VisionAudioModel.audio / vision 处理差异
 
 - audio 走 Conformer 路径，`is_audio_tensor` 区分 `audio_tower` / `embed_audio`
 - vision 走 SigLIP 风格 ViT + Gemma4MultimodalEmbedder 投影头
 - `_per_dim_key_scale` 后应用 `softplus(data_torch)` 变换
 - `patch_embedder.input_proj` reshape 成 (n_embd, 3, patch_size, patch_size) 标准 conv2d
 
-#### Gemma4VisionAudioModel.is_audio_tensor()：音频张量判定
+#### 4.6.6.1 Gemma4VisionAudioModel.is_audio_tensor()：音频张量判定
 
 源码路径：`./convert_hf_to_gguf.py` - `Gemma4VisionAudioModel.is_audio_tensor()`（3987-4015 内）
 
@@ -632,7 +632,7 @@
         return any(k in name for k in ["audio_tower", "embed_audio"])
 ```
 
-#### Gemma4VisionAudioModel.modify_tensors()：audio softplus + vision conv2d 折叠
+#### 4.6.6.2 Gemma4VisionAudioModel.modify_tensors()：audio softplus + vision conv2d 折叠
 
 源码路径：`./convert_hf_to_gguf.py` - `Gemma4VisionAudioModel.modify_tensors()`（3987-4015行）
 
@@ -653,25 +653,25 @@
             yield from super().modify_tensors(data_torch, name, bid)
 ```
 
-## 5.7 设计中的取舍
+## 4.7 设计中的取舍
 
-### 为什么 Gemma3N 关闭 norm_shift（返回 0.0），而 Gemma3 保持 1.0？
+### 4.7.1 为什么 Gemma3N 关闭 norm_shift（返回 0.0），而 Gemma3 保持 1.0？
 
 Gemma3N 使用的是 `Gemma3p5RMSNorm`，其 forward 公式已将 +1 偏移融入权重存储（即存储时就是 `1+w`），无需转换时再补偿。而 Gemma3 使用 `Gemma3RMSNorm`，forward 时计算 `w * (1 + x)`，存储的是 `x`，因此必须 +1。如果误把 Gemma3N 的 norm_shift 改为 1.0，GGML 端会得到 `1 + (1+w) = 2+w` 的错误权重，导致推理数值崩溃。
 
-### 为什么 Gemma4 引入 dual head_dim（global vs sliding）而不是统一 head_dim？
+### 4.7.2 为什么 Gemma4 引入 dual head_dim（global vs sliding）而不是统一 head_dim？
 
 Gemma4 的混合注意力架构中，全局注意力层需要完整 head_dim 以保持表达能力，而滑动窗口层可用更小 head_dim 降低 KV cache。统一 head_dim 会在滑动窗口层浪费显存，或在全局层限制表达力。dual head_dim 让运行时按 layer_types 动态选择，实现精度与效率的平衡。
 
-### 为什么 Proportional RoPE 用 1e30 作为哨兵而不是 0 或负数？
+### 4.7.3 为什么 Proportional RoPE 用 1e30 作为哨兵而不是 0 或负数？
 
 RoPE 频率因子在计算中出现在分母或指数位置。1e30 极大值会使旋转角度趋近 0（即不旋转），且不会导致数值下溢或除零错误。0 会导致频率为 0（恒定旋转），负数会导致复数频率。1e30 是数值稳定且语义明确的“不旋转”标记。
 
-### Gemma3N 的 AltUp 投影为何用 3 个分支堆叠而不是 4 个？
+### 4.7.4 Gemma3N 的 AltUp 投影为何用 3 个分支堆叠而不是 4 个？
 
 AltUp 机制维护 4 个并行通道，但第 0 个通道是主通道（不需要额外投影），只有第 1/2/3 个通道需要学习投影矩阵。因此只需捕获 3 个投影矩阵（.0/.1/.2 对应通道 1/2/3），堆叠为 [hidden, hidden, 3]。
 
-## 5.8 动手练习
+## 4.8 动手练习
 
 1. **阅读 GemmaModel 的 norm.weight 补偿机制**
    阅读 ./convert_hf_to_gguf.py 第 3081-3132 行（GemmaModel.set_vocab、set_gguf_parameters、modify_tensors），回答以下问题：
@@ -710,7 +710,7 @@ AltUp 机制维护 4 个并行通道，但第 0 个通道是主通道（不需�
    4. Gemma4VisionAudioModel.modify_tensors 中 audio 塔的 `_per_dim_key_scale` 如何应用 softplus？vision 塔的 patch_embedder 如何 reshape 为 2D→4D conv 格式？
    5. 对比 Gemma3VisionModel（只处理 vision）、Gemma3nVisionAudioModel（vision+audio 双塔）、Gemma4VisionAudioModel（vision+audio 双塔），它们在 set_gguf_parameters 中分别写入了哪些 projector type？
 
-## 5.9 本章小结
+## 4.9 本章小结
 
 这一章中我们学习了 Gemma 家族四代模型在 GGUF 转换中的演进脉络。首先分析了 Gemma 基础款的 norm.weight +1 反向补偿机制，这是由 Gemma RMSNorm 的前向公式 `weight * (1+w)` 决定的存储约定。其次讲解了 Gemma3 引入的因果/非因果双模式、vocab OOV 裁剪与滑动窗口元数据写入。接着深入剖析了 Gemma3N 的核心创新：AltUp 多通道投影的三缓冲捕获与 3D 堆叠、vision/audio token 嵌入的 262400 padding 机制、Activation Sparsity 的 normal.icdf 统计还原、以及 MobileNetV5 timm 双层路径的 custom_map 模板化映射。然后详细解读了 Gemma4 的共享 KV 层标记、dual head_dim（global/sliding 双轨）、use_double_wide_mlp 触发的 FFN 翻倍、Proportional RoPE 的 1e30 哨兵设计，以及多模态投影器中 audio Conformer 的 softplus 变换与 vision patch_embedder 的 2D→4D conv 折叠。最后对比了各代 norm_shift 的数学差异与多模态转换器的分流策略。
 

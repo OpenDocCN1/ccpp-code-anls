@@ -1,6 +1,6 @@
 
 
-# 第 82 章 API 协议转换与多模态处理 —— 跨厂商接口的「同声传译」
+# 第81章 API 协议转换与多模态处理 —— 跨厂商接口的「同声传译」
 
 ## 学习目标
 
@@ -12,7 +12,7 @@
 - 了解多模态媒体处理的完整流水线
 - 掌握 JSON 工具函数与字符串处理在服务端开发中的应用
 
-## 82.1 生活类比
+## 81.1 生活类比
 
 llama.cpp 服务端是一套**全能翻译与装配流水线**。想象你经营着一家国际快递公司，每天要处理来自全球各地的包裹。有的客户送来的是标准纸箱（纯文本请求），有的送来的是易碎的工艺品（图像）或录音带（音频），还有的客户用的是不同的单据格式（OpenAI、Anthropic、Responses API）。
 
@@ -24,7 +24,7 @@ llama.cpp 服务端是一套**全能翻译与装配流水线**。想象你经营
 
 当推理引擎开始实时输出时，**format_oai_sse()** 就是**实时直播的字幕机**，每产生一个 token 就装进数据包（`data: {...}\n\n`），按 RFC 8895 规范的通信协议逐个发送，确保客户端能边接收边显示。而 **format_response_rerank()** 则是**成绩单反馈员**，把学生作业（文档）与题目（query）对比后，按得分排序，以标准 JSON 格式呈现给上层应用。**process_mtmd_prompt()** 则是**多语种文件柜**的管理员，先将图像转为 FNV 哈希指纹，然后统一整理装箱，与文本 prompt 融合成一体的多模态表示供模型理解。
 
-## 82.2 源码地图
+## 81.2 源码地图
 
 ```
 tools/server/server-common.cpp
@@ -112,11 +112,11 @@ tools/server/server-common.h
 └── 30+ 个公共函数声明
 ```
 
-## 82.3 参数解析与 LoRA 管理 —— 翻译请求的「词汇表管理员」
+## 81.3 参数解析与 LoRA 管理 —— 翻译请求的「词汇表管理员」
 
 当客户端调用 llama-server 的 `/completions` 或 `/chat/completions` 端点时，请求参数往往以异构的 JSON 格式到达。有的用户发送普通字符串 prompt，有的发送 token ID 数组，还有的发送字符串与 token 混合的数组。这套解析层承担了「翻译官」职责，将这些五花八门的输入统一为 llama.cpp 内部可识别的参数结构。
 
-### 82.3.1 `oaicompat_completion_params_parse()`：OpenAI 兼容请求的「入口检查站」
+### 81.3.1 `oaicompat_completion_params_parse()`：OpenAI 兼容请求的「入口检查站」
 
 源码路径：`tools/server/server-common.cpp` - `oaicompat_completion_params_parse()`（762-793行）
 头文件声明：`tools/server/server-common.h` - `oaicompat_completion_params_parse()`（291行）
@@ -154,7 +154,7 @@ json oaicompat_completion_params_parse(const json & body) {
 
 这段代码实现了 OpenAI 兼容 `/completions` 请求的标准解析流程。函数采用「宽进严出」策略：第②步强制要求 prompt 字段存在，任何缺失都会立即报错；第③步把 stop 统一为数组格式（OpenAI 允许字符串或数组）；第④⑤⑥步显式拒绝 echo、best_of、suffix 等 llama.cpp 不支持的功能——之所以称之为「激素脸」机制，是因为它像敏感肌遇到刺激物一样，一碰到不支持的参数就立即红肿报警（抛出异常），而不是装作看不见继续处理，这种"直接拒绝"的设计避免了用户因为静默忽略而得到不符合预期的结果；最后第⑦步将剩余所有参数原样透传到内部参数对象中，确保用户意图不丢失。
 
-### 82.3.2 `oaicompat_chat_params_parse()`：聊天补全请求的「多模态通道」
+### 81.3.2 `oaicompat_chat_params_parse()`：聊天补全请求的「多模态通道」
 
 源码路径：`tools/server/server-common.cpp` - `oaicompat_chat_params_parse()`（840-872行）
 头文件声明：`tools/server/server-common.h` - `oaicompat_chat_params_parse()`（294-298行）
@@ -212,7 +212,7 @@ json oaicompat_chat_params_parse(
 
 这段代码是 `/chat/completions` 端点请求处理的「分拣漏斗」。与 `oaicompat_completion_params_parse()` 不同，该函数的核心职责在于处理多模态内容——第⑩行检测到 `image_url` 或 `input_audio` 类型的块时，会调用 `handle_media()` 将 URL 下载或解码为原始字节数据并存入 `out_files`，同时从 `content` 数组中过滤掉这些多模态元素。第⑧行的分支处理兼容了纯文本请求（content 为字符串）与多模态请求（content 为数组）两种场景。这种设计将媒体解码逻辑从请求解析中解耦，使得后续的 tokenization 流程可以统一处理文本与媒体数据。
 
-### 82.3.3 `tokenize_mixed()`：混合输入的「分词魔法」
+### 81.3.3 `tokenize_mixed()`：混合输入的「分词魔法」
 
 源码路径：`tools/server/server-common.cpp` - `tokenize_mixed()`（596-629行）
 头文件声明：`tools/server/server-common.h` - `tokenize_mixed()`（227行）
@@ -257,7 +257,7 @@ llama_tokens tokenize_mixed(const llama_vocab * vocab, const json & json_prompt,
 
 这段代码实现了对三种 prompt 格式的「分词魔法」。核心设计在于第⑤行的 `first` 标志：对于混合数组（如 `["Hello", 1234, "world"]`），首元素执行完整分词（可能注入 BOS 等特殊 token），而后续元素只做普通分词（`add_special=false`），避免在同一 prompt 中重复添加特殊 token——一个 prompt 中只需要一个 BOS 标记来标识序列开始，如果每一段字符串都经过 `add_special=true` 的分词，就会出现多个 BOS token 混杂在序列中，干扰模型对输入结构的理解。第⑦行的直接 token 传递则允许客户端绕过分词，直接指定 token ID，为高级用户提供了精细控制能力。
 
-### 82.3.4 `lora_should_clear_cache()`：LoRA 切换的「智能决策器」
+### 81.3.4 `lora_should_clear_cache()`：LoRA 切换的「智能决策器」
 
 源码路径：`tools/server/server-common.cpp` - `lora_should_clear_cache()`（100-116行）
 头文件声明：`tools/server/server-common.h` - `lora_should_clear_cache()`（107-110行）
@@ -281,7 +281,7 @@ bool lora_should_clear_cache(
 
 这意味着只有当普通 LoRA（需要重算模型权重）被启用或禁用时，才需要清空 KV 缓存。这种设计在保证正确性的同时，最大限度地保留了缓存，提升了推理性能。
 
-### 82.3.5 参数解析与 LoRA 管理的架构透视
+### 81.3.5 参数解析与 LoRA 管理的架构透视
 
 ```mermaid
 graph TD
@@ -301,11 +301,11 @@ graph TD
 
 这个流程图清晰地展示了参数解析的完整路径：`/completions` 端点走简单透传路径（C→E→K），而 `/chat/completions` 则需要额外的内容分离步骤，多模态数据被解码为原始缓冲区后，在 `process_mtmd_prompt` 中与文本结合生成统一的 `server_tokens` 对象，最后进入推理引擎。
 
-## 82.4 多模态令牌容器 —— 文本与图像的「双层集装箱」
+## 81.4 多模态令牌容器 —— 文本与图像的「双层集装箱」
 
 在 llama.cpp 服务端，一个推理请求可能同时包含文本和图像/音频。**server_tokens** 类就像一个专门设计的双层集装箱——上层整齐码放普通文本 token，下层则放置需要特殊处理的媒体块。
 
-### 82.4.1 `server_tokens` 类定义：多重装载的「容器原型」
+### 81.4.1 `server_tokens` 类定义：多重装载的「容器原型」
 
 头文件声明：`tools/server/server-common.h` - `server_tokens` 类声明（118-195行）
 
@@ -366,7 +366,7 @@ private:
 
 第④行的两个构造函数分别处理两种初始化场景：多模态输入块（来自 mtmd 编码器）和纯文本 token 列表。构造函数是拷贝控制策略的第一个应用场景——当外部传入 mtmd 输入块时，构造函数通过内部的 `push_back` 逐一填入 token 和媒体块映射，而非直接浅拷贝整个容器，从而巩固了"只允许移动"的约束。第⑦行的三重重载 `push_back` 是整个容器的「万向节」，统一了三种添加方式。私有成员中的 `map_idx_to_media` 是「双层集装箱」的关键：它建立了 token 索引到媒体块的映射，使得一个图像 token（`LLAMA_TOKEN_NULL`）可以对应多个逻辑位置。
 
-### 82.4.2 `server_tokens` 内部工作流
+### 81.4.2 `server_tokens` 内部工作流
 
 ```mermaid
 graph TB
@@ -387,7 +387,7 @@ graph TB
 
 这个流程图展示了 server_tokens 的内部结构：输入来源有两种（MTMD 编码器输出的 `input_chunks` 或纯文本 `llama_tokens`），构造函数将它们统一转换为 `server_tokens` 对象，内部同时维护文本 token 列表和媒体块映射，所有核心操作（位置计算、索引转换、公共前缀、MTMD 评估、深拷贝）都基于这两个数据结构的协同工作。
 
-### 82.4.3 `server_tokens::pos_next()`：位置换算的「空间魔法师」
+### 81.4.3 `server_tokens::pos_next()`：位置换算的「空间魔法师」
 
 实现源码：`tools/server/server-common.cpp` - `server_tokens::pos_next()`（200-248行）
 头文件声明：`tools/server/server-common.h` - `pos_next()`（142行）
@@ -437,7 +437,7 @@ llama_pos server_tokens::pos_next(int64_t n_tokens) const {
 
 这段代码是 server_tokens 最核心的「空间换算术」。在纯文本模式（第①行）下，位置与 token 索引一一对应。但在多模态模式下（第②行以后），图像或音频块可能需要占用多个逻辑位置（如 32 个位置），却只对应一个 token 索引。函数通过遍历 `map_idx_to_media` 精准计算每个媒体块占用的位置数（第⑤行），普通 token 则占 1 个位置（第⑥行），最终得到准确的位置偏移。这个函数在 KV 缓存管理和序列续写中至关重要，因为模型需要知道每个 token 的正确位置编码。
 
-### 82.4.4 `server_tokens::get_common_prefix()`：公共前缀的「语义比较器」
+### 81.4.4 `server_tokens::get_common_prefix()`：公共前缀的「语义比较器」
 
 实现源码：`tools/server/server-common.cpp` - `server_tokens::get_common_prefix()`（415-459行）
 头文件声明：`tools/server/server-common.h` - `get_common_prefix()`（180行）
@@ -490,11 +490,11 @@ size_t server_tokens::get_common_prefix(const server_tokens & b) const {
 
 这段代码实现了语义级别的公共前缀比较。在纯文本模式（第②行）下，逐 token 比较直到遇到差异。但在多模态模式（第③行）下，两个 `LLAMA_TOKEN_NULL` 占位符不能简单视为相同——需要进一步验证它们指向的媒体块是否真的是同一份内容（第④⑤行）。这里通过比较媒体块的 FNV 哈希 ID 和 token 数量来实现真正语义等价判断。这个结果直接驱动 KV 缓存的复用逻辑：识别出哪些历史推理可以保留（公共前缀部分），哪些需要重新计算，从而在连续的多轮对话或工具调用中避免冗余的前向传播，显著提升推理吞吐量。
 
-## 82.5 多模态媒体处理 —— 图像与音频的「通关海关」
+## 81.5 多模态媒体处理 —— 图像与音频的「通关海关」
 
 当请求中包含图像或音频时，llama.cpp 服务端需要完成解码、哈希标记和 token 化等一系列复杂操作。这套流程统一由 `process_mtmd_prompt` 总负责，配合 `handle_media` 完成多源获取。
 
-### 82.5.1 `process_mtmd_prompt()`：媒体内容的「检验与标记」
+### 81.5.1 `process_mtmd_prompt()`：媒体内容的「检验与标记」
 
 实现源码：`tools/server/server-common.cpp` - `process_mtmd_prompt()`（667-696行）
 头文件声明：`tools/server/server-common.h` - `process_mtmd_prompt()`（235行）
@@ -531,7 +531,7 @@ server_tokens process_mtmd_prompt(mtmd_context * mctx, std::string prompt, std::
 
 这段代码是多模态提示处理的主流程。核心工作包括：第③行将原始字节解码为位图（图像）或波形（音频），若失败则抛出异常；第④行计算 FNV 哈希作为唯一指纹——这个哈希在后续的 KV 缓存管理和序列比较中发挥关键作用；第⑥行调用 `mtmd_tokenize` 将文本与媒体统一转为 token 块序列，返回值非零时同样抛出异常终止处理，确保无效的媒体数据不会进入推理管线。最终返回的 `server_tokens` 对象同时包含文本 token 和媒体块映射，实现了异构数据的同构化。
 
-### 82.5.2 `handle_media()`：多源媒体的「采购清单」
+### 81.5.2 `handle_media()`：多源媒体的「采购清单」
 
 实现源码：`tools/server/server-common.cpp` - `handle_media()`（795-835行）
 头文件声明：`tools/server/server-common.h` - `handle_media()`（228行）
@@ -585,7 +585,7 @@ static void handle_media(std::vector<raw_buffer> & out_files, json & media_obj, 
 
 这段代码是媒体的多源采购分支逻辑。三层防护机制覆盖了每种来源：在 HTTP 分支（第②③行）中，10MB 的大小限制有效防止了恶意请求导致的资源耗尽，HTTP 状态码检查确保只接受成功的下载响应；在 `file://` 分支（第④⑤行）中，`fs_validate_filename` 阻止路径遍历攻击，同时要求显式指定 `--media-path` 才允许本地文件访问，文件打开失败也会被捕获并抛出异常；在最后的 Base64 分支中，验证 MIME 类型必须以 `data:image/` 开头且声明为 base64 编码。每一分支都有明确的安全边界和失败处理，兼顾了功能性与安全性。
 
-### 82.5.3 多模态媒体处理：`process_mtmd_prompt()` 与 `handle_media()` 的流水线概述
+### 81.5.3 多模态媒体处理：`process_mtmd_prompt()` 与 `handle_media()` 的流水线概述
 
 ```mermaid
 graph TD
@@ -605,11 +605,11 @@ graph TD
 
 这个流程图展示了多模态媒体处理的完整流水线。三种来源的媒体数据（HTTP、file://、Base64）最终被统一为 `raw_buffer` 原始字节流，进入 `process_mtmd_prompt` 后经过位图初始化、哈希标记和统一 token 化，最终生成包含文本与媒体的 `server_tokens` 对象。这个流水线的关键设计在于各阶段的解耦：媒体获取（handle_media）、媒体编码（process_mtmd_prompt）和容器管理（server_tokens）各自独立，便于测试和维护。
 
-## 82.6 API 协议转换 —— OpenAI 与 Anthropic 的「同声传译」
+## 81.6 API 协议转换 —— OpenAI 与 Anthropic 的「同声传译」
 
 llama.cpp 服务端的野心是成为一个「全能翻译官」：无论客户端使用哪种 API 协议（OpenAI、Anthropic 或 Responses），都能被翻译成内部统一格式处理。
 
-### 82.6.1 `convert_anthropic_to_oai()`：Anthropic API 的「结构重塑」
+### 81.6.1 `convert_anthropic_to_oai()`：Anthropic API 的「结构重塑」
 
 实现源码：`tools/server/server-common.cpp` - `convert_anthropic_to_oai()`（1549-1794行）
 头文件声明：`tools/server/server-common.h` - `convert_anthropic_to_oai()`（304行）
@@ -1062,7 +1062,7 @@ json convert_anthropic_to_oai(const json & body) {
 
 这段代码是 Responses API 到 Chat Completion 格式的转换器，涵盖了完整的消息类型映射。与 `convert_anthropic_to_oai()` 类似，它处理消息、工具调用等字段的映射，但有几个独特的设计点：**指令处理**（第④行）——`instructions` 字段被转换为 `role=system` 消息；**消息合并机制**（第⑦、⑯、⑱、㉒行）——当连续的输出消息都来自 assistant 时进行合并，避免 OpenAI 格式中的冗余；**严格的类型校验**（第⑪⑫⑬行）——对每个内容块的类型进行明确检查，遇到不支持的类型直接报错，而非静默忽略。此外，它还处理了函数调用的输出（`function_call_output`）到 `role=tool` 消息的转换，以及对推理块（`reasoning`）的 `reasoning_content` 提取。
 
-### 82.6.3 `convert_anthropic_to_oai()` 与 `convert_responses_to_chatcmpl()` 的架构对比：跨协议转换的「漏斗」
+### 81.6.2 `convert_anthropic_to_oai()` 与 `convert_responses_to_chatcmpl()` 的架构对比：跨协议转换的「漏斗」
 
 ```mermaid
 graph TD
@@ -1078,11 +1078,11 @@ graph TD
 
 这个流程图展示了协议转换的「漏斗」架构。所有外部请求通过不同转换器统一为 Chat Completion 格式，再交给内部引擎处理。这种设计的优势在于**单一内部协议**（推理引擎只需理解一种消息格式，简化了核心逻辑），**插件式扩展**（新增厂商支持只需编写一个新的转换器，无需修改引擎），以及**集中式维护**（转换逻辑集中在 server-common.cpp，便于测试与调试）。
 
-## 82.7 SSE 流式响应与 JSON 工具 —— 实时数据的「广播员」
+## 81.7 SSE 流式响应与 JSON 工具 —— 实时数据的「广播员」
 
 Server-Sent Events（SSE）是 llama.cpp 服务端实现流式推理输出的核心技术。基于 HTTP/HTTPS，SSE 天然与 RESTful API 集成，无需额外的 WebSocket 握手。
 
-### 82.7.1 `format_oai_sse()`：OpenAI 原生 SSE 的「字幕机」
+### 81.7.1 `format_oai_sse()`：OpenAI 原生 SSE 的「字幕机」
 
 实现源码：`tools/server/server-common.cpp` - `format_oai_sse()`（1974-1993行）
 头文件声明：`tools/server/server-common.h` - `format_oai_sse()`（339行）
@@ -1113,7 +1113,7 @@ std::string format_oai_sse(const json & data) {
 
 这段代码实现了 OpenAI 原生 SSE 格式。第①行的 lambda 是整个函数的核心：它按照 RFC 8895 规范构建数据帧——`data:` 前缀标识数据行，`\n\n`（两个换行）表示消息终结，确保客户端能够正确解析事件边界。数组输入（第②行）被逐条发送，支持一次产生多个事件；单对象输入（第③行）则直接发送。与 Responses 和 Anthropic 的 SSE 不同，这种格式不包含 `event:` 字段，因为 OpenAI Chat Completions API 的所有事件都隐含为 `chat.completion.chunk` 类型。
 
-### 82.7.2 `format_anthropic_sse()`：Anthropic 风格 SSE 的「方言」
+### 81.7.2 `format_anthropic_sse()`：Anthropic 风格 SSE 的「方言」
 
 实现源码：`tools/server/server-common.cpp` - `format_anthropic_sse()`（1905-1925行）
 头文件声明：`tools/server/server-common.h` - `format_anthropic_sse()`（344行）
@@ -1148,7 +1148,7 @@ std::string format_anthropic_sse(const json & data) {
 
 这段代码实现了 Anthropic 风格的 SSE 格式。与 OpenAI 格式的关键差异在于 `event` 字段：Anthropic 规范要求每个事件携带事件类型（如 `message_start`、`content_block_delta` 等），帮助客户端区分不同阶段的数据。第②行的类型检查提供了向后兼容——如果事件对象已经包含 `event` + `data` 结构（第③行），则完整输出；否则退化为纯 `data` 格式（第④行）。这种灵活的处理方式让同一个函数既能服务 Anthropic API，也能兼容其他格式。
 
-### 82.7.3 `format_oai_resp_sse()`：Responses API 的「事件流」
+### 81.7.3 `format_oai_resp_sse()`：Responses API 的「事件流」
 
 实现源码：`tools/server/server-common.cpp` - `format_oai_resp_sse()`（1995-2013行）
 头文件声明：`tools/server/server-common.h` - `format_oai_resp_sse()`（341行）
@@ -1178,7 +1178,7 @@ std::string format_oai_resp_sse(const json & data) {
 
 这段代码实现了 OpenAI Responses API 的 SSE 格式。与 `format_anthropic_sse()` 的差异在于，第②行**强制**要求每个事件对象包含 `event` 字段，如果没有则直接抛出 `out_of_range` 异常，而不是像 Anthropic 那样提供退路。这是因为 Responses API 的规范中，每个事件都必须有明确的事件类型标识（如 `response.created`、`response.output_text.delta` 等），客户端依赖 `event` 字段区分不同阶段的数据。这种设计更严格，但也更明确，避免了客户端对无类型事件的猜测。
 
-### 82.7.4 `get_token_probabilities()`：概率分布的「统计员」
+### 81.7.4 `get_token_probabilities()`：概率分布的「统计员」
 
 实现源码：`tools/server/server-common.cpp` - `get_token_probabilities()`（1896-1932行）
 头文件声明：`tools/server/server-common.h` - `get_token_probabilities()`（327行）
@@ -1230,7 +1230,7 @@ std::vector<llama_token_data> get_token_probabilities(llama_context * ctx, int i
 
 这段代码实现了 token 概率提取的标准流程。第③行优先使用 `llama_get_sampled_candidates_ith` 提供的采样候选 ID——这是 GPU 后端采样优化后的路径，只返回考虑中的 token；如果该函数返回空指针（如纯 CPU 后端），则退化到第④行的全词汇表路径。第⑤行的排序确保了概率从高到低排列，方便客户端展示 Top-N 候选；第⑥⑦行的 softmax 计算采用了数值稳定性技巧：先减去最大值 `max_l` 再取指数，避免 `expf` 溢出导致 `NaN` 或无穷大。该函数提取的概率数据通常会被编码为 SSE 事件中的 `logprobs` 字段，随流式响应一并发送给客户端，使应用能够实时展示模型置信度或实现基于概率的自适应解码。
 
-### 82.7.5 `format_oai_sse()` / `format_anthropic_sse()` / `format_oai_resp_sse()` 的架构对比：三类「广播方言」
+### 81.7.5 `format_oai_sse()` / `format_anthropic_sse()` / `format_oai_resp_sse()` 的架构对比：三类「广播方言」
 
 ```mermaid
 graph LR
@@ -1246,11 +1246,11 @@ graph LR
 
 这个流程图对比了三种 SSE 格式的差异。核心区别在于是否包含 `event:` 行：OpenAI Chat 格式（D）不需要，而 Responses（E）和 Anthropic（F）格式需要。三种格式都遵循 RFC 8895 规范，使用空行（`\n\n`）作为消息终结符。这种设计让客户端可以根据使用的 API 类型，自动选择合适的解析器。
 
-## 82.8 Embedding 与 Rerank 专用格式化 —— 任务型的「定制包装」
+## 81.8 Embedding 与 Rerank 专用格式化 —— 任务型的「定制包装」
 
 除了聊天补全，llama-server 还支持 embedding 和 rerank 两种特殊任务。它们有不同的输入输出格式，需要专用的响应构造逻辑。
 
-### 82.8.1 `format_embeddings_response_oaicompat()`：Embedding 响应的「标准包装」
+### 81.8.1 `format_embeddings_response_oaicompat()`：Embedding 响应的「标准包装」
 
 实现源码：`tools/server/server-common.cpp` - `format_embeddings_response_oaicompat()`（1796-1844行）
 头文件声明：`tools/server/server-common.h` - `format_embeddings_response_oaicompat()`（308-312行）
@@ -1311,7 +1311,7 @@ json format_embeddings_response_oaicompat(
 
 这段代码构造了 OpenAI 兼容的嵌入响应。第③行的 `use_base64` 选项是高维向量场景下的关键优化：一个 1024 维的 fp32 向量用 JSON 数组表示需要约 5KB，而 base64 编码只需约 1.3KB，体积减少超过 70%；同时，`encoding_format: base64` 字段与 OpenAI 官方规范一致，确保客户端只需按标准流程解码即可恢复向量。第⑤行的 `tokens_evaluated` 累加统计了所有输入的 token 消耗，作为 `prompt_tokens` 返回给用户参考。响应格式（第⑥行）严格遵循 OpenAI 的 `{"data": [...], "usage": {...}, "object": "list"}` 结构，确保客户端可以无缝迁移。
 
-### 82.8.2 `format_response_rerank()`：Rerank 响应的「成绩单」
+### 81.8.2 `format_response_rerank()`：Rerank 响应的「成绩单」
 
 实现源码：`tools/server/server-common.cpp` - `format_response_rerank()`（1846-1894行）
 头文件声明：`tools/server/server-common.h` - `format_response_rerank()`（315-321行）
@@ -1374,7 +1374,7 @@ json format_response_rerank(
 
 这段代码实现了 Rerank 响应的双模式输出。TEI 格式（第⑦行）直接返回结果数组，表面简单但功能丰富——支持 `return_text` 选项（第④行）返回原文内容；OpenAI 兼容格式（第⑧行）则包装为包含 `model`、`usage` 的标准对象。双模式设计的动机是：不同的上层应用（如 LangChain、Haystack 或私有 RAG 流程）对 Rerank 接口的请求格式有不同偏好，提供两种兼容格式可让 llama.cpp 无缝嵌入这些生态系统。当 TEI 格式的 `return_text=true` 时，返回的 `text` 字段会占用较大带宽，而 OpenAI 格式的 `top_n` 截断（第⑥行）则允许客户端只获取前 N 个结果，二者可以灵活配合使用以平衡数据量与完整性。第⑤行的降序排序确保了最相关的文档排在前面。
 
-### 82.8.3 `format_prompt_infill()`：Fill-In-Middle 的「代码编织」
+### 81.8.3 `format_prompt_infill()`：Fill-In-Middle 的「代码编织」
 
 实现源码：`tools/server/server-common.cpp` - `format_prompt_infill()`（1957-2047行）
 头文件声明：`tools/server/server-common.h` - `format_prompt_infill()`（355-365行）
@@ -1456,7 +1456,7 @@ llama_tokens format_prompt_infill(
 
 这段代码实现了 Fill-In-Middle 的完整提示词构建。在 `k_chunk_prefix_str` 中，`0x0a` 表示换行符 `\n`，`0x2d` 表示连字符 `-`，`0x20` 表示空格，整体构成 `"\n\n--- snippet ---\n\n"` 这样的分隔标记，用于在没有专门 FIM token 时以纯文本标识附加文件的边界。动态截取策略（第⑧⑨行）是核心：**前缀最多可占用 3/4 的 batch 预算**（`3*(n_batch/4)`），后缀和额外内容在剩余的 1/4 batch 空间中分配，其中后缀还要减去 2 个 token（留给 `fim_suf` 和 `fim_mid`）以及 prompt token 的占用；额外内容的预算是 `n_ctx - n_batch - 2*n_predict`，即总上下文窗口减去单次推理批次大小和两倍的预测长度——这样的计算确保了所有内容加起来不会超出上下文窗口。第⑪行的 `spm_infill` 标志处理不同分词器的差异——SPM（SentencePiece）风格将后缀放在前面，BPE 风格将前缀放在前面。第⑬行在末尾追加 `fim_mid` token，表示模型应该从此处开始生成填充内容。整套逻辑支持多文件代码编辑场景，使得模型能够理解「当前文件」与「附属文件」的上下文关系。
 
-### 82.8.4 `format_embeddings_response_oaicompat()` 与 `format_response_rerank()` 的架构对比：任务型的「双通道包装」
+### 81.8.4 `format_embeddings_response_oaicompat()` 与 `format_response_rerank()` 的架构对比：任务型的「双通道包装」
 
 ```mermaid
 graph LR
@@ -1482,11 +1482,11 @@ graph LR
 
 这个流程图对比了 Embedding 和 Rerank 两种任务的响应构造路径。Embedding 主要关注向量的编码方式（JSON 数组 vs Base64），Rerank 则关注结果的格式与排序策略。两者都支持灵活的输出格式，满足不同客户端的兼容性需求。
 
-## 82.9 通用工具函数集 —— 服务端的「瑞士军刀」
+## 81.9 通用工具函数集 —— 服务端的「瑞士军刀」
 
 server-common 模块还提供了大量辅助函数，从错误处理到 JSON 操作，构成服务端的基础设施层。
 
-### 82.9.1 `format_error_response()`：错误响应的「标准化工厂」
+### 81.9.1 `format_error_response()`：错误响应的「标准化工厂」
 
 实现源码：`tools/server/server-common.cpp` - `format_error_response()`（18-47行）
 头文件声明：`tools/server/server-common.h` - `format_error_response()`（90行）
@@ -1513,7 +1513,7 @@ json format_error_response(const std::string & message, const enum error_type ty
 
 这段代码是错误类型的「映射器」。它建立了内部错误枚举到 HTTP 状态码和标准错误类型的对应关系，确保错误响应符合 OpenAI 的错误规范。`type_str` 字段对客户端至关重要——它提供的是机器可读的错误分类标识（如 `"invalid_request_error"` 代表参数错误），客户端可以通过对该字段的程序化比较来决定重试、降级或直接报错，而不需要解析人类可读的 `message` 文本。同时，`code` 字段提供了标准的 HTTP 状态码，既符合 RESTful API 设计惯例，也让基于 HTTP 的监控系统能够自动感知错误严重性。
 
-### 82.9.2 `json_value<T>()`：JSON 提取的「防弹夹」
+### 81.9.2 `json_value<T>()`：JSON 提取的「防弹夹」
 
 源码路径：`tools/server/server-common.h` - `json_value<T>()`（52-63行）
 
@@ -1540,7 +1540,7 @@ static T json_value(const json & body, const std::string & key, const T & defaul
 
 这段代码是 JSON 值提取的安全包装器。核心防御在于第③行：当请求中的参数类型与预期不符时（例如客户端发送 `"temperature": "0.5"` 而不是 `0.5`），不会抛异常中断整个请求，而是记录警告并使用默认值。这种「宽容设计」保证了部分参数错误不会导致整个推理请求失败，在面向不可控的外部客户端时尤为重要——真实世界的 API 调用者经常使用动态类型语言（如 Python、JavaScript），他们的 JSON 序列化库可能产生类型偏差，而服务端的宽容处理则能显著减少因类型不匹配导致的请求失败。
 
-### 82.9.3 `server_grammar_trigger`：语法触发器的「序列化桥梁」
+### 81.9.3 `server_grammar_trigger`：语法触发器的「序列化桥梁」
 
 源码路径：`tools/server/server-common.h` - `server_grammar_trigger` 类（66-86行）
 
@@ -1581,7 +1581,7 @@ private:
 
 这段代码是 `common_grammar_trigger` 的 JSON 序列化适配器。第③行的构造从 JSON 解析类型、值，并根据类型决定是否读取可选的 token 字段；第④行的 `to_json()` 则执行反向序列化。这种包装器模式使得内部的数据结构可以透明地与外部 JSON API 交互，而无需修改底层的 `common_grammar_trigger` 类。它主要用于结构化输出（如 JSON schema 约束）场景，客户端可以通过该结构指定触发词与对应的 token。
 
-### 82.9.4 `validate_utf8()`：UTF-8 验证的「边界守卫」
+### 81.9.4 `validate_utf8()`：UTF-8 验证的「边界守卫」
 
 实现源码：`tools/server/server-common.cpp` - `validate_utf8()`（631-651行）
 头文件声明：`tools/server/server-common.h` - `validate_utf8()`（232行）
@@ -1613,7 +1613,7 @@ size_t validate_utf8(const std::string& text) {
 
 这段代码用于检测字符串末尾是否有不完整的 UTF-8 字符。例如，一个 3 字节的中文字符如果只生成了 2 个字节（因为流式传输中断），第⑤行会检测到首字节是 `0xE0` 模式但缺少足够的后续字节，返回 `len - 2` 表示前 `len-2` 个字节是安全的。注意循环从 `i = 1` 开始，因为 `len` 为 0 时已提前返回，所以 `len - i` 不会下溢。服务端在拼接流式输出时，会先调用 `validate_utf8()` 丢弃末尾的不完整字节，再调用 `is_valid_utf8()` 从整体上验证拼接结果的编码合法性——前者解决"流式截断"问题，后者确保"整体合规"。
 
-### 82.9.5 通用工具函数集：服务端「瑞士军刀」的架构分层
+### 81.9.5 通用工具函数集：服务端「瑞士军刀」的架构分层
 
 ```mermaid
 graph TD
@@ -1636,21 +1636,21 @@ graph TD
 
 这个架构图展示了通用工具函数在服务端各模块中的支撑作用。从错误处理到 JSON 提取，从类型判断到 UTF-8 验证，这些基础能力构成了服务端的「基础设施层」——所有上层模块（协议转换、多模态处理、SSE 格式化等）都直接或间接依赖于这些工具函数提供的稳定、安全的基础操作，确保整个服务端在面对多样化客户端请求时能够保持健壮性和一致性。
 
-## 82.10 设计中的取舍
+## 81.10 设计中的取舍
 
-### 为什么不用统一的协议转换库（如 LiteLLM）？
+### 81.10.1 为什么不用统一的协议转换库（如 LiteLLM）？
 
 LiteLLM 提供了成熟的协议转换层，但 llama.cpp 选择了自行实现。原因在于：LiteLLM 等库设计面向通用场景，需要支持几十种不同平台的差异化协议，代码量庞大且依赖重，引入了大量的网络请求处理、动态导入和配置管理逻辑。而 llama.cpp 只需要支持 OpenAI、Anthropic、Responses 三种协议。自行实现的转换逻辑（约 600 行代码）更加轻量、可控性强，可以直接调用内部数据结构（如 server_tokens）而非经过 JSON 序列化-反序列化的中间层。这种设计牺牲了扩展性，换取了性能与维护便利性，符合 llama.cpp 「零依赖、极简主义」的设计哲学。
 
-### 为什么使用 SSE 而非 WebSocket？
+### 81.10.2 为什么使用 SSE 而非 WebSocket？
 
 SSE 基于 HTTP 协议，天然支持 RESTful API 的无状态请求-响应模型，客户端只需使用原生的 `EventSource` API 即可接收流式数据，无需额外的握手协议。此外，LLM 推理是单向的「服务器→客户端」数据流（用户一次性提交请求，模型逐 token 生成响应），SSE 的设计恰好匹配这种方向性。虽然 WebSocket 支持双向通信且不受 HTTP 连接数限制，但其复杂的协议状态和调试难度在这一场景下并不划算。需要指出的是，HTTP/1.1 对同一域名的并发连接数有限制（通常为 6 个），但这在 llama-server 的典型部署场景（本地或内网服务、少量并发用户）下很少成为瓶颈；相比之下，WebSocket 不受此限制，适合需要大量并发长连接的高负载场景，但这种复杂度对于本地推理服务而言并不必要。
 
-### 为什么格式化为双行结构 `event:\n data:\n\n` 而非单行？
+### 81.10.3 为什么格式化为双行结构 `event:\n data:\n\n` 而非单行？
 
 SSE 规范（RFC 8895）要求每个事件可以被多个字段描述，包括可选的 `event` 类型标识和必需的 `data` 载荷。使用双行结构允许客户端在收到事件时先检查 `event` 字段来决定处理方式，再读取 `data` 字段获取实际内容。这种分离设计使得不同类型的推理事件（如 `content_block_delta` 与 `message_stop`）可以被统一处理，同时保持了可扩展性——未来可以添加新的字段（如 `id`、`retry`）而不破坏现有解析逻辑。此外，浏览器原生的 `EventSource` API 会自动解析这种双行结构，将 `event` 映射为事件类型、`data` 映射为消息内容，因此服务端采用双行结构能够与客户端原生解析无缝衔接。虽然双行结构意味着服务端需要对 `event` 和 `data` 分别序列化（而不是一次性输出整个 JSON 对象），但这额外的序列化开销通常远小于网络传输时延，可以忽略不计。
 
-## 82.11 动手练习
+## 81.11 动手练习
 
 1. **阅读与理解 server_tokens 类的位置转换逻辑**
 
@@ -1820,7 +1820,7 @@ SSE 规范（RFC 8895）要求每个事件可以被多个字段描述，包括�
 
    5. 改进建议：能否添加一个 format_utf8_safe() 函数，自动修复常见的 UTF-8 编码问题？
 
-## 82.12 本章小结
+## 81.12 本章小结
 
 这一章中，我们完整剖析了 llama.cpp 服务端的 API 协议转换与多模态处理核心模块。首先，我们从参数解析与 LoRA 管理入手，理解了 `oaicompat_completion_params_parse()` 如何严格校验必需参数并透传完整用户意图，也明白了 `tokenize_mixed()` 如何灵活处理字符串、token 数组和混合数组三种输入格式。其次，我们深入 server_tokens 这个核心容器，掌握了位置与 token 索引的双向转换机制（`pos_next()` 和 `size_up_to_pos()`），理解了其禁用拷贝、仅允许移动的设计如何保证大型媒体资源的安全，以及 `find_chunk()`、`insert()` 等方法如何协同维护媒体块映射的一致性。接着，我们剖析了 `process_mtmd_prompt()` 和 `handle_media()` 如何构建多模态处理流水线，理解了 FNV 哈希标记和 HTTP/file/base64 三种媒体源的统一获取机制。然后，我们详细阅读了 `convert_anthropic_to_oai()` 和 `convert_responses_to_chatcmpl()` 这两个协议转换器，学会了消息合并、工具调用映射、思考过程保留等核心转换策略。之后，我们通过 SSE 格式化函数理解了三种流式输出格式（OpenAI、Responses、Anthropic）的差异与 RFC 8895 规范的遵循，以及 Embedding 和 Rerank 两种特殊任务的响应构造模式。我们还讨论了使用自行实现协议转换而非通用库、使用 SSE 而非 WebSocket 等设计取舍。最后，我们回顾了 common 模块中的通用工具函数，包括错误格式化、类型安全的 JSON 提取、UTF-8 验证等，理解了这些基础能力如何支撑整个服务端的稳定运行。
 

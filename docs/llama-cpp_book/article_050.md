@@ -1,6 +1,6 @@
 
 
-# 49 采样总控台 —— llama.cpp 推理决策的"剧本杀主持人"
+# 第50章 采样总控台 —— llama.cpp 推理决策的"剧本杀主持人"
 
 ## 学习目标
 
@@ -15,7 +15,7 @@
 - 掌握 `common_sampler_get_candidates` 获取当前概率分布快照的技巧及排序语义
 - 熟悉 `common_sampler_free`、`common_sampler_reset`、`common_sampler_clone`、`common_params_sampling::print`、`common_sampler_get`、`common_sampler_get_seed`、`common_sampler_last`、`common_sampler_print`、`common_sampler_prev_str`、`common_sampler_type_to_chr/str`、`common_sampler_types_from_names/chars`、`llama_sampler_init_llg` 等辅助接口的作用与实现
 
-## 49.1 生活类比
+## 50.1 生活类比
 
 想象 llama.cpp 的采样系统是一场**高规格的「剧本杀」主持人（DM）工作台**：
 
@@ -33,7 +33,7 @@
 
 - **`sample_and_accept_n`** = **速记员与预言家的对质**：预言家（Draft 模型）预先写出多个词，速记员（主模型）逐个核对，前面都猜对就直接采纳，猜错立即叫停并重新记录——这就是推测解码的赛马机制。
 
-## 49.2 源码地图
+## 50.2 源码地图
 
 ```
 common/
@@ -134,11 +134,11 @@ common/
     └── common_reasoning_budget_get_state()    # 状态查询接口
 ```
 
-## 49.3 common_sampler 与 ring_buffer —— 构建推理决策的"控制塔"
+## 50.3 common_sampler 与 ring_buffer —— 构建推理决策的"控制塔"
 
 在 llama.cpp 的推理流程里，模型每次产生一个 token 之前，都要回答一个问题：**"在当前的上下文里，我应该输出哪个词？"** 这个问题的答案不是模型单方面决定的——它需要经过一整套规则的过滤、时间的约束、语法的审查，以及历史的提醒。`common_sampler` 就是这套流程的总控台，而 `ring_buffer` 则是它的记忆宫殿。正如"剧本杀主持人"需要同时查阅规则书、计时器和玩家行动记录，`common_sampler` 将 Chain（概率采样链）、Grammar（语法约束）、Budget（推理预算）和 History（历史记录）四大子系统统一封装，对外提供单一的采样入口。
 
-### 49.3.1 ring_buffer：固定容量的环形记忆
+### 50.3.1 ring_buffer：固定容量的环形记忆
 
 **源码路径**：`common/sampling.cpp` - `ring_buffer<T>`（14-105 行）
 
@@ -263,7 +263,7 @@ graph LR
     H --> I["返回第 i 新的元素<br/>i=0 → 最新, i=sz-1 → 最旧"]
 ```
 
-### 49.3.2 common_sampler：三元统一封装
+### 50.3.2 common_sampler：三元统一封装
 
 **源码路径**：`common/sampling.cpp` - `common_sampler`（107-168 行）
 
@@ -314,9 +314,9 @@ graph TD
     A --> G["common_time_meas t_total_us<br/>性能统计"]
 ```
 
-## 49.4 common_sampler_init 与 grammar_should_apply —— 打造"概率过滤流水线"
+## 50.4 common_sampler_init 与 grammar_should_apply —— 打造"概率过滤流水线"
 
-### 49.4.1 common_sampler_init：装配流水线
+### 50.4.1 common_sampler_init：装配流水线
 
 **源码路径**：`common/sampling.cpp` - `common_sampler_init()`（189-374 行）
 
@@ -439,7 +439,7 @@ flowchart TD
     Construct --> Return([返回 common_sampler*])
 ```
 
-### 49.4.2 grammar_should_apply：惰性语法激活
+### 50.4.2 grammar_should_apply：惰性语法激活
 
 **源码路径**：`common/sampling.cpp` - `grammar_should_apply()`（390-404 行）
 
@@ -476,7 +476,7 @@ stateDiagram-v2
     note right of DONE: grammar_should_apply 返回 true
 ```
 
-### 49.4.3 common_sampler_accept：状态同步
+### 50.4.3 common_sampler_accept：状态同步
 
 **源码路径**：`common/sampling.cpp` - `common_sampler_accept()`（406-427 行）
 
@@ -512,9 +512,9 @@ sequenceDiagram
     Sampler-->>Caller: void
 ```
 
-## 49.5 common_sampler_sample 与 sample_and_accept_n —— 执行"候选过滤"的决策时刻
+## 50.5 common_sampler_sample 与 sample_and_accept_n —— 执行"候选过滤"的决策时刻
 
-### 49.5.1 common_sampler_sample：三段式采样
+### 50.5.1 common_sampler_sample：三段式采样
 
 **源码路径**：`common/sampling.cpp` - `common_sampler_sample()`（503-577 行）
 
@@ -580,7 +580,7 @@ flowchart TD
     Recursive --> ReturnID
 ```
 
-### 49.5.2 common_sampler_sample_and_accept_n：推测解码批量处理
+### 50.5.2 common_sampler_sample_and_accept_n：推测解码批量处理
 
 **源码路径**：`common/sampling.cpp` - `common_sampler_sample_and_accept_n()`（579-615 行）
 
@@ -645,9 +645,9 @@ sequenceDiagram
     Main-->>Draft: result = [t1, t2, t3, t_new]
 ```
 
-## 49.6 token_matcher 与 reasoning_budget_accept —— 控制推理长度的"计时器与熔断器"
+## 50.6 token_matcher 与 reasoning_budget_accept —— 控制推理长度的"计时器与熔断器"
 
-### 49.6.1 token_matcher：流式序列匹配
+### 50.6.1 token_matcher：流式序列匹配
 
 **源码路径**：`common/reasoning-budget.cpp` - `token_matcher`（14-34 行）
 
@@ -706,7 +706,7 @@ stateDiagram-v2
     Reset --> Pos0: reset() 调用
 ```
 
-### 49.6.2 common_reasoning_budget_accept：状态迁移引擎
+### 50.6.2 common_reasoning_budget_accept：状态迁移引擎
 
 **源码路径**：`common/reasoning-budget.cpp` - `common_reasoning_budget_accept()`（52-111 行）
 
@@ -794,7 +794,7 @@ stateDiagram-v2
     note right of DONE: 推理结束，恢复正常生成
 ```
 
-### 49.6.3 common_reasoning_budget_apply：强制模式 logits 掩码
+### 50.6.3 common_reasoning_budget_apply：强制模式 logits 掩码
 
 **源码路径**：`common/reasoning-budget.cpp` - `common_reasoning_budget_apply()`（113-132 行）
 
@@ -836,7 +836,7 @@ graph LR
     H --> I
 ```
 
-### 49.6.4 reasoning-budget.h：接口定义
+### 50.6.4 reasoning-budget.h：接口定义
 
 **源码路径**：`common/reasoning-budget.h`
 
@@ -890,7 +890,7 @@ flowchart TD
     Create --> Return([返回 sampler])
 ```
 
-### 49.6.5 common_reasoning_budget_init_state / clone / free / name / get_state：生命周期管理
+### 50.6.5 common_reasoning_budget_init_state / clone / free / name / get_state：生命周期管理
 
 **源码路径**：`common/reasoning-budget.cpp`（145-237 行）
 
@@ -951,11 +951,11 @@ common_reasoning_budget_state common_reasoning_budget_get_state(const struct lla
 
 **代码解析**：`init_state` 是真正的构造入口，处理 `COUNTING` 但 `budget <= 0` 的边界情况（直接升级为 `FORCING`）。`clone` 完整复制配置与运行时状态（包括 `state`、`force_pos`、`remaining` 等），支持并行分支推理。`free` 仅释放上下文内存，`name` 返回固定标识字符串用于调试打印，`get_state` 提供安全的状态查询（空指针保护）。
 
-## 49.7 辅助工具与性能监控 —— 采样系统的"仪表盘与工具箱"
+## 50.7 辅助工具与性能监控 —— 采样系统的"仪表盘与工具箱"
 
 这一节涵盖了采样系统的辅助功能：资源释放、状态重置、深拷贝、参数指纹、性能统计、候选分布获取、历史回看、类型编解码与名称解析、llguidance 集成。这些接口虽非核心采样路径，却是调试、监控、序列化与生态集成不可或缺的基础设施。
 
-### 49.7.1 common_sampler_free：资源释放
+### 50.7.1 common_sampler_free：资源释放
 
 **源码路径**：`common/sampling.cpp` - `common_sampler_free()`（376-388 行）
 
@@ -973,7 +973,7 @@ void common_sampler_free(struct common_sampler * gsmpl) {
 
 **代码解析**：按逆序释放三个子采样器再释放自身，符合 RAII 原则。`llama_sampler_free` 内部会调用各采样器的 `free` 回调（如 `common_reasoning_budget_free`），确保上下文内存正确回收。空指针保护使其可安全多次调用。
 
-### 49.7.2 common_sampler_reset / common_sampler_clone：状态管理
+### 50.7.2 common_sampler_reset / common_sampler_clone：状态管理
 
 **源码路径**：`common/sampling.cpp`（429-449 行）
 
@@ -998,7 +998,7 @@ struct common_sampler * common_sampler_clone(common_sampler * gsmpl) {
 
 **代码解析**：`reset` 仅清空历史与链状态，不触及 grammar/budget（它们有独立的 reset 逻辑）。`clone` 执行深拷贝：参数、三个子采样器（通过 `llama_sampler_clone` 递归克隆）、历史缓冲区、内部缓存均逐一复制。这使得并行分支推理（如 MCTS、beam search）能从同一检查点分叉，各自独立演化。
 
-### 49.7.3 common_params_sampling::print：参数指纹
+### 50.7.3 common_params_sampling::print：参数指纹
 
 **源码路径**：`common/sampling.cpp`（174-187 行）
 
@@ -1028,7 +1028,7 @@ std::string common_params_sampling::print() const {
 
 **代码解析**：生成采样配置的可读指纹字符串，固定 1024 字节缓冲区，涵盖所有采样超参数。便于日志记录、实验复现与配置对比。`vector_to_string` 将 token 序列转为可读形式（如 `[123, 456]`）。
 
-### 49.7.4 common_perf_print：性能透视
+### 50.7.4 common_perf_print：性能透视
 
 **源码路径**：`common/sampling.cpp` - `common_perf_print()`（451-493 行）
 
@@ -1056,7 +1056,7 @@ void common_perf_print(const struct llama_context * ctx, const struct common_sam
 
 **代码解析**：分离打印采样耗时（`gsmpl->t_total_us`）与模型计算耗时（prompt eval / eval）。采样耗时来自 `common_sampler::tm()` 计时器累积，模型耗时来自 `llama_perf_context`。最后调用 `llama_memory_breakdown_print` 输出内存占用分解。`no_perf` 参数可关闭采样侧统计，减少计时开销。这是定位推理瓶颈的关键工具：若 sampling 占比高，优化采样链；若 eval 占比高，优化模型/后端。
 
-### 49.7.5 common_sampler_get_candidates：获取概率分布快照
+### 50.7.5 common_sampler_get_candidates：获取概率分布快照
 
 **源码路径**：`common/sampling.cpp` - `common_sampler_get_candidates()`（623-647 行）
 
@@ -1075,7 +1075,7 @@ llama_token_data_array * common_sampler_get_candidates(struct common_sampler * g
 
 **代码解析**：返回当前采样轮次的候选 token 数组（`llama_token_data_array`），包含 id、logit、概率 p。`do_sort=true` 时按概率降序原地排序，并设置 `sorted=true` 避免重复排序。注意返回的是内部成员指针，调用方不应在采样器销毁后使用。常用于调试输出 Top-N 候选、可视化概率分布、实现自定义采样策略。
 
-### 49.7.6 common_sampler_last / common_sampler_prev_str：历史回看
+### 50.7.6 common_sampler_last / common_sampler_prev_str：历史回看
 
 **源码路径**：`common/sampling.cpp`（649-685 行）
 
@@ -1098,7 +1098,7 @@ std::string common_sampler_prev_str(common_sampler * gsmpl, llama_context * ctx_
 
 **代码解析**：`last()` 直接取 `rat(0)` 获取最近 token。`prev_str` 利用 `rat(i)` 从较旧到较新遍历（i 从 n-1 递减到 0），拼接成可读文本。注意 `rat` 索引语义：`rat(0)` 最新，`rat(sz-1)` 最旧。这利用了 ring_buffer 的反向索引特性，无需复制即可高效回看。
 
-### 49.7.7 common_sampler_print：采样器链字符串化
+### 50.7.7 common_sampler_print：采样器链字符串化
 
 **源码路径**：`common/sampling.cpp`（653-665 行）
 
@@ -1116,7 +1116,7 @@ std::string common_sampler_print(const struct common_sampler * gsmpl) {
 
 **代码解析**：遍历 chain 中的每个采样器，拼接名称生成如 `"logits -> penalties -> top_k -> top_p -> temperature -> dist "` 的字符串。用于日志输出、配置验证、调试采样链结构。
 
-### 49.7.8 common_sampler_type_to_chr/str / types_from_names/chars：类型编解码
+### 50.7.8 common_sampler_type_to_chr/str / types_from_names/chars：类型编解码
 
 **源码路径**：`common/sampling.cpp`（687-811 行）
 
@@ -1179,7 +1179,7 @@ std::vector<common_sampler_type> common_sampler_types_from_chars(const std::stri
 
 **代码解析**：提供采样器类型的双向编解码。`to_chr` 单字符缩写用于紧凑配置串（如 `"rkpT"`），`to_str` 规范名用于日志/配置文件。`types_from_names` 支持规范名与别名（如 `repeat_penalty`、`frequency_penalty` 皆映射到 `PENALTIES`），兼容不同前端命名习惯。`types_from_chars` 解析字符串形式的采样器序列，便于命令行参数传递。
 
-### 49.7.9 llama_sampler_init_llg：llguidance 集成
+### 50.7.9 llama_sampler_init_llg：llguidance 集成
 
 **源码路径**：`common/sampling.cpp`（文件末尾，未在摘录中给出完整代码，但头文件声明可见）
 
@@ -1190,7 +1190,7 @@ llama_sampler * llama_sampler_init_llg(const llama_vocab * vocab, const char * g
 
 **代码解析**：这是语法约束的外部集成入口，将 llguidance（基于正则/JSON Schema 的约束引擎）封装为 `llama_sampler`。`grammar_kind` 指定语法类型（如 `"gbnf"`、`"json_schema"`、`"regex"`），`grammar_data` 为语法定义内容。内部创建 `llama_grammar` 并包装为 sampler，支持 `apply`/`accept`/`reset`/`clone` 完整接口。`common_sampler_init` 中即调用此函数创建 `grmr` 成员。
 
-## 49.8 模块依赖图
+## 50.8 模块依赖图
 
 ```mermaid
 graph TD
@@ -1218,7 +1218,7 @@ graph TD
     E --> T["to_vector()<br/>时间序列导出"]
 ```
 
-## 49.9 设计中的取舍
+## 50.9 设计中的取舍
 
 **为什么 `grammar` 和 `reasoning budget` 不放入 `chain`？**
 
@@ -1230,9 +1230,9 @@ graph TD
 
 固定容量保证了内存占用恒定，不会随着推理长度增长而膨胀。128 这个数字是一个工程折中：太小则重复惩罚的历史窗口不足，太大则浪费内存且可能捕获过久远的上下文。实际使用中，重复惩罚通常只关心最近几十个 token，128 已经绰绰有余。
 
-## 49.10 动手练习
+## 50.10 动手练习
 
-### 练习 1：推理预算状态机深度解析
+### 50.10.1 练习 1：推理预算状态机深度解析
 
 阅读 `common/reasoning-budget.cpp` 第 52-111 行（`common_reasoning_budget_accept` 函数），结合代码注释回答：
 
@@ -1248,7 +1248,7 @@ graph TD
 4. 在 `common_reasoning_budget_init` 的预填充版本中（194-219 行），如果 `prefill_tokens` 同时包含了 `start_tokens` 和 `end_tokens`，初始状态应该是什么？这解决了什么实际场景问题？
    - 答：初始状态为 `IDLE`。这解决了对话历史中已包含完整推理块（如上一轮对话已输出 `<reasoning>...</reasoning>`）的场景，避免重复计数或误触发强制模式。
 
-### 练习 2：采样链组装流程
+### 50.10.2 练习 2：采样链组装流程
 
 阅读 `common/sampling.cpp` 第 189-374 行（`common_sampler_init` 函数），绘制采样链的组装流程图：
 
@@ -1264,7 +1264,7 @@ graph TD
 4. 如果用户希望在推理阶段（thinking）也启用语法约束（即使 budget 处于 COUNTING 状态），应该如何修改 `grammar_should_apply` 的逻辑？
    - 答：移除对 `REASONING_BUDGET_COUNTING` 等状态的排除，或增加参数 `grammar_during_reasoning` 控制。最简单修改：将 `return state == REASONING_BUDGET_IDLE || state == REASONING_BUDGET_DONE;` 改为 `return true;`（即忽略 budget 状态）。
 
-### 练习 3：推测解码批量处理模拟
+### 50.10.3 练习 3：推测解码批量处理模拟
 
 基于 `common_sampler_sample_and_accept_n()`（579-615 行），编写一个模拟测试用例（伪代码即可）：
 
@@ -1280,7 +1280,7 @@ graph TD
 4. 思考：如果 draft token 与采样结果分歧，`chain` 和 `grammar` 的状态是否需要回滚回最后一次匹配的位置？当前实现是如何处理的？
    - 答：当前实现**不回滚**。分歧处直接 break，已接受的匹配前缀状态保留，补采样的新 token 基于当前状态（包含匹配前缀的历史）生成。这意味着分歧后的生成会"记住"匹配前缀的历史，符合推测解码的标准行为：接受前缀即接受其带来的状态副作用。
 
-### 练习 4：ring_buffer 边界条件测试
+### 50.10.4 练习 4：ring_buffer 边界条件测试
 
 阅读 `common/sampling.cpp` 第 14-105 行（`ring_buffer` 模板类），设计单元测试验证以下边界条件：
 
@@ -1299,7 +1299,7 @@ graph TD
 5. 设计一个场景：连续 push 150 个元素到容量为 128 的 buffer，验证 `to_vector()` 是否返回最近 128 个元素且顺序正确
    - 答：push 1..150，`to_vector()` 应返回 [23, 24, ..., 150]（共 128 个），`rat(0)=150`，`rat(127)=23`。
 
-### 练习 5：性能分析与配置解析
+### 50.10.5 练习 5：性能分析与配置解析
 
 1. 使用 `common_perf_print` 输出的采样耗时与模型计算耗时，如何判断是否需要优化采样链？
    - 答：若 sampling 平均耗时占总推理耗时 > 5%-10%，考虑简化采样链（移除 unused samplers）、降低 `penalty_last_n`、或启用 `no_perf` 减少计时开销。
@@ -1310,7 +1310,7 @@ graph TD
 3. 如果用户在命令行传入 `--samplers "repeat_penalty,top_p,temp"`，`common_sampler_types_from_names` 如何处理别名？
    - 答：`allow_alt_names=true` 时，`repeat_penalty` → PENALTIES，`temp` → TEMPERATURE（若别名表包含），`top_p` → TOP_P。解析顺序保留用户指定顺序。
 
-## 49.11 本章小结
+## 50.11 本章小结
 
 这一章中我们深入剖析了 llama.cpp 采样系统的核心架构。首先，我们看到了 `common_sampler` 如何作为总控台，统一封装 Chain（概率采样链）、Grammar（语法约束）、Budget（推理预算）和 History（历史记录）四个子系统。接着，我们解析了 `ring_buffer` 环形缓冲区的实现——固定容量 128、O(1) 操作、支持反向索引访问，为重复惩罚等采样器提供了恒定内存的历史窗口。然后，我们追踪了 `common_sampler_init()` 的装配流水线，理解了 grammar 和 budget 为何作为独立成员而非 chain 的一部分，以及 `grammar_should_apply()` 如何实现惰性语法激活。在核心算法层面，我们剖析了 `common_sampler_sample()` 的三段式流程（预算过滤→语法剪枝→概率采样链）和语法回退重采样机制，以及 `common_sampler_sample_and_accept_n()` 如何通过交叉比对 draft tokens 支持推测解码。最后，我们深入了 `common_reasoning_budget` 的五态状态机和 `token_matcher` 的流式匹配算法，理解了推理长度的硬性控制机制。此外，我们还覆盖了资源释放、状态重置、深拷贝、参数指纹、性能统计、候选分布获取、历史回看、类型编解码与名称解析、llguidance 集成等完整的辅助工具链。
 

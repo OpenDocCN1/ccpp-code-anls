@@ -1,6 +1,6 @@
 
 
-# 第76章 多模态编码器全景图谱：视觉与音频的多国语言翻译官
+# 第77章 多模态编码器全景图谱：视觉与音频的多国语言翻译官
 
 ## 学习目标
 
@@ -14,7 +14,7 @@
 - 理解 Gemma4V 可逆线性层（Clippable Linear）与视觉池化（VisionPooler）的钳制机制
 - 理解现代多模态模型的通用架构模式：patch embedding → 位置编码（绝对/旋转）→ Transformer 主干 → 特征压缩（合并/池化/重采样）→ 投影到文本空间 → 特殊标记包裹
 
-## 76.1 生活类比：一家跨国翻译公司
+## 77.1 生活类比：一家跨国翻译公司
 
 想象多模态模型是一家跨国翻译公司，专门把图像和音频这两种“外语”翻译成语言模型能够理解的文本向量。公司的第一站是视觉编码器，它像外联接待处一样接收原始像素，通过 ViT 把颜色、轮廓、物体和空间关系整理成高维特征。接着，Projector 充当专业术语翻译官：LLaVA 的 MLP 逐个 token 完成映射，Llama4 和 InternVL 的 Pixel Shuffle 像把多张纸缩印到一张纸上，MiniCPM-V 的 Resampler 则像摘要撰写员，用固定数量的查询向量从大量视觉信息中提炼重点，HunyuanOCR 的卷积投影器则通过空间合并浓缩文档特征。
 
@@ -24,7 +24,7 @@
 
 如果客户提交的是录音或音乐，音频部门会接手。Whisper 是高效的音频速记员，通过双层 Conv1D 快速压缩时间帧，再由 Transformer 记录时序上下文；Conformer 则像声波雕刻师，先经过多层卷积子采样，再在每个复合块中结合前馈网络、相对位置注意力和卷积模块，最后用半残差缩放保持长序列处理的稳定性。不同模型只是聘用了不同专长的部门，但它们最终都遵循同一条工作链：接收原始模态、提取结构化特征、压缩信息、映射到语言空间，并用标记把结果交给语言模型。
 
-## 76.2 源码地图
+## 77.2 源码地图
 
 本章对应的源码集中在 `tools/mtmd/models/`，`models.h` 负责声明各类图构建器，具体 `.cpp` 文件负责实现 `build()` 及其辅助函数。
 
@@ -185,11 +185,11 @@ clip_graph
 
 这些类共享输入构造、归一化、注意力、FFN 和图扩展等基础能力；当某种架构需要特殊布局或特殊投影时，再在派生类中覆盖 `build()`，或者像 MobileNetV5、Gemma4V 和 Kimi-K2.5 一样增加辅助方法。
 
-## 76.3 OCR 专用编码器：文档翻译师的双光镜
+## 77.3 OCR 专用编码器：文档翻译师的双光镜
 
 本节重点解析 DeepSeek-OCR、HunyuanOCR 和 PaddleOCR。它们服务于同一类客户：高分辨率扫描件、表格、复杂排版和小字号文本。DeepSeek-OCR 的 SAM 分支像文档翻译师的近焦镜片，使用窗口注意力捕捉局部纹理；CLIP 分支像远焦镜片，负责整页语义。HunyuanOCR 则更像摘要撰写员，在 ViT 后用卷积投影器快速压缩空间特征；PaddleOCR 在 M-RoPE 和 Patch Merge 后使用 MLP 完成映射。
 
-### 76.3.1 window_partition()/window_unpartition()/get_rel_pos()：局部注意力与位置插值
+### 77.3.1 window_partition()/window_unpartition()/get_rel_pos()：局部注意力与位置插值
 
 源码路径：`tools/mtmd/models/deepseekocr.cpp` - `window_partition()`（8-27行）、`window_unpartition()`（30-49行）、`get_rel_pos()`（52-81行）
 
@@ -278,7 +278,7 @@ static ggml_tensor * get_rel_pos(ggml_context * ctx0,
 
 `get_rel_pos()` 解决了动态分辨率下的位置表长度问题。当窗口尺寸或全局特征图尺寸改变时，所需相对距离数量也会改变，源码先沿位置轴做双线性插值，再使用 `ggml_get_rows()` 根据索引查表。这样既保留了预训练位置表的连续结构，也能适配新的空间尺寸。
 
-### 76.3.2 clip_graph_deepseekocr::build()：SAM 与 CLIP 双光镜融合
+### 77.3.2 clip_graph_deepseekocr::build()：SAM 与 CLIP 双光镜融合
 
 源码路径：`tools/mtmd/models/deepseekocr.cpp` - `clip_graph_deepseekocr::build()`（103-352行）
 
@@ -342,7 +342,7 @@ SAM 分支中的局部层先调用 `window_partition()`，全局层直接使用�
 
 对于文档翻译师而言，这一步就是把近焦镜片看到的小字纹理和远焦镜片看到的整页语义装订到同一份报告中。`image_newline` 在每行末尾插入换行向量，`view_seperator` 在序列末尾标记视角边界，使语言模型能够重建文档的二维结构。
 
-### 76.3.3 HunyuanOCR 与 PaddleOCR：卷积摘要员和 M-RoPE 定位员
+### 77.3.3 HunyuanOCR 与 PaddleOCR：卷积摘要员和 M-RoPE 定位员
 
 源码路径：`tools/mtmd/models/hunyuanocr.cpp` - `clip_graph_hunyuanocr::build()`（1-51行）
 
@@ -410,11 +410,11 @@ ggml_cgraph * clip_graph_paddleocr::build() {
 
 PaddleOCR 的 M-RoPE 使用四段等长的 `mrope_sections`，将视觉位置 ID 输入 Q/K 的旋转编码。ViT 输出先经过输入归一化，再由 `build_patch_merge_permute()` 合并 patch，最后经两层 MLP 投影。它的空间压缩位于 MLP 之前，与 HunyuanOCR 在卷积后插入换行符的策略不同。
 
-## 76.4 CogVLM 与 Gemma4V：两位内容压缩专家
+## 77.4 CogVLM 与 Gemma4V：两位内容压缩专家
 
 CogVLM 和 Gemma4V 都负责把视觉特征压缩并交给语言模型，但路线不同。CogVLM 是门控专家，用 SwiGLU 让信息经过重要性阀门；Gemma4V 是池化专家，用 VisionPooler 压缩 token，再用 Clippable Linear 控制数值范围。
 
-### 76.4.1 clip_graph_cogvlm::build()：SwiGLU 门控投影与边界标记
+### 77.4.1 clip_graph_cogvlm::build()：SwiGLU 门控投影与边界标记
 
 源码路径：`tools/mtmd/models/cogvlm.cpp` - `clip_graph_cogvlm::build()`（4-74行）
 
@@ -470,7 +470,7 @@ cur
 
 `ggml_swiglu_split()` 让门控分支控制主分支信息的通过比例。最后，`mm_boi` 在序列开头拼接，`mm_eoi` 在末尾拼接，形成明确的图像边界。对于内容压缩专家而言，BOI/EOI 就像报告封面和封底，告诉语言模型视觉内容从哪里开始、在哪里结束。
 
-### 76.4.2 clip_graph_gemma4v::build_mm()：可逆线性层的数值钳制
+### 77.4.2 clip_graph_gemma4v::build_mm()：可逆线性层的数值钳制
 
 源码路径：`tools/mtmd/models/gemma4v.cpp` - `clip_graph_gemma4v::build_mm()`（134-147行）
 
@@ -493,7 +493,7 @@ ggml_tensor * clip_graph_gemma4v::build_mm(ggml_tensor * w, ggml_tensor * x) con
 
 `build_mm()` 通过权重名称选择是否启用钳制。输入钳制避免异常激活放大矩阵乘，输出钳制则防止线性层结果继续传播极端值。它不改变线性层参数规模，却能提高量化或深层视觉网络中的数值稳定性。这种机制借鉴了可逆网络的设计思想，确保在长链计算中梯度与激活值保持在合理范围内，是 Gemma4V 在低精度推理场景下保持精度的关键工程细节。
 
-### 76.4.3 clip_graph_gemma4v::build()：VisionPooler 平均池化与 2D RoPE
+### 77.4.3 clip_graph_gemma4v::build()：VisionPooler 平均池化与 2D RoPE
 
 源码路径：`tools/mtmd/models/gemma4v.cpp` - `clip_graph_gemma4v::build()`（5-133行）
 
@@ -545,11 +545,11 @@ Gemma4V 先把像素从 `[0,1]` 映射到 `[-1,1]`，再通过卷积完成 patch
 
 ViT 输出进入 VisionPooler 后，先恢复为二维网格，再用 `ggml_pool_2d(..., GGML_OP_POOL_AVG, ...)` 平均池化。若 `n_merge=2`，token 数约降为原来的四分之一；池化结果再乘以 `sqrt(n_embd)`，并可选地执行均值/尺度修正，最后通过 `build_mm()` 和 RMSNorm 得到文本空间嵌入。内容压缩专家在这里完成了“把四页内容压成一页摘要”的工作。
 
-## 76.5 MobileNetV5：移动端的便携式扫描仪
+## 77.5 MobileNetV5：移动端的便携式扫描仪
 
 MobileNetV5 面向资源受限设备。它不像大型 ViT 那样依赖完整的全局注意力，而是将卷积、残差、下采样和轻量注意力组合起来。可以把它看作移动端的便携式扫描仪：Edge Residual 负责初步捕捉边缘，Inverted Residual 在低成本下扩展和压缩通道，MQA 聚焦重要区域，MSFA 将不同尺度的扫描结果拼成一张清晰的报告。
 
-### 76.5.1 rms_norm_2d()/pad_same_2d()：二维通道归一化与 SAME Padding
+### 77.5.1 rms_norm_2d()/pad_same_2d()：二维通道归一化与 SAME Padding
 
 源码路径：`tools/mtmd/models/mobilenetv5.cpp` - `rms_norm_2d()`（1-17行）、`pad_same_2d()`（19-52行）
 
@@ -596,7 +596,7 @@ ggml_tensor* clip_graph_mobilenetv5::pad_same_2d(ggml_tensor* inp, int kernel_h,
 
 `pad_same_2d()` 则根据输出尺寸、卷积核、步长和膨胀率计算 TensorFlow 风格的非对称填充，保证步长为 2 时仍能覆盖完整边界。它先计算 SAME 填充下期望的输出尺寸，然后反推所需的总填充量，再非对称地分配到上下左右，确保特征图在卷积后保持空间尺寸的整除关系。
 
-### 76.5.2 build_edge_residual()/build_inverted_residual()：边缘残差与倒残差
+### 77.5.2 build_edge_residual()/build_inverted_residual()：边缘残差与倒残差
 
 源码路径：`tools/mtmd/models/mobilenetv5.cpp` - `build_edge_residual()`（54-87行）、`build_inverted_residual()`（89-139行）
 
@@ -692,7 +692,7 @@ Residual Add
 
 深度可分离卷积只在每个通道内部提取空间信息，1×1 卷积负责通道混合，因此比标准卷积更节省参数和计算量。
 
-### 76.5.3 build_mobilenet_attn()：MQA 多查询注意力与 MSFA
+### 77.5.3 build_mobilenet_attn()：MQA 多查询注意力与 MSFA
 
 源码路径：`tools/mtmd/models/mobilenetv5.cpp` - `build_mobilenet_attn()`（141-228行）
 
@@ -764,7 +764,7 @@ Stage 3：16×16×C2 → 上采样2倍 ──┘
 
 MSFA 先以高分辨率特征作为目标，将较低分辨率特征用最近邻上采样对齐，然后沿 `dim=2` 拼接通道。两个 1×1 卷积完成通道扩展与投影，最后通过平均池化得到统一的 `16×16` 输出。
 
-### 76.5.4 MobileNetV5 的完整数据流
+### 77.5.4 MobileNetV5 的完整数据流
 
 ```text
 输入图像
@@ -788,11 +788,11 @@ RMSNorm → 展平 → √C 缩放
 
 MobileNetV5 的整个计算图在 `build()`（230-406行）中被组装：首先应用 Stem 卷积进行快速下采样，然后按预定义阶段顺序堆叠构建好的基本块。当累积到 Stage 2 和 Stage 3 末尾时，把当前特征保存到 `intermediate_features` 向量。全部块完成后，MSFA 对收集到的多尺度特征进行对齐、拼接和压缩，最后通过 Gemma 3n 风格的多模态投影层输出。这套流程将轻量卷积骨干与多层次特征融合相结合，使移动端设备也能获得足够丰富的视觉表示。
 
-## 76.6 音频编码器：音频速记员与声波雕刻师
+## 77.6 音频编码器：音频速记员与声波雕刻师
 
 视觉编码器处理二维空间，音频编码器处理一维时间序列。Whisper 像音频速记员，优先快速压缩；Conformer 像声波雕刻师，使用卷积、相对位置注意力和复合残差结构反复雕琢时序细节。
 
-### 76.6.1 clip_graph_whisper_enc::build()：Conv1D 下采样与多投影器适配
+### 77.6.1 clip_graph_whisper_enc::build()：Conv1D 下采样与多投影器适配
 
 源码路径：`tools/mtmd/models/whisper-enc.cpp` - `clip_graph_whisper_enc::build()`（1-78行）
 
@@ -844,7 +844,7 @@ Whisper 首先调用 `build_inp_raw(1)` 获取音频输入。第一层 Conv1D �
 
 可选的 `build_stack()` 会把相邻若干帧沿特征维拼接，使序列长度进一步缩短为原来的 `1/stack_factor`，而单帧特征维度扩大为原来的 `stack_factor` 倍。最后，函数根据 `proj_type` 选择不同的音频投影器。
 
-### 76.6.2 clip_graph_conformer::build()：相对位置注意力与卷积模块
+### 77.6.2 clip_graph_conformer::build()：相对位置注意力与卷积模块
 
 源码路径：`tools/mtmd/models/conformer.cpp` - `clip_graph_conformer::build()`（1-190行）
 
@@ -975,7 +975,7 @@ residual = residual + 0.5 × FFN2
 
 这能避免复合块中两个 FFN 同时产生过大的更新，使深层音频编码更加稳定。
 
-### 76.6.3 Conformer 相对位置注意力时序图
+### 77.6.3 Conformer 相对位置注意力时序图
 
 ```mermaid
 sequenceDiagram
@@ -999,11 +999,11 @@ sequenceDiagram
     A->>A: 输出投影 o_w
 ```
 
-## 76.7 其他视觉编码器家族：从通用 ViT 到专用压缩器
+## 77.7 其他视觉编码器家族：从通用 ViT 到专用压缩器
 
 本章重点展开了 OCR、CogVLM、Gemma4V、MobileNetV5、Whisper 和 Conformer；下面补充源码地图中其他 `clip_graph_*` 类的构建方法，避免把它们误认为只是未实现的占位类。
 
-### 76.7.1 clip_graph_llava::build()：视觉特征栈与多类型投影器
+### 77.7.1 clip_graph_llava::build()：视觉特征栈与多类型投影器
 
 源码路径：`tools/mtmd/models/llava.cpp` - `clip_graph_llava::build()`（9-447行）
 
@@ -1060,7 +1060,7 @@ mlp_0 → GELU → mlp_2
 
 GLM_EDGE 则使用主卷积路径和适配器路径：先通过 stride=2 的卷积压缩空间，再使用归一化、GELU 和 SwiGLU 投影，最终拼接 BOI/EOI。对翻译公司而言，LLaVA 是总调度员，它根据客户的投影器类型安排不同的后处理部门。
 
-### 76.7.2 clip_graph_siglip::build()：多种投影策略的统一入口
+### 77.7.2 clip_graph_siglip::build()：多种投影策略的统一入口
 
 源码路径：`tools/mtmd/models/siglip.cpp` - `clip_graph_siglip::build()`（1-82行）
 
@@ -1096,7 +1096,7 @@ ggml_cgraph * clip_graph_siglip::build() {
 
 SigLIP 先通过 `build_vit()` 获得视觉特征。LFM2 和 PHI4 会先调整位置嵌入；GEMMA3 使用二维平均池化、RMSNorm 和输入投影；IDEFICS3 使用 `build_patch_merge_permute()` 和线性投影；LFM2 使用 pixel unshuffle、可选输入归一化和 GELU FFN；JANUS_PRO 与 PHI4 使用不同参数的两层 FFN。它的价值在于把多个模型家族的投影分支收束到同一个图构建入口。
 
-### 76.7.3 clip_graph_qwen2vl::build()：双卷积 Patch Embedding、M-RoPE 与窗口注意力
+### 77.7.3 clip_graph_qwen2vl::build()：双卷积 Patch Embedding、M-RoPE 与窗口注意力
 
 源码路径：`tools/mtmd/models/qwen2vl.cpp` - `clip_graph_qwen2vl::build()`（1-139行）
 
@@ -1152,7 +1152,7 @@ graph TD
     J --> K[多模态投影]
 ```
 
-### 76.7.4 clip_graph_qwen3vl::build()：M-RoPE 与 DeepStack
+### 77.7.4 clip_graph_qwen3vl::build()：M-RoPE 与 DeepStack
 
 源码路径：`tools/mtmd/models/qwen3vl.cpp` - `clip_graph_qwen3vl::build()`（1-180行）
 
@@ -1202,7 +1202,7 @@ graph TD
     J --> K[输出]
 ```
 
-### 76.7.5 clip_graph_llama4::build()：Pixel Shuffle 与二维 RoPE
+### 77.7.5 clip_graph_llama4::build()：Pixel Shuffle 与二维 RoPE
 
 源码路径：`tools/mtmd/models/llama4.cpp` - `clip_graph_llama4::build()`（1-100行）
 
@@ -1255,7 +1255,7 @@ Llama4 用 `ggml_im2col()` 模拟 `UnfoldConvolution`，生成 patch 序列后�
 
 Pixel Shuffle 并不是平均池化：它不直接求均值，而是把邻域内多个空间位置重新排列到通道维，因此能在压缩 token 数的同时保留更多局部信息。
 
-### 76.7.6 clip_graph_pixtral::build()：Patch Merger 与 IMG_BREAK
+### 77.7.6 clip_graph_pixtral::build()：Patch Merger 与 IMG_BREAK
 
 源码路径：`tools/mtmd/models/pixtral.cpp` - `clip_graph_pixtral::build()`（1-88行）
 
@@ -1303,7 +1303,7 @@ ggml_cgraph * clip_graph_pixtral::build() {
 
 Pixtral 不使用学习型绝对位置嵌入，而是通过 `build_rope_2d(..., true)` 应用交错布局的二维 RoPE。ViT 输出经 Patch Merger 和 GELU FFN 后，如果存在 `token_embd_img_break`，源码把 token 视为 `[n_embd, p_x, p_y]` 的三维张量，在每一行末尾拼接一个 IMG_BREAK token。除最后一行外，每行都保留一个分隔符，从而让语言模型感知图像的行结构。
 
-### 76.7.7 clip_graph_minicpmv::build()：查询式 Resampler
+### 77.7.7 clip_graph_minicpmv::build()：查询式 Resampler
 
 源码路径：`tools/mtmd/models/minicpmv.cpp` - `clip_graph_minicpmv::build()`（1-81行）
 
@@ -1366,7 +1366,7 @@ graph TD
     G --> H[固定长度视觉摘要]
 ```
 
-### 76.7.8 clip_graph_internvl::build()：Pixel Shuffle 式动态分辨率压缩
+### 77.7.8 clip_graph_internvl::build()：Pixel Shuffle 式动态分辨率压缩
 
 源码路径：`tools/mtmd/models/internvl.cpp` - `clip_graph_internvl::build()`（3-55行）
 
@@ -1410,7 +1410,7 @@ graph TD
     G --> H[输出]
 ```
 
-### 76.7.9 clip_graph_kimivl::build()：Kimi-VL 的二维 RoPE 与 Patch Merge
+### 77.7.9 clip_graph_kimivl::build()：Kimi-VL 的二维 RoPE 与 Patch Merge
 
 源码路径：`tools/mtmd/models/kimivl.cpp` - `clip_graph_kimivl::build()`（7-49行）
 
@@ -1475,7 +1475,7 @@ graph TD
     F --> G[输出]
 ```
 
-### 76.7.10 clip_graph_kimik25::resize_position_embeddings_3d()/build()：矩形位置表与手动相加
+### 77.7.10 clip_graph_kimik25::resize_position_embeddings_3d()/build()：矩形位置表与手动相加
 
 源码路径：`tools/mtmd/models/kimik25.cpp` - `resize_position_embeddings_3d()`（10-28行）、`clip_graph_kimik25::build()`（30-88行）
 
@@ -1573,7 +1573,7 @@ GELU FFN
 
 这说明 Kimi-K2.5 同时使用了可学习绝对位置嵌入和旋转位置编码。`build_patch_merge_permute()` 则负责将空间邻域重排到特征维，使后续投影一次处理合并后的 patch 组。若把位置嵌入改回 `build_vit()` 内部，需要确认基类是否真的把传入的位置张量加到正确节点；源码注释指出，直接在那里处理曾导致 `ggml_add` 未发生，因此当前实现选择手动添加以保证计算图正确。
 
-### 76.7.11 clip_graph_youtuvl::build()：M-RoPE 与窗口顺序恢复
+### 77.7.11 clip_graph_youtuvl::build()：M-RoPE 与窗口顺序恢复
 
 源码路径：`tools/mtmd/models/youtuvl.cpp` - `clip_graph_youtuvl::build()`（1-188行）
 
@@ -1639,7 +1639,7 @@ graph TD
     M --> N[输出]
 ```
 
-### 76.7.12 clip_graph_nemotron_v2_vl::build()：寄存器标记与 Patch Merge
+### 77.7.12 clip_graph_nemotron_v2_vl::build()：寄存器标记与 Patch Merge
 
 源码路径：`tools/mtmd/models/nemotron-v2-vl.cpp` - `clip_graph_nemotron_v2_vl::build()`（3-28行）
 
@@ -1694,7 +1694,7 @@ graph TD
     H --> I[输出]
 ```
 
-### 76.7.13 clip_graph_glm4v::build()：双卷积路径与多级投影
+### 77.7.13 clip_graph_glm4v::build()：双卷积路径与多级投影
 
 源码路径：`tools/mtmd/models/glm4v.cpp` - `clip_graph_glm4v::build()`（1-69行）
 
@@ -1736,7 +1736,7 @@ graph TD
     I --> J
 ```
 
-### 76.7.14 clip_graph_paddleocr::build()：四段式 M-RoPE 与 MLP-AR
+### 77.7.14 clip_graph_paddleocr::build()：四段式 M-RoPE 与 MLP-AR
 
 源码路径：`tools/mtmd/models/paddleocr.cpp` - `clip_graph_paddleocr::build()`（2-37行）
 
@@ -1783,25 +1783,25 @@ graph TD
     F --> G[输出]
 ```
 
-## 76.8 设计中的取舍
+## 77.8 设计中的取舍
 
-### 为什么不同模型选择不同的视觉投影器？
+### 77.8.1 为什么不同模型选择不同的视觉投影器？
 
 MLP 逐 token 映射，结构简单且特征损失较少，但 token 数不变，语言模型侧开销较大。Pixel Shuffle 通过空间到通道的重排减少 token 数，保留局部信息的能力通常强于平均池化，但对输入布局和尺寸约束更敏感。VisionPooler 通过平均池化获得很高的效率，却可能抹平小目标和细笔画。Resampler 用固定查询向量进行交叉注意力，能将变长视觉输入压缩为固定长度，但需要额外的注意力参数和计算。Perceiver 式卷积投影在局部空间压缩方面效率较高，适合 OCR 等需要保留二维排列的任务。
 
-### 为什么 MobileNetV5 使用 MQA？
+### 77.8.2 为什么 MobileNetV5 使用 MQA？
 
 标准多头注意力为每个头分别生成 K/V，参数和内存访问较多。MQA 让多个 Q 头共享较少的 K/V 表示，并且源码进一步对 K/V 做 stride=2 的深度卷积下采样，使注意力从 `O(N²)` 降为 `O(NM)`。代价是 K/V 的表达多样性降低，但在移动设备上，降低显存访问和矩阵乘规模通常更加重要。
 
-### 为什么 DeepSeek-OCR 使用 SAM+CLIP 双编码器？
+### 77.8.3 为什么 DeepSeek-OCR 使用 SAM+CLIP 双编码器？
 
 SAM 的局部窗口注意力适合精细纹理和小字号字符，CLIP 的全局 ViT 更适合整页语义和版面上下文。两者沿通道维拼接后再投影，可以同时保留局部和全局证据。代价是计算量增加，但对于 OCR，字符细节和页面结构往往缺一不可。
 
-### 为什么 Kimi-K2.5 要把位置嵌入手动加在 build_vit() 外部？
+### 77.8.4 为什么 Kimi-K2.5 要把位置嵌入手动加在 build_vit() 外部？
 
 `resize_position_embeddings_3d()` 输出的是适配当前矩形 patch 网格的绝对位置表，而 `build_rope_2d()` 又负责注意力内部的旋转位置编码。源码注释指出，将可学习位置嵌入直接交给 `build_vit()` 曾导致对应的 `ggml_add` 没有发生，因此实现选择先执行 `inp = ggml_add(inp, learned_pos_embd)`，再以空位置嵌入参数调用 `build_vit()`。这是一种围绕计算图实际行为做出的工程性取舍。
 
-## 76.9 动手练习
+## 77.9 动手练习
 
 1. **对比五种投影器的压缩与映射策略**
 
@@ -1839,7 +1839,7 @@ SAM 的局部窗口注意力适合精细纹理和小字号字符，CLIP 的全�
 
    统计所有 `clip_graph_*` 类，标出具有额外辅助方法的类，并根据 `clip_graph` 基类补充一个新的派生类声明。
 
-## 76.10 本章小结
+## 77.10 本章小结
 
 本章从“跨国翻译公司”的比喻出发，系统梳理了 llama.cpp 多模态视觉与音频编码器的源码结构。我们分析了 DeepSeek-OCR 的 SAM+CLIP 双编码器、HunyuanOCR 的卷积式 Perceiver 投影、PaddleOCR 的 M-RoPE 与 Patch Merge，也对比了 CogVLM 的 SwiGLU 门控和 Gemma4V 的 VisionPooler 与 Clippable Linear。
 

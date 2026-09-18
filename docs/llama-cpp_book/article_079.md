@@ -1,6 +1,6 @@
 
 
-# 第80章 服务端保护机制与多模态容器 —— 从银行双重警报到智能金库
+# 第79章 服务端保护机制与多模态容器 —— 从银行双重警报到智能金库
 
 ## 学习目标
 
@@ -14,7 +14,7 @@
 - 理解 OpenAI/Anthropic 协议转换层的参数解析、SSE 流式格式化与跨协议转换原理
 - 掌握服务端基础工具函数（Base64、UTF-8、FNV 哈希、JSON 校验）在请求处理管道中的支撑作用
 
-## 80.1 生活类比
+## 79.1 生活类比
 
 想象 llama-server 的 `server.cpp` 是一家**高可用银行**的应急指挥中心。`signal_handler` 就像一套双重警报系统：第一次警报响起时，系统会启动有序疏散（优雅退出），引导客户和员工安全离开；但如果第二次警报再次响起，说明情况危急到无法等待，系统会立即触发紧急破门（强制终止），避免更严重的损失。每个操作窗口都装有防弹玻璃罩，这就是 `ex_wrapper` 的角色——无论内部业务（路由处理函数）发生什么爆炸（异常），它都能将问题转化为一张标准的错误回执单（HTTP 错误响应），确保柜台外的客户永远看不到内部的火光。而 `main()` 则是这家银行的行长，他依靠这些精心设计的安全设施，才能在早晨安心开门营业（启动服务），在晚上有序拉闸断电（清理资源），让整个系统在各种意外情况下都能保持稳定运行。
 
@@ -22,7 +22,7 @@
 
 HTTP 上下文（`server_http_context`）则是银行的**前台大厅与安保中心**。`init()` 负责布置大厅的安保设施（API 密钥检查）、装修风格（CORS 策略），并决定大厅是开放营业（HTTP）还是进入 VIP 通道（HTTPS）。回到我们的银行案例，`init()` 就好比给大厅安装旋转门和门禁系统，`process_handler_response()` 则是大堂经理，面对普通客户（普通响应）直接带领至柜台快速办理，面对 VIP 大客户（流式响应）则开启专属通道，分批护送其进出。而协议转换器（`convert_responses_to_chatcmpl`、`convert_anthropic_to_oai`）就像大厅里的**多语种服务台**——无论客户用英文（OpenAI）、法文（Anthropic）还是其他方言（Responses）说话，服务台都能流利地将其翻译成银行内部的统一语言（Chat Completion 格式），让后端柜员无需学习多国语言就能处理所有客户的需求。
 
-## 80.2 源码地图
+## 79.2 源码地图
 
 ```
 tools/server/server.cpp
@@ -120,11 +120,11 @@ tools/server/server-http.cpp
     └── process_handler_response()            # 响应处理（含流式）
 ```
 
-## 80.3 全局安全设施与优雅退出 —— server.cpp 全局作用域的“安全气囊”
+## 79.3 全局安全设施与优雅退出 —— server.cpp 全局作用域的“安全气囊”
 
 当我们启动 llama-server 时，首要任务是确保它在各种意外情况下都能优雅应对。回到银行案例，这一节要剖析的是应急指挥中心（`server.cpp` 全局作用域）的核心安全设施。这些机制让 HTTP 路由层可以专注于业务逻辑，而不必每个端点都手写 try-catch 和信号处理。我们将看到 `signal_handler` 如何作为双重警报系统、`ex_wrapper` 如何作为防弹玻璃罩、`main()` 如何利用这些设施完成完整的生命周期管理，包括启动阶段即注册信号处理器，以及异常到 HTTP 响应的统一转换。
 
-### 80.3.1 `signal_handler()`：信号双重检测的“总电闸”
+### 79.3.1 `signal_handler()`：信号双重检测的“总电闸”
 
 源码路径：`tools/server/server.cpp` - 全局声明（3-4行）与 `signal_handler()`（10-17行）
 
@@ -169,7 +169,7 @@ graph TD
 
 在这个设计中，`main()` 扮演了重要的角色：它在调用 `signal()` 或 `sigaction()` 注册 `signal_handler` 之前（详见 80.3.3 节第 ㊳-㊴ 步），就已经为 `shutdown_handler` 赋了值。这意味着信号处理器从注册的那一刻起就处于可用状态，不存在"信号到达但处理器未就绪"的空窗期。
 
-### 80.3.2 `ex_wrapper()`：路由异常的“防弹玻璃罩”
+### 79.3.2 `ex_wrapper()`：路由异常的“防弹玻璃罩”
 
 源码路径：`tools/server/server.cpp` - `ex_wrapper()`（19-49行）
 
@@ -256,7 +256,7 @@ graph TD
 
 值得注意的是，`ex_wrapper` 内部还包含了一个内层 try-catch，用于保护错误格式化过程本身。这是**防御性编程**的典范：即使 `format_error_response` 或 `safe_json_to_str` 因为意外原因（如错误消息含非法字符）抛出异常，外层代码仍然可以返回一个基本的错误响应，确保客户端总是能收到回应，而不是连接被无预警地中断。此外，`SRV_WRN` 记录的警告日志包含了完整的错误响应内容，在调试阶段无需额外引入断点或日志器，即可在前端错误响应被吞掉时追踪到根本原因。
 
-### 80.3.3 `main()`：协调全局设施的总指挥
+### 79.3.3 `main()`：协调全局设施的总指挥
 
 源码路径：`tools/server/server.cpp` - `main()`（51-337行）
 
@@ -502,11 +502,11 @@ sequenceDiagram
 
 Router 模式的差异在于它不需要加载模型。主进程只是一个"调度员"，负责接收请求并将其代理给各个子服务器进程。这也解释了为什么 Router 模式能立即标记 `is_ready`——它本身没有模型需要加载。
 
-## 80.4 统一令牌容器与提示词处理 —— server_tokens 这座“多模态装箱工厂”
+## 79.4 统一令牌容器与提示词处理 —— server_tokens 这座“多模态装箱工厂”
 
 现在，让我们走进 `server_tokens` 这座“多模态装箱工厂”。回到银行案例，这里是金库中唯一的货品入库与调度中心。在构建提示词并送入 llama.cpp 推理引擎之前，服务端需要将各种形式的输入（纯文本、图像、音频）统一管理。这个类比贯穿始终：`pos_next()` 是运钞车的路线计算器，`push_back()` 是入库通道，`process_chunk()` 则是外币兑换窗口，`validate()` 是质检员，`clone()` 是复印机。
 
-### 80.4.1 `server_tokens` 类：多模态容器的声明
+### 79.4.1 `server_tokens` 类：多模态容器的声明
 
 源码路径：`tools/server/server-common.h` - `server_tokens`（118-196行）
 
@@ -623,7 +623,7 @@ graph LR
 
 **拷贝控制策略**：删除拷贝构造/赋值防止两个对象共享同一个媒体块指针，而移动操作则保留下高效的所有权转移。这种模式在多模态资源管理中是必要的，因为媒体块数据（如图像的张量表示）通常很占用内存。`clear()` 方法会同时清空 `map_idx_to_media` 和 `tokens`，确保不留下任何残留映射。
 
-### 80.4.2 `pos_next()`：位置换算机制
+### 79.4.2 `pos_next()`：位置换算机制
 
 源码路径：`tools/server/server-common.cpp` - `server_tokens::pos_next()`（200-248行）
 
@@ -689,7 +689,7 @@ llama_pos server_tokens::pos_next(int64_t n_tokens) const {
 
 `pos_next()` 在 KV 缓存管理中至关重要。当我们需要计算已有 token 占据的缓存位置时，不能简单使用 token 数量，因为多模态块会"压缩"位置空间。
 
-### 80.4.3 `push_back()` 家族：多态插入的“三条入库通道”
+### 79.4.3 `push_back()` 家族：多态插入的“三条入库通道”
 
 源码路径：`tools/server/server-common.cpp` - `server_tokens::push_back()`（311-359行）
 
@@ -774,7 +774,7 @@ void server_tokens::push_back(server_tokens & tokens) {
 
 这里体现了深拷贝的关键设计权衡：`push_back(const mtmd_input_chunk*)` 中的深拷贝操作保证了多模态数据的**所有权独立性**。调用方（如 `process_mtmd_prompt()`）在构造 `server_tokens` 对象后可能立即释放原始媒体块（或在下一次迭代中重用该内存）。如果 `server_tokens` 只是简单地持有原始指针而不进行深拷贝，那么后续访问这些媒体块时就会产生悬垂指针，导致未定义行为（崩溃或错误结果）。虽然深拷贝带来了额外的内存分配和拷贝开销，但它换来了内存安全性和对象生命周期的独立性。
 
-### 80.4.4 `get_common_prefix()`：KV 缓存复用的“公共前缀探测器”
+### 79.4.4 `get_common_prefix()`：KV 缓存复用的“公共前缀探测器”
 
 源码路径：`tools/server/server-common.cpp` - `server_tokens::get_common_prefix()`（415-459行）
 
@@ -849,7 +849,7 @@ size_t server_tokens::get_common_prefix(const server_tokens & b) const {
 
 这种优化在多用户、多轮对话场景中非常关键。例如，在聊天应用的连续对话中，用户发送的每条新消息通常与之前的消息共享大部分前缀，复用 KV 缓存可以大幅减少推理时间。
 
-### 80.4.5 `process_chunk()`：媒体块的“外币兑换窗口”
+### 79.4.5 `process_chunk()`：媒体块的“外币兑换窗口”
 
 源码路径：`tools/server/server-common.cpp` - `server_tokens::process_chunk()`（483-508行）
 
@@ -897,7 +897,7 @@ int32_t server_tokens::process_chunk(llama_context * ctx, mtmd_context * mctx,
 
 `process_chunk()` 的关键输入 `pos` 是媒体块在序列中的起始位置。如果当前序列已经包含前面的文本 token，那么 `pos` 就需要是文本 token 占用的位置数。这也就是为什么 `pos_next()` 必须正确处理多模态场景的原因。
 
-### 80.4.6 `validate()`：完整性的“质检员”
+### 79.4.6 `validate()`：完整性的“质检员”
 
 源码路径：`tools/server/server-common.cpp` - `server_tokens::validate()`（461-481行）
 
@@ -940,7 +940,7 @@ bool server_tokens::validate(const struct llama_context * ctx) const {
 
 这段代码实现了发送到推理引擎前的最后一道"安全门"。`validate()` 确保每个媒体占位符都有对应的媒体块且块大小正确，并确保每个普通 token 在词汇表的有效范围内（否则 llama.cpp 会崩溃或产生荒谬输出）。这是 API 层与底层推理引擎之间最重要的完整性保障。
 
-### 80.4.7 `clone()`：深拷贝的“复印机”
+### 79.4.7 `clone()`：深拷贝的“复印机”
 
 源码路径：`tools/server/server-common.cpp` - `server_tokens::clone()`（510-522行）
 
@@ -971,11 +971,11 @@ server_tokens server_tokens::clone() const {
 
 `clone()` 则是不可或缺的"复印机"，用于需要保留原始 prompt 的场景，比如服务端需要保存用户的历史消息供后续请求使用。由于 `server_tokens` 的拷贝构造已被删除，`clone()` 成为唯一获取独立副本的途径，它通过显式深拷贝所有媒体块来确保新对象完全独立于源对象。
 
-## 80.5 多语种服务台 —— 协议翻译与格式转换
+## 79.5 多语种服务台 —— 协议翻译与格式转换
 
 llama-server 的核心价值之一在于：它能同时服务 OpenAI、Anthropic、Responses 等多种 API 协议的客户端。回到银行案例，这些协议转换器就是大厅里的**多语种服务台**——无论客户用英文（OpenAI）、法文（Anthropic）还是其他方言（Responses）说话，服务台都能流利地将其翻译成银行内部的统一语言（Chat Completion 格式），让后端柜员无需学习多国语言就能处理所有客户的需求。这些协议使用不同的请求/响应格式、不同的消息结构，甚至不同的错误约定。本节将剖析 `server-common.cpp` 中的协议转换引擎，理解它如何扮演"多语种服务台"的角色。
 
-### 80.5.1 `convert_responses_to_chatcmpl()`：将 Responses 请求翻译成内部标准格式
+### 79.5.1 `convert_responses_to_chatcmpl()`：将 Responses 请求翻译成内部标准格式
 
 源码路径：`tools/server/server-common.cpp` - `convert_responses_to_chatcmpl()`（1126-1547行）
 
@@ -1303,7 +1303,7 @@ graph TD
     I --> O[tool 消息]
 ```
 
-### 80.5.2 `convert_anthropic_to_oai()`：将 Anthropic 消息翻译为 OpenAI 格式的双语词典
+### 79.5.2 `convert_anthropic_to_oai()`：将 Anthropic 消息翻译为 OpenAI 格式的双语词典
 
 源码路径：`tools/server/server-common.cpp` - `convert_anthropic_to_oai()`（1549-1794行）
 
@@ -1595,7 +1595,7 @@ json convert_anthropic_to_oai(const json & body) {
 
 这段代码的关键在于**生命周期管理**。在流式响应中，`response->next(chunk)` 是惰性的（每次在网络可写时被调用），所以 `request` 和 `response` 必须保持存活直到流结束。通过 `std::shared_ptr` 捕获它们并在 `on_complete` 中释放，确保了资源的安全回收。`on_complete` 回调被设计为 mutable lambda，因为它需要修改捕获的 shared_ptr，而 `reset()` 操作会递减引用计数，当最后一个引用被释放时，`server_http_res` 对象（以及其中可能包含的推理任务引用）将被析构。
 
-### 80.7.3 HTTP 路由的完整请求流程
+### 79.5.3 HTTP 路由的完整请求流程
 
 当客户端请求到达时，整个请求通过预路由中间件、路由分发、响应生成与返回的完整流程如下图所示：
 
@@ -1618,7 +1618,7 @@ graph TD
 
 这张流程图展示了从请求进入到响应返回的完整路径。每一步（就绪检查、密钥校验、路由分发、流式处理）都是服务端稳定性的关键保障。
 
-## 80.8 设计中的取舍
+## 79.6 设计中的取舍
 
 问：为什么使用 `std::function` 而不是裸函数指针作为 `shutdown_handler`？
 
@@ -1648,7 +1648,7 @@ graph TD
 
 答：LoRA 适配器切换时，如果 KV 缓存中的表示仍然有效，则可以继续使用旧缓存，避免昂贵的重新计算。启用 Alora 机制的 LoRA 在运行中可以动态激活/停用而不影响缓存，因此当新旧列表均为 Alora 时可以跳过缓存清除。trade-off 是增加了一些逻辑复杂度，但换来的是在频繁切换 LoRA 场景下的显著性能提升（节省了完整的 KV 缓存重算时间）。
 
-## 80.9 动手练习
+## 79.7 动手练习
 
 1. **分析 server.cpp 的全局信号处理机制**
    阅读 `tools/server/server.cpp` 第 1-50 行（全局作用域）与 `main()` 函数中的信号注册部分：
@@ -1719,7 +1719,7 @@ graph TD
    - 为什么 `validate_utf8()` 只检查末尾的字节序列，而 `is_valid_utf8()` 检查整个字符串？
    - 在 `tokenize_mixed()` 中，`add_special` 参数对第一个元素和后续元素的处理有何不同？
 
-## 80.10 本章小结
+## 79.8 本章小结
 
 这一章中我们深入探索了 llama-server 服务端的底层基础设施，如同一座精密运作的银行体系：全局安全设施是应急指挥中心，`server_tokens` 是智能金库，协议转换器是多语种服务台，HTTP 上下文则是前台大厅，而基础工具函数则是遍布全行的精密仪器库。我们围绕这些组件，从信号处理、异常封装、生命周期管理到多模态容器、协议转换和 HTTP 配置逐一展开。
 

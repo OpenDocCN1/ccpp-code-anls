@@ -1,6 +1,6 @@
 
 
-# 53 工具函数与辅助能力：像餐厅后厨与前厅那样的解耦与桥接
+# 第54章 53 工具函数与辅助能力：像餐厅后厨与前厅那样的解耦与桥接
 
 ## 学习目标
 
@@ -15,11 +15,11 @@
 - 辨析静态自由函数与类静态方法在控制台模块中的混合设计
 - 理解控制台显示状态管理与颜色配置的懒更新策略
 
-## 53.1 生活类比
+## 54.1 生活类比
 
 想象一下，llama.cpp 的日志与控制台系统就像一家高端餐厅的后厨与前厅协作系统。在后厨，推理线程是厨师，当它准备好一道菜（生成日志）后，并不会亲自跑到前厅，而是把它放到环形传送带（环形缓冲区）上。专门的传菜员（后台工作线程）则守在传送带旁，一旦有新菜就按顺序送到顾客桌上——也就是打印到终端或文件。万一生意太好，传送带满了怎么办？很简单，换一条更长的传送带（自动扩容为原来的2倍），保证不丢单。而连接后厨与前厅的，是一套标准的服务用语，也就是C接口桥接函数：服务员只需要说标准话术（函数调用），不用关心后厨的专业术语，这样即使后厨改造，前厅服务也不需要改变。至于前厅的灯光与氛围，控制台显示系统（console）就是餐厅的灯光师，它为不同场景设计了不同的灯光模式：顾客指令是暖黄色（PROMPT），思考过程是灰色（REASONING），错误则是红色警报（ERROR）。更聪明的是，灯光师只在需要切换场景时才调整灯光，避免频繁闪烁。当顾客需要点单时，行编辑系统（readline）就像一个个性化的点单台：简单模式好比快餐柜台，顾客写纸条，收银员直接录入；高级模式则像日式铁板烧，厨师（光标）在顾客面前现场操作，可以左移右移（Ctrl+方向键）、回看上一条（历史记录）、甚至自动补全（Tab键推荐菜品）。而统一入口（console::readline）则是餐厅总调度，根据店面档次自动选择服务模式。历史记录（history_t）如同常客的点单记忆，记住常客上次点的菜，按上下键就能翻阅老菜单。当然，菜单还有多国语言，UTF-8处理就像多语言菜单翻译，把中文、日文、Emoji这些复杂的组合字符准确翻译成字节序列，并正确记录上菜顺序（光标位置）。最后，当等位时，进度指示器（spinner）就像旋转灯，告诉顾客“菜在做，请稍等”，独立的灯光师（线程）专门负责转灯，不影响后厨做菜。整个系统的精髓就在于：后厨（计算）与前厅（IO）分离，用缓冲区解耦，用颜色提升体验，用历史记录记住常客习惯。
 
-## 55.2 源码地图
+## 54.2 源码地图
 
 ```
 common/log.h
@@ -134,7 +134,7 @@ common/console.cpp
     └── stop()                      # 停止动画（1308-1320行）
 ```
 
-## 53.3 异步日志核心架构 —— 日志系统的「生产者-消费者流水线」
+## 54.3 异步日志核心架构 —— 日志系统的「生产者-消费者流水线」
 
 在大模型推理这种计算密集型任务中，同步打印日志会严重阻塞推理线程，而多线程环境下直接输出又容易导致内容交错混乱。llama.cpp 的解法是：让日志先存后取，用一个环形缓冲区 + 后台工作线程实现完全解耦。生产者（推理线程）只管把格式化后的消息扔进缓冲区，消费者（后台线程）则持续监听，有新消息就取出并打印到标准错误流或文件。当缓冲区满时，它会自动扩容为原来的 2 倍，确保即使突发大量日志也不丢失。同时，通过全局阈值 `common_log_verbosity_thold` 可以精细控制哪些级别的日志需要输出，DEBUG 级别默认不写文件，避免污染生产日志。
 
@@ -154,7 +154,7 @@ sequenceDiagram
     Note right of C: 收到 is_end 标记即退出
 ```
 
-### 53.3.1 `LOG_* 宏家族` 与 ANSI 颜色定义 —— 控制台的「调色盘」
+### 54.3.1 `LOG_* 宏家族` 与 ANSI 颜色定义 —— 控制台的「调色盘」
 
 源码路径：`common/log.h` - `LOG_* 宏家族与全局定义`（1-47行）
 
@@ -202,7 +202,7 @@ extern int common_log_verbosity_thold;  // 全局日志级别阈值
 
 这段代码定义了日志系统所需的 ANSI 颜色宏、跨编译器格式化属性宏、日志级别常量和颜色模式枚举，为整个日志模块的终端美化和条件编译奠定了基础。
 
-### 53.3.2 `common_log` 结构体 —— C 风格日志接口定义
+### 54.3.2 `common_log` 结构体 —— C 风格日志接口定义
 
 源码路径：`common/log.h` - `common_log` 接口（62-110行）
 
@@ -232,7 +232,7 @@ struct common_log {
 
 这个接口定义了日志对象的完整生命周期和配置能力。所有函数都接受 `struct common_log *` 作为第一个参数，形成纯 C 风格的 API，便于桥接到 ggml 等 C 项目。
 
-### 53.3.3 `common_log()` 构造函数 —— 日志对象的「诞生」
+### 54.3.3 `common_log()` 构造函数 —— 日志对象的「诞生」
 
 源码路径：`common/log.cpp` - `common_log()` 构造函数（97-116行）
 
@@ -257,7 +257,7 @@ common_log(size_t capacity) {
 
 这段代码完成了日志对象的初始化。它预分配了环形缓冲区并为每个条目准备了消息缓冲区，最后调用 `resume()` 启动后台线程，使得日志对象创建后即可接收日志。
 
-### 53.3.4 `~common_log()` 析构函数 —— 日志对象的「退役」
+### 54.3.4 `~common_log()` 析构函数 —— 日志对象的「退役」
 
 源码路径：`common/log.cpp` - `~common_log()` 析构函数（118-124行）
 
@@ -272,7 +272,7 @@ common_log(size_t capacity) {
 
 析构函数负责清理日志对象占用的资源。它先暂停后台线程，等待所有待处理的日志输出完毕，再关闭已打开的日志文件，避免资源泄漏。
 
-### 53.3.5 `common_log::add` —— 把日志塞进环形缓冲区
+### 54.3.5 `common_log::add` —— 把日志塞进环形缓冲区
 
 源码路径：`common/log.cpp` - `common_log::add`（151-207行）
 
@@ -317,7 +317,7 @@ void add(enum ggml_log_level level, const char * fmt, va_list args) {
 
 这段代码实现了日志消息的线程安全入队操作。它通过互斥锁保护环形缓冲区的写入，当缓冲区满时自动扩容为原来的 2 倍，并将旧数据迁移到新数组，最后通过条件变量唤醒后台工作线程。
 
-### 53.3.6 `common_log::resume` —— 启动后台「传菜员」
+### 54.3.6 `common_log::resume` —— 启动后台「传菜员」
 
 源码路径：`common/log.cpp` - `common_log::resume`（209-238行）
 
@@ -350,7 +350,7 @@ void resume() {
 
 这段代码启动了一个独立的后台线程，持续监听条件变量。当环形缓冲区非空时，线程被唤醒，取出日志条目并调用 `print()` 方法输出到终端或文件。这种设计保证了日志 I/O 完全不阻塞推理线程。
 
-### 53.3.7 `common_log::pause` —— 暂停后台「传菜员」
+### 54.3.7 `common_log::pause` —— 暂停后台「传菜员」
 
 源码路径：`common/log.cpp` - `common_log::pause`（240-260行）
 
@@ -373,7 +373,7 @@ void pause() {
 
 这段代码实现了日志线程的优雅停止机制。它先在缓冲区尾部写入一条 `is_end = true` 的特殊标记，再通过条件变量唤醒后台线程。后台线程在 `resume()` 的循环中检测到该标记后会主动 `break` 退出，最后 `join()` 回收线程资源。这种「标记+等待」的模式避免了强行终止线程可能带来的资源泄漏或竞态问题，是 `set_file()`、`set_colors()` 等配置接口能安全修改共享状态的前提。
 
-### 53.3.8 `common_log::set_file` —— 切换日志输出「目的地」
+### 54.3.8 `common_log::set_file` —— 切换日志输出「目的地」
 
 源码路径：`common/log.cpp` - `common_log::set_file`（262-276行）
 
@@ -394,7 +394,7 @@ void set_file(const char * path) {
 
 这段代码展示了配置接口的通用模式：先 `pause()` 暂停后台线程，在无竞争的环境下修改共享状态（文件指针），再 `resume()` 恢复。`set_colors()` 采用了完全相同的 pause-modify-resume 三段式，确保颜色表在切换过程中不会被后台线程读到中间状态。
 
-## 53.4 日志条目封装与输出 —— 单条日志的「身份证与信使」
+## 54.4 日志条目封装与输出 —— 单条日志的「身份证与信使」
 
 每条日志在被打印之前，都会被封装成一个 `common_log_entry` 结构体，它记录了消息的级别、是否显示前缀、时间戳以及实际的文本内容。打印时，根据级别决定输出到 stdout 还是 stderr，根据配置决定是否添加前缀和颜色。DEBUG 级别如果低于全局阈值，则直接丢弃，不输出。这种精细化的管理让日志既能在开发期提供丰富信息，又能在生产期保持整洁。
 
@@ -417,7 +417,7 @@ flowchart LR
     M -->|是| N[输出相对时间]
 ```
 
-### 53.4.1 `common_log_entry::print` —— 把日志送到「目的地」
+### 54.4.1 `common_log_entry::print` —— 把日志送到「目的地」
 
 源码路径：`common/log.cpp` - `common_log_entry::print`（43-91行）
 
@@ -455,7 +455,7 @@ void print(FILE * file = nullptr) const {
 
 这段代码完成了单条日志的格式化输出。它智能选择输出流，支持时间戳和级别前缀，并在错误/警告级别后自动恢复默认颜色，避免影响后续终端输出。
 
-### 53.4.2 `common_log::set_colors` —— 颜色配置的「开关」
+### 54.4.2 `common_log::set_colors` —— 颜色配置的「开关」
 
 源码路径：`common/log.cpp` - `common_log::set_colors`（278-301行）
 
@@ -477,7 +477,7 @@ void set_colors(bool colors) {
 
 这段代码在修改全局颜色表时暂停后台线程，确保不会出现颜色配置与日志输出的竞态条件。
 
-### 53.4.3 `common_log::set_prefix` / `set_timestamps` —— 轻量级配置的「旋钮」
+### 54.4.3 `common_log::set_prefix` / `set_timestamps` —— 轻量级配置的「旋钮」
 
 源码路径：`common/log.cpp` - `common_log::set_prefix` / `common_log::set_timestamps`（303-313行）
 
@@ -495,7 +495,7 @@ void set_timestamps(bool timestamps) {
 
 这两个方法不需要 pause/resume，因为它们修改的布尔值在 `add()` 中被原子地读取到条目上，一旦条目入队，后续的标志修改不会影响已入队的日志，从而避免了不必要的线程停启开销。
 
-## 53.5 C 接口桥接与全局管理 —— 跨越语言边界的「外交官」
+## 54.5 C 接口桥接与全局管理 —— 跨越语言边界的「外交官」
 
 llama.cpp 的核心是 C++ 实现的，但 ggml 等底层库是纯 C 的。为了让 C 代码也能使用异步日志，common 模块提供了一套 C 风格的包装函数。这些函数内部实例化或获取 C++ 对象，然后转发调用。通过 `common_log_main()` 的全局单例，整个进程只会创建一个日志对象，并且在首次调用时根据终端能力自动启用颜色，无需调用者手动管理生命周期。
 
@@ -513,7 +513,7 @@ flowchart LR
     H --> I[stderr / 文件]
 ```
 
-### 53.5.1 `common_log_main` —— 全局唯一的「日志指挥官」
+### 54.5.1 `common_log_main` —— 全局唯一的「日志指挥官」
 
 源码路径：`common/log.cpp` - `common_log_main`（324-333行）
 
@@ -530,7 +530,7 @@ struct common_log * common_log_main() {
 
 这段代码利用 `std::call_once` 和静态局部变量实现线程安全的单例模式。首次调用时，会自动检测终端是否支持颜色，并据此配置日志输出。这样，任何模块只需调用 `common_log_main()` 就能获得全局日志对象，无需关心初始化细节。
 
-### 53.5.2 `common_log_set_verbosity_thold` —— 全局日志级别的「阀门」
+### 54.5.2 `common_log_set_verbosity_thold` —— 全局日志级别的「阀门」
 
 源码路径：`common/log.cpp` - `common_log_set_verbosity_thold`（22-24行）
 
@@ -542,7 +542,7 @@ void common_log_set_verbosity_thold(int verbosity) {
 
 这个简单的函数设置了全局日志级别阈值。数值越小越紧急，只有级别数值小于等于阈值的日志才会被输出，就像餐厅根据顾客需求调整菜单的详细程度。
 
-### 53.5.3 `common_get_verbosity` —— 日志级别的「翻译官」
+### 54.5.3 `common_get_verbosity` —— 日志级别的「翻译官」
 
 源码路径：`common/log.cpp` - `common_get_verbosity`（387-397行）
 
@@ -562,7 +562,7 @@ static int common_get_verbosity(enum ggml_log_level level) {
 
 这个函数将 ggml 的日志级别转换为通用日志级别，以便与全局阈值比较。它就像餐厅的菜单翻译器，把后厨的专业术语翻译成前厅的服务用语。
 
-### 53.5.4 `common_log_default_callback` —— GGML 日志的「接线员」
+### 54.5.4 `common_log_default_callback` —— GGML 日志的「接线员」
 
 源码路径：`common/log.cpp` - `common_log_default_callback`（399-405行）
 
@@ -577,13 +577,13 @@ void common_log_default_callback(enum ggml_log_level level, const char * text, v
 
 这段代码作为 ggml 库的默认日志回调，负责将底层 C 库的日志接入 llama.cpp 的异步日志系统。它先将 GGML 的日志级别转换为通用级别，再根据全局阈值决定是否输出，最终调用 `common_log_add` 将消息加入环形缓冲区。
 
-### 53.5.5 C 接口桥接全景 —— 稳定 ABI 的「防护墙」
+### 54.5.5 C 接口桥接全景 —— 稳定 ABI 的「防护墙」
 
 源码路径：`common/log.cpp` - C 接口桥接函数族（320-405行）
 
 这些 C 函数构成了 C/C++ 边界的稳定契约。它们的共同特点是：参数只使用不透明指针（`struct common_log *`）、基本类型和标准库类型，不暴露 C++ 类的内部布局。这样一来，即使 `common_log` 类内部增加或删除成员，C 侧代码也不需要重新编译，实现了真正的 ABI 兼容。
 
-#### 53.5.5.1 `common_log_init` / `common_log_free` —— 对象生命周期管理
+#### 54.5.5.1 `common_log_init` / `common_log_free` —— 对象生命周期管理
 
 ```cpp
 // 创建日志对象
@@ -599,7 +599,7 @@ void common_log_free(struct common_log * log) {
 
 这两个函数管理日志对象的创建与销毁。它们内部使用 C++ 的 `new` 和 `delete`，但对外暴露不透明指针，隐藏了实现细节。
 
-#### 53.5.5.2 `common_log_pause` / `common_log_resume` —— 线程控制
+#### 54.5.5.2 `common_log_pause` / `common_log_resume` —— 线程控制
 
 ```cpp
 // 暂停后台线程
@@ -615,7 +615,7 @@ void common_log_resume(struct common_log * log) {
 
 这两个函数控制后台工作线程的暂停与恢复，方便在修改配置时使用。
 
-#### 53.5.5.3 `common_log_add` —— 日志添加入口
+#### 54.5.5.3 `common_log_add` —— 日志添加入口
 
 ```cpp
 void common_log_add(struct common_log * log, enum ggml_log_level level, const char * fmt, ...) {
@@ -628,7 +628,7 @@ void common_log_add(struct common_log * log, enum ggml_log_level level, const ch
 
 这个函数是 C 代码添加日志的主要入口，它接收可变参数并转发给 C++ 的 `add` 方法。
 
-#### 53.5.5.4 `common_log_flush` —— 刷新实现
+#### 54.5.5.4 `common_log_flush` —— 刷新实现
 
 ```cpp
 void common_log_flush(struct common_log * log) {
@@ -639,7 +639,7 @@ void common_log_flush(struct common_log * log) {
 
 `common_log_flush()` 采用 pause+resume 而不是直接清空队列，是因为 pause 会等待后台线程处理完所有已入队的日志，从而保证调用者在 flush 返回后，所有日志都已实际写出。
 
-#### 53.5.5.5 配置接口族
+#### 54.5.5.5 配置接口族
 
 ```cpp
 // 设置日志文件
@@ -674,7 +674,7 @@ void common_log_set_timestamps(struct common_log * log, bool timestamps) {
 
 这些配置接口都采用统一的转发模式，将 C 调用转换为 C++ 成员函数调用，保持了接口的一致性。
 
-## 53.6 控制台初始化与清理 —— 终端的「开机自检」
+## 54.6 控制台初始化与清理 —— 终端的「开机自检」
 
 控制台模块需要应对 Windows 和 POSIX 两大平台的巨大差异。在 Windows 上，通过 `SetConsoleMode` 启用虚拟终端处理以支持 ANSI 颜色，输入模式设为宽字符以正确接收 Unicode。在 POSIX 上，通过 `termios` 禁用规范模式和回显，实现逐字符输入。初始化时还会保存终端原始状态，以便程序退出时完整恢复，避免留下「脏」终端。
 
@@ -697,7 +697,7 @@ flowchart TD
     K --> N[setlocale LC_ALL]
 ```
 
-### 53.6.1 `init` —— 跨平台终端的「开机自检」
+### 54.6.1 `init` —— 跨平台终端的「开机自检」
 
 源码路径：`common/console.cpp` - `init`（66-132行）
 
@@ -747,7 +747,7 @@ void init(bool use_simple_io, bool use_advanced_display) {
 
 这段代码展示了跨平台初始化的核心逻辑。Windows 侧重点在于获取控制台句柄、启用 ANSI 支持和设置代码页；POSIX 侧则通过 termios 结构保存原始状态并配置非规范输入，同时打开 `/dev/tty` 作为独立输出流。任何平台特性的失败都会触发降级，保证功能可用。
 
-### 53.6.2 `cleanup` —— 终端状态的「还原师」
+### 54.6.2 `cleanup` —— 终端状态的「还原师」
 
 源码路径：`common/console.cpp` - `cleanup`（134-149行）
 
@@ -770,13 +770,13 @@ void cleanup() {
 
 这段代码是 `init()` 的逆操作。它先通过 `set_display(DISPLAY_TYPE_RESET)` 输出 ANSI 重置序列，清除可能残留的颜色状态，再在 POSIX 平台上关闭 `/dev/tty` 并用 `tcsetattr` 恢复终端的原始模式。如果没有这一步，程序退出后终端可能停留在「无回显、无行缓冲」的异常状态，用户需要手动执行 `reset` 才能恢复，这在命令行工具中是不可接受的。
 
-## 53.7 控制台头文件与颜色管理 —— 终端的「化妆师」
+## 54.7 控制台头文件与颜色管理 —— 终端的「化妆师」
 
 `common/console.h` 定义了控制台模块的公共接口，包括 `display_type` 枚举和 `console` 命名空间中的函数声明。`display_type` 枚举定义了六种显示场景：RESET（重置）、INFO（信息）、PROMPT（提示）、REASONING（思考）、USER_INPUT（用户输入）、ERROR（错误）。
 
 这就像餐厅为不同场景设计了不同的灯光模式：顾客指令是暖黄色，思考过程是灰色，错误则是红色警报。
 
-### 53.7.1 `common/console.h` 全局定义
+### 54.7.1 `common/console.h` 全局定义
 
 源码路径：`common/console.h` - 全局定义（1-50行）
 
@@ -831,7 +831,7 @@ namespace console {
 
 这段代码声明了控制台模块的完整接口。`display_type` 枚举定义了六种显示场景，`console` 命名空间提供了初始化、清理、显示设置、输入读取、补全回调、进度指示器、日志输出和刷新等功能。
 
-### 53.7.2 `set_display` —— 懒更新的「灯光切换」
+### 54.7.2 `set_display` —— 懒更新的「灯光切换」
 
 源码路径：`common/console.cpp` - `set_display`（155-179行）
 
@@ -855,7 +855,7 @@ void set_display(display_type display) {
 
 这段代码实现了颜色的懒更新机制。只有在高级显示模式下，并且当前颜色与目标颜色不同时，才会输出 ANSI 转义序列。这样做避免了在同一种颜色上重复输出造成的终端闪烁，同时 `common_log_flush` 确保日志输出不会与颜色切换交错。
 
-### 53.7.3 `console::error` —— 红色警报的「染色剂」
+### 54.7.3 `console::error` —— 红色警报的「染色剂」
 
 源码路径：`common/console.cpp` - `console::error`（1328-1338行）
 
@@ -873,7 +873,7 @@ void error(const char * fmt, ...) {
 
 这段代码利用 `set_display` 的懒更新特性，临时切换到红色加粗输出错误信息，输出后立即恢复之前的颜色状态。整个过程对用户透明，不会影响后续的正常输出。
 
-## 53.8 底层输入输出原语 —— 字符的「搬运工与测量师」
+## 54.8 底层输入输出原语 —— 字符的「搬运工与测量师」
 
 在终端交互中，最基础的操作就是读取一个字符并测量它的显示宽度。`getchar32()` 负责从标准输入读取一个 UTF-32 字符，Windows 上通过 `ReadConsoleInputW` 处理 UTF-16 代理项对，POSIX 上直接读取宽字符。`put_codepoint()` 则将 UTF-8 字符输出到终端，并通过查询光标位置返回实际显示宽度，解决中文等宽字符的对齐问题。
 
@@ -894,7 +894,7 @@ flowchart LR
     J -->|否| L[直接返回 char32]
 ```
 
-### 53.8.1 `getchar32` —— 跨平台字符输入的「双城记」
+### 54.8.1 `getchar32` —— 跨平台字符输入的「双城记」
 
 源码路径：`common/console.cpp` - `getchar32`（181-234行）
 
@@ -956,7 +956,7 @@ static char32_t getchar32() {
 
 这段代码封装了跨平台字符输入的复杂性。Windows 侧通过 `ReadConsoleInputW` 读取宽字符输入，并正确处理 UTF-16 的代理项对，同时将方向键等特殊键映射为虚拟键码。POSIX 侧直接使用 `getwchar()`，并在 `wchar_t` 为 16 位的平台上手动处理代理项对。
 
-### 53.8.2 `pop_cursor` —— 光标左移的「退格兵」
+### 54.8.2 `pop_cursor` —— 光标左移的「退格兵」
 
 源码路径：`common/console.cpp` - `pop_cursor`（236-254行）
 
@@ -983,7 +983,7 @@ static void pop_cursor() {
 
 这段代码处理光标左移一位。Windows 上通过 `SetConsoleCursorPosition` 直接设置坐标，POSIX 上则输出退格符，简单高效。
 
-### 53.8.3 `estimateWidth` —— 字符宽度的「测量师」
+### 54.8.3 `estimateWidth` —— 字符宽度的「测量师」
 
 源码路径：`common/console.cpp` - `estimateWidth`（256-263行）
 
@@ -1000,7 +1000,7 @@ static int estimateWidth(char32_t codepoint) {
 
 这个函数估算字符的显示宽度。Windows 控制台通常将每个字符视为宽度 1，而 POSIX 系统使用 `wcwidth()` 函数正确处理中文等宽字符。
 
-### 53.8.4 `put_codepoint` —— 字符输出的「宽度测量师」
+### 54.8.4 `put_codepoint` —— 字符输出的「宽度测量师」
 
 源码路径：`common/console.cpp` - `put_codepoint`（265-310行）
 
@@ -1056,7 +1056,7 @@ static int put_codepoint(const char* utf8_codepoint, size_t length, int expected
 
 这段代码在输出 Unicode 字符的同时，精确测量其显示宽度。Windows 上通过比较输出前后的光标位置计算宽度，POSIX 上则通过 ANSI 转义序列查询光标位置。这种机制保证了中文等宽字符在终端中的对齐精度。
 
-### 53.8.5 `replace_last` —— 原地替换的「魔术师」
+### 54.8.5 `replace_last` —— 原地替换的「魔术师」
 
 源码路径：`common/console.cpp` - `replace_last`（312-320行）
 
@@ -1073,7 +1073,7 @@ static void replace_last(char ch) {
 
 这个函数是 spinner 动画能够「原地替换」字符的关键——它先用退格符收回光标，再输出新字符，从而在不改变光标整体位置的前提下更新显示内容。
 
-## 53.9 UTF-8 处理引擎 —— 多字节字符的「翻译官」
+## 54.9 UTF-8 处理引擎 —— 多字节字符的「翻译官」
 
 UTF-8 的变长特性使得字节级操作变得困难。`decode_utf8()` 能够解析 1-4 字节的 UTF-8 序列，识别无效字节并返回替换字符 U+FFFD。`append_utf8()` 则执行反向转换，将 Unicode 码点编码为 UTF-8 字节序列。`prev_utf8_char_pos()` 和 `next_utf8_char_pos()` 利用 UTF-8 的编码模式（10xxxxxx 表示中间字节）在字节流中快速定位字符边界，确保光标移动和文本编辑时不会拆分多字节字符。
 
@@ -1097,7 +1097,7 @@ flowchart TD
     J -->|<=0x10FFFF| N[4字节 0xF0|...]
 ```
 
-### 53.9.1 `decode_utf8` —— 字节流的「解码器」
+### 54.9.1 `decode_utf8` —— 字节流的「解码器」
 
 源码路径：`common/console.cpp` - `decode_utf8`（322-366行）
 
@@ -1150,7 +1150,7 @@ static char32_t decode_utf8(const std::string & input, size_t pos, size_t & adva
 
 这段代码实现了完整的 UTF-8 解码逻辑。通过检查首字节的高位模式，可以准确判断序列长度（1-4 字节），并验证后续字节的格式。任何无效序列都会被替换为 U+FFFD，保证程序的健壮性。
 
-### 53.9.2 `prev_utf8_char_pos` —— 字符边界的「侦察兵」
+### 54.9.2 `prev_utf8_char_pos` —— 字符边界的「侦察兵」
 
 源码路径：`common/console.cpp` - `prev_utf8_char_pos`（385-391行）
 
@@ -1167,7 +1167,7 @@ static size_t prev_utf8_char_pos(const std::string & line, size_t pos) {
 
 这段代码利用 UTF-8 的编码特性：中间字节的高两位总是 `10`。通过向前扫描并跳过所有中间字节，可以快速定位到前一个字符的起始位置，确保光标移动时不会拆分多字节字符。
 
-### 53.9.3 `append_utf8` 与 `next_utf8_char_pos` —— 编码与定位的「双向门」
+### 54.9.3 `append_utf8` 与 `next_utf8_char_pos` —— 编码与定位的「双向门」
 
 源码路径：`common/console.cpp` - `append_utf8`/`next_utf8_char_pos`（368-399行）
 
@@ -1204,7 +1204,7 @@ static size_t next_utf8_char_pos(const std::string & line, size_t pos) {
 
 `append_utf8()` 是 `decode_utf8()` 的逆操作，它根据码点所处的 Unicode 平面选择 1-4 字节的编码方案，与解码逻辑形成完整的闭环。`next_utf8_char_pos()` 则与 `prev_utf8_char_pos()` 对称，利用同样的 `10xxxxxx` 特性向前定位。这四个函数共同构成了 UTF-8 处理的「双向翻译官」，使得行编辑模块可以在字节流和字符语义之间自由切换。
 
-## 53.10 光标控制与行编辑原语 —— 屏幕上的「空间管理师」
+## 54.10 光标控制与行编辑原语 —— 屏幕上的「空间管理师」
 
 行编辑的核心是维护三个索引：`byte_pos`（字节位置）、`char_pos`（字符位置）和 `widths[]` 数组（每个字符的显示宽度）。`move_cursor()` 通过 ANSI 转义序列或 Windows API 移动光标，处理跨行情况。`delete_at_cursor()` 删除字符后重绘尾部内容，并清除多余空格。`move_word_left/right()` 实现 Ctrl+方向键的按词移动，跳过连续空白和非空白字符。
 
@@ -1223,7 +1223,7 @@ sequenceDiagram
     A->>D: move_cursor 光标移回删除点
 ```
 
-### 53.10.1 `move_cursor` —— 光标的「物理引擎」
+### 54.10.1 `move_cursor` —— 光标的「物理引擎」
 
 源码路径：`common/console.cpp` - `move_cursor`（616-640行）
 
@@ -1256,7 +1256,7 @@ static void move_cursor(int delta) {
 
 这段代码封装了跨平台的光标移动逻辑。Windows 侧通过计算新的 X/Y 坐标并调用 `SetConsoleCursorPosition`，正确处理跨行情况。POSIX 侧则使用退格符和 ANSI 光标前进序列，简单高效。
 
-### 53.10.2 `delete_at_cursor` —— 删除字符的「整容手术」
+### 54.10.2 `delete_at_cursor` —— 删除字符的「整容手术」
 
 源码路径：`common/console.cpp` - `delete_at_cursor`（412-436行）
 
@@ -1287,7 +1287,7 @@ static void delete_at_cursor(std::string & line, std::vector<int> & widths, size
 
 这段代码实现了删除光标处字符后的完整重绘逻辑。它先从字符串和宽度数组中移除对应元素，然后重新输出尾部内容，再用空格覆盖原字符位置，最后将光标移回删除点，确保终端显示与内部状态一致。
 
-### 53.10.3 `clear_current_line` —— 清除当前行的「清场员」
+### 54.10.3 `clear_current_line` —— 清除当前行的「清场员」
 
 源码路径：`common/console.cpp` - `clear_current_line`（438-449行）
 
@@ -1307,7 +1307,7 @@ static void clear_current_line(const std::vector<int> & widths) {
 
 这个函数在切换历史记录或清空当前行时使用，它通过输出空格覆盖原有内容，然后将光标移回行首，确保显示干净。
 
-### 53.10.4 `set_line_contents` —— 设置行内容的「整容师」
+### 54.10.4 `set_line_contents` —— 设置行内容的「整容师」
 
 源码路径：`common/console.cpp` - `set_line_contents`（451-480行）
 
@@ -1345,7 +1345,7 @@ static void set_line_contents(std::string new_line, std::string & line, std::vec
 
 这个函数在历史记录浏览和自动补全时使用，它先清除当前行，再输出新内容，并根据指定的光标位置调整显示，确保显示与内部状态一致。
 
-### 53.10.5 `move_to_line_start` / `move_to_line_end` —— 行首与行尾的「导航员」
+### 54.10.5 `move_to_line_start` / `move_to_line_end` —— 行首与行尾的「导航员」
 
 源码路径：`common/console.cpp` - `move_to_line_start`/`move_to_line_end`（482-500行）
 
@@ -1373,7 +1373,7 @@ static void move_to_line_end(size_t & char_pos, size_t & byte_pos, const std::ve
 
 这两个函数分别实现 Home 和 End 键的功能，通过累加宽度值计算移动距离，然后调用 `move_cursor` 跳转。
 
-### 53.10.6 `has_ctrl_modifier` —— Ctrl 修饰键的「检测员」
+### 54.10.6 `has_ctrl_modifier` —— Ctrl 修饰键的「检测员」
 
 源码路径：`common/console.cpp` - `has_ctrl_modifier`（502-526行）
 
@@ -1408,7 +1408,7 @@ static bool has_ctrl_modifier(const std::string & params) {
 
 这个函数解析终端转义序列的参数，检测是否按下了 Ctrl 键。在 ANSI 转义序列中，Ctrl 修饰键对应的参数值为 5，例如 Ctrl+左方向键的序列会包含 `;5`。
 
-### 53.10.7 `is_space_codepoint` —— 空白字符的「鉴定师」
+### 54.10.7 `is_space_codepoint` —— 空白字符的「鉴定师」
 
 源码路径：`common/console.cpp` - `is_space_codepoint`（528-530行）
 
@@ -1420,7 +1420,7 @@ static bool is_space_codepoint(char32_t cp) {
 
 这个函数使用标准库的 `iswspace` 判断一个 Unicode 码点是否为空白字符，用于按词移动时跳过空格。
 
-### 53.10.8 `move_word_left` / `move_word_right` —— 按词跳转的「导航仪」
+### 54.10.8 `move_word_left` / `move_word_right` —— 按词跳转的「导航仪」
 
 源码路径：`common/console.cpp` - `move_word_left`/`move_word_right`（532-614行）
 
@@ -1504,7 +1504,7 @@ static void move_word_right(size_t & char_pos, size_t & byte_pos, const std::vec
 
 这两个函数实现了 Ctrl+方向键的按词跳转逻辑。`move_word_left` 先跳过尾部空白，再跳过一个完整的非空白序列，最终停在词首；`move_word_right` 则依次跳过当前词、空白和下一个词，停在再下一个词的开头。它们都依赖 `decode_utf8` + `is_space_codepoint` 判断字符类别，并通过 `widths[]` 累加移动的显示宽度，保证多字节字符环境下的精确跳转。
 
-## 53.11 历史记录管理 —— 终端的「记忆宫殿」
+## 54.11 历史记录管理 —— 终端的「记忆宫殿」
 
 `history_t` 结构体维护一个字符串向量，记录用户之前输入的所有行。`viewing_idx` 标记当前浏览位置，`entries.size()` 表示不在浏览状态。`begin_viewing()` 备份当前输入行，`end_viewing()` 清除浏览状态。添加新记录时自动结束浏览，防止历史与当前输入混淆。空行和与最后一条相同的记录会被跳过，避免垃圾数据。
 
@@ -1525,7 +1525,7 @@ flowchart TD
     K --> L[返回对应条目]
 ```
 
-### 53.11.1 `history_t::add` —— 记忆的「存储」
+### 54.11.1 `history_t::add` —— 记忆的「存储」
 
 源码路径：`common/console.cpp` - `history_t::add`（570-582行）
 
@@ -1545,7 +1545,7 @@ void add(std::string_view line) {
 
 这段代码在添加历史记录时，会自动过滤空行和与最后一条相同的记录，避免无效数据。同时，它会主动结束当前的历史浏览状态，确保新输入与历史记录不会混淆。
 
-### 53.11.2 `history_t::prev` —— 时光的「倒带」
+### 54.11.2 `history_t::prev` —— 时光的「倒带」
 
 源码路径：`common/console.cpp` - `history_t::prev`（583-595行）
 
@@ -1567,7 +1567,7 @@ bool prev(std::string & cur_line) {
 
 这段代码实现了历史记录的向上浏览。`viewing_idx` 初始化为 `entries.size()` 表示不在浏览状态，首次按上键时会自动调用 `begin_viewing()` 备份当前行，然后逐条返回历史记录。到达最早记录后停止，不会循环回到最新。
 
-### 53.11.3 `history_t::next` 与浏览状态管理 —— 记忆的「快进与开关」
+### 54.11.3 `history_t::next` 与浏览状态管理 —— 记忆的「快进与开关」
 
 源码路径：`common/console.cpp` - `history_t::next`/`begin_viewing`/`end_viewing`/`is_viewing`（596-623行）
 
@@ -1603,7 +1603,7 @@ bool is_viewing() const {
 
 `next()` 是 `prev()` 的对称操作：它向后移动索引，到达末尾时自动恢复备份行并结束浏览。`begin_viewing()` / `end_viewing()` 构成了浏览状态的「开关」，`is_viewing()` 则是这个开关的查询接口——`readline_advanced()` 中的 history_prev/history_next 两个 lambda 就是通过它来判断是否需要先备份当前行，避免在浏览过程中丢失用户正在输入的内容。
 
-## 53.12 高级行编辑核心 —— 终端的「微型文本编辑器」
+## 54.12 高级行编辑核心 —— 终端的「微型文本编辑器」
 
 `readline_advanced()` 是整个控制台模块最复杂的函数，它在一个循环中持续读取字符，处理插入、删除、光标移动、历史浏览和自动补全。它维护 `byte_pos` 和 `char_pos` 两个索引，以及 `widths[]` 数组，确保多字节字符的编辑和显示完全一致。自动补全通过 `completion_cb` 回调获取候选列表，支持 Tab 键触发。
 
@@ -1624,7 +1624,7 @@ flowchart TD
     J -->|否| L[move_cursor 单字符移动]
 ```
 
-### 53.12.1 `readline_advanced` —— 高级编辑的「主循环」
+### 54.12.1 `readline_advanced` —— 高级编辑的「主循环」
 
 源码路径：`common/console.cpp` - `readline_advanced`（642-820行，节选）
 
@@ -1795,7 +1795,7 @@ static bool readline_advanced(std::string & line, bool multiline_input) {
 
 这段代码是高级行编辑的核心循环。它持续读取字符，根据输入类型分发到不同的处理逻辑：回车结束、Tab 补全、方向键移动光标、退格删除、普通字符插入。整个过程维护 `byte_pos`、`char_pos` 和 `widths[]` 三个索引，确保多字节字符的编辑和显示完全一致。
 
-### 53.12.2 `set_completion_callback` —— 自动补全的「开关」
+### 54.12.2 `set_completion_callback` —— 自动补全的「开关」
 
 源码路径：`common/console.cpp` - `set_completion_callback`（1260-1265行）
 
@@ -1807,7 +1807,7 @@ void set_completion_callback(completion_callback cb) {
 
 这个函数设置了自动补全的回调函数。当用户按下 Tab 键时，`readline_advanced` 会调用这个回调获取候选列表，并自动选择第一个候选进行补全。
 
-### 53.12.3 `readline_simple` 与统一入口 —— 双模式的「调度台」
+### 54.12.3 `readline_simple` 与统一入口 —— 双模式的「调度台」
 
 源码路径：`common/console.cpp` - `readline_simple`/`console::readline`（1200-1260行）
 
@@ -1841,7 +1841,7 @@ bool console::readline(std::string & line, bool multiline_input) {
 
 `readline_simple()` 牺牲了光标移动、历史浏览、自动补全等高级功能，换来了极强的兼容性——它在任何支持标准输入的环境中都能工作，甚至在管道重定向或嵌入式设备上。`console::readline()` 作为统一入口，根据 `init()` 时设置的 `simple_io` 标志自动选择模式，对调用者屏蔽了双模式的差异。
 
-## 53.13 进度指示器 —— 终端的「加载动画师」
+## 54.13 进度指示器 —— 终端的「加载动画师」
 
 `spinner` 命名空间提供了一个简单的旋转动画功能，常用于模型加载等长时间操作。它使用 `|/-\` 字符序列模拟旋转效果，通过独立线程按固定间隔（通常 100ms）更新动画帧。启动和停止前都会调用 `common_log_flush()`，确保日志输出不与动画交错。线程同步使用条件变量 `cv_stop`，可以及时唤醒和退出。
 
@@ -1865,7 +1865,7 @@ sequenceDiagram
     D->>D: pop_cursor 光标左移
 ```
 
-### 53.13.1 `spinner::start` —— 启动旋转的「灯光师」
+### 54.13.1 `spinner::start` —— 启动旋转的「灯光师」
 
 源码路径：`common/console.cpp` - `spinner::start`（1288-1308行）
 
@@ -1894,7 +1894,7 @@ void start() {
 
 这段代码启动了一个独立的动画线程。它先刷新日志，避免动画与日志输出交错，然后输出第一帧字符，再创建线程持续绘制后续帧。线程通过条件变量的 `wait_for` 方法按固定间隔唤醒，既保证了动画的流畅性，又能在停止信号到来时立即退出。
 
-### 53.13.2 `spinner::stop` —— 停止动画的「熄灯」
+### 54.13.2 `spinner::stop` —— 停止动画的「熄灯」
 
 源码路径：`common/console.cpp` - `spinner::stop`（1308-1320行）
 
@@ -1919,7 +1919,7 @@ void stop() {
 
 这段代码停止动画线程并清理终端显示。它先设置停止标志并唤醒线程，然后调用 `join()` 等待线程退出，最后用空格覆盖动画字符并将光标左移，恢复正常的控制台状态。
 
-### 53.13.3 `spinner::draw_next_frame` —— 动画帧的「切换器」
+### 54.13.3 `spinner::draw_next_frame` —— 动画帧的「切换器」
 
 源码路径：`common/console.cpp` - `spinner::draw_next_frame`（1280-1288行）
 
@@ -1933,13 +1933,13 @@ static void draw_next_frame() {
 
 `draw_next_frame()` 是 spinner 动画的心脏。它通过 `replace_last()` 实现原地字符替换——先用退格符收回光标，再输出新字符——从而在不改变光标整体位置的前提下更新显示。`LOADING_CHARS` 通常定义为 `"|/-\\"` 四个字符的循环序列，`sizeof(LOADING_CHARS)` 包含结尾的空字符，因此取模运算会在四个字符之间平滑轮转，形成经典的旋转动画效果。
 
-## 53.14 日志与控制的协同 —— 终端的「交通管制」
+## 54.14 日志与控制的协同 —— 终端的「交通管制」
 
 在复杂的终端环境中，日志系统和控制台显示需要像交通警察一样协同工作，才能保证输出的有序与美观。日志系统负责将推理过程中的各类信息（调试、警告、错误）异步写出，而控制台显示则负责管理终端的颜色、光标和用户交互。两者看似独立，却在多个关键点上必须紧密配合：输出流的隔离避免了互相干扰，颜色的统一管理保证了视觉一致性，而刷新机制则确保了输出时序的正确性。
 
 这就像餐厅的交通管制：后厨的日志传菜员（后台线程）走专门的通道（stderr），前厅的服务员（控制台交互）走另一条通道（/dev/tty），两者互不干扰；而灯光师（颜色管理）在切换灯光前会先确认没有传菜员正在上菜（刷新日志）。
 
-### 53.14.1 频道分离：日志与控制台的输出流隔离
+### 54.14.1 频道分离：日志与控制台的输出流隔离
 
 日志系统与控制台最基础的协同，是它们使用不同的输出通道，从而避免彼此的输出交错混乱。`common_log` 的所有日志默认输出到 `stderr`，并可配置写入文件；而 `console` 模块则使用独立的 `out` 流——在 POSIX 平台上通常是 `/dev/tty`，确保即使 `stdout` 被重定向，控制台的提示和用户输入仍然直接显示在终端上。
 
@@ -1962,7 +1962,7 @@ static FILE * out = stdout;     // 可被 init() 改为 /dev/tty
 
 这种频道分离的设计，使得即使推理线程产生大量日志，也不会干扰到用户输入的提示行；反之，控制台的交互操作也不会因为等待日志写出而阻塞。
 
-### 53.14.2 颜色映射：全局颜色表与显示样式的协同
+### 54.14.2 颜色映射：全局颜色表与显示样式的协同
 
 日志系统的颜色输出和控制台的显示样式共享同一套 ANSI 颜色体系，但它们的管理方式不同。日志通过 `g_col` 全局颜色表控制，而控制台则通过 `current_display` 状态和 `set_display()` 函数管理。当两者同时输出时，必须确保颜色切换不会互相干扰。
 
@@ -1986,7 +1986,7 @@ void set_display(display_type display) {
 
 而 `console::error()` 则利用这一机制，在输出错误信息后立即恢复原颜色，不会影响后续的正常输出。
 
-### 53.14.3 `console::log` —— 直接输出的「信使」
+### 54.14.3 `console::log` —— 直接输出的「信使」
 
 源码路径：`common/console.cpp` - `console::log`（1320-1328行）
 
@@ -2001,7 +2001,7 @@ void log(const char * fmt, ...) {
 
 这个函数提供简单的格式化日志输出，直接写入 `out` 流。它设计用于 CLI 线程中的普通信息输出，不经过异步日志系统，因此不会阻塞推理线程。注意：在推理线程中应使用 `log.h` 的异步日志，避免影响性能。
 
-### 53.14.4 `console::flush` —— 输出的「强制刷新」
+### 54.14.4 `console::flush` —— 输出的「强制刷新」
 
 源码路径：`common/console.cpp` - `console::flush`（1338-1342行）
 
@@ -2013,7 +2013,7 @@ void flush() {
 
 这个函数强制刷新 `out` 流的缓冲区，确保所有待输出的内容立即显示在终端上。在需要立即反馈的场景（如进度指示器）中非常有用。
 
-### 53.14.4 架构图：日志与控制台的协同通道
+### 54.14.5 架构图：日志与控制台的协同通道
 
 ```mermaid
 flowchart LR
@@ -2028,7 +2028,7 @@ flowchart LR
 
 日志与控制的协同，本质上就是这对「生产者-消费者」与「交互-显示」两条主线的协调。通过输出流的隔离、颜色管理的统一以及时序刷新的保证，整个系统在高并发、高交互的场景下，依然能够保持输出的清晰与稳定。
 
-## 53.15 设计中的取舍
+## 54.15 设计中的取舍
 
 在日志与控制台系统的设计中，有许多关键的工程选择值得深思。
 
@@ -2050,7 +2050,7 @@ C++ 对象的布局与编译器、标准库实现密切相关，如果直接暴�
 **为什么 `common_log_flush()` 采用 pause+resume 而不是直接清空队列？**  
 `pause()` 会等待后台线程处理完所有已入队的日志，从而保证调用者在 flush 返回后，所有日志都已实际写出。如果只是清空队列而不等待消费者处理，可能导致日志丢失，破坏日志的可靠性保证。
 
-## 53.16 动手练习
+## 54.16 动手练习
 
 1.  **分析异步日志的线程安全机制**
     阅读 `common/log.cpp` 第 151-207 行（add 方法）和第 209-238 行（resume 方法），回答：
@@ -2109,7 +2109,7 @@ C++ 对象的布局与编译器、标准库实现密切相关，如果直接暴�
     3. 对比 `::readline_simple()` (1200-1250 行) 和 `::readline_advanced()` (642-820 行)，简单模式牺牲了哪些功能换取了什么优势？
     4. 如果让你为嵌入式设备（如路由器）设计控制台，你会强制使用哪种模式？为什么？
 
-## 53.17 本章小结
+## 54.17 本章小结
 
 通过本章的学习，我们深入剖析了 llama.cpp 的 common 模块中那些看似零散却至关重要的工具函数与辅助能力。首先，我们探索了异步日志系统如何通过环形缓冲区和生产者-消费者模式实现线程安全的日志记录，理解了 `common_log` 类、`common_log_entry` 结构以及 C 接口桥接的设计哲学。接着，我们揭开了控制台模块的神秘面纱，学习了跨平台的终端初始化与清理、基于 `display_type` 枚举的颜色管理系统，以及 `getchar32`、`put_codepoint` 等底层 IO 原语。在 UTF-8 处理部分，我们掌握了 `decode_utf8`、`append_utf8` 和字符边界定位的字节级技巧。行编辑核心则展示了 `readline_advanced` 如何维护 byte_pos/char_pos/widths 三元组，实现光标移动、删除、历史浏览和自动补全等复杂功能。最后，进度指示器 spinner 和日志与控制的协同机制，保证了终端输出的视觉效果与性能的平衡。
 

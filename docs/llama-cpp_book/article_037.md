@@ -1,6 +1,6 @@
 
 
-# 38. Metal 后端 —— Apple Silicon GPU 的「智能计算厨房」
+# 第37章 Metal 后端 —— Apple Silicon GPU 的「智能计算厨房」
 
 ## 学习目标
 
@@ -13,13 +13,13 @@
 - 掌握设备抽象层中缓冲区创建、映射与释放的完整路径
 - 能够分析管线 specialization 机制与 Flash Attention / MoE 算子的特化实现
 
-## 38.1 生活类比
+## 37.1 生活类比
 
 你可以把 Metal 后端想象成一间「智能厨房」。CPU 上的 ggml 计算就像家庭厨房——每次做菜都要自己动手切配、翻炒，顺序一道接一道，灶台利用率很低。而 Metal 后端则是一个配备了专业厨师（GPU）的智能厨房：你把菜单（计算图）交给它，它自动调度多个灶台（线程组）并行烹饪。
 
 关键在于，厨房里有多个灶台，但有些菜不能同时做——比如炖汤的锅还在占用，炒菜的锅就用不了。这就需要一个「智能排菜员」，它在开火前先检查每道菜要用哪些锅、占用哪些内存区间，然后把互不冲突的菜重新排序，让多个灶台同时开工。在 ggml-metal 里，这个排菜员就是 `ggml_graph_optimize`，它依赖的「锅具占用检查表」就是 `ggml_mem_ranges` 内存范围跟踪器。这一章，我们就来拆解这套智能厨房的调度系统与翻译官。
 
-## 38.2 源码地图
+## 37.2 源码地图
 
 ```text
 ggml/include/ggml-metal.h
@@ -47,11 +47,11 @@ ggml/src/ggml-metal/
     └── ggml-metal.h（include/）            # 用户侧入口 API
 ```
 
-## 38.3 内存范围跟踪与计算图优化 —— 智能厨房的「排菜员」
+## 37.3 内存范围跟踪与计算图优化 —— 智能厨房的「排菜员」
 
 在 Metal 后端上执行计算图时，多个算子可能被提交到同一个命令缓冲区中并发执行。为了最大化并发度，同时避免同一块设备内存被两个存在依赖关系的算子同时读写，ggml-metal 在 `ggml-metal-common.cpp` 中实现了一套内存范围跟踪与图重排序机制。它就像智能厨房的排菜员，在开火前先检查每道菜的锅具占用，然后把互不冲突的菜重新排序，让多个灶台同时开工。
 
-### 38.3.1 内存范围的表示与检查
+### 37.3.1 内存范围的表示与检查
 
 ```c
 // === ggml_mem_ranges_init：创建并初始化内存范围跟踪器 ===
@@ -134,7 +134,7 @@ static bool ggml_mem_ranges_check(ggml_mem_ranges_t mrs, ggml_mem_range mr) {
 }
 ```
 
-### 38.3.2 节点融合与重排序
+### 37.3.2 节点融合与重排序
 
 ```c
 // === node_info：图优化的中间表示 ===
@@ -349,7 +349,7 @@ flowchart TD
     Unpack --> End["输出优化后的计算图"]
 ```
 
-### 38.3.3 图优化主入口
+### 37.3.3 图优化主入口
 
 ```c
 // === ggml_graph_optimize：图优化流程的 orchestrator ===
@@ -439,11 +439,11 @@ void ggml_graph_optimize(ggml_cgraph * gf) {
 }
 ```
 
-## 38.4 算子编码与管线分发 —— 智能厨房的「菜单翻译官」
+## 37.4 算子编码与管线分发 —— 智能厨房的「菜单翻译官」
 
 计算图优化完成后，接下来需要把每个节点真正翻译成 Metal 命令提交到 GPU。这项工作由 `ggml-metal-ops.cpp` 承担，它就像厨房的菜单翻译官：把每道菜（ggml 算子）翻译成灶台能听懂的指令（Metal 着色器内核调用）。
 
-### 38.4.1 操作上下文与编码入口
+### 37.4.1 操作上下文与编码入口
 
 ```c
 // === ggml_metal_op：操作编码器上下文类 ===
@@ -484,7 +484,7 @@ ggml_metal_op(
     }
 ```
 
-### 38.4.2 算子分发
+### 37.4.2 算子分发
 
 ```c
 // === ggml_metal_op_encode_impl：编码器核心分发函数 ===
@@ -587,7 +587,7 @@ flowchart TD
     N --> O["更新并发内存范围<br/>返回融合节点数 n_fuse"]
 ```
 
-### 38.4.3 单个算子的编码模板
+### 37.4.3 单个算子的编码模板
 
 ```c
 // === ggml_metal_op_concat：concat 算子编码模板 ===
@@ -628,7 +628,7 @@ int ggml_metal_op_concat(ggml_metal_op_t ctx, int idx) {
 }
 ```
 
-### 38.4.4 管线获取的 specialization 机制
+### 37.4.4 管线获取的 specialization 机制
 
 ```c
 // === ggml_metal_library_get_pipeline_mul_mm：mul_mm 管线 specialization ===
@@ -666,11 +666,11 @@ ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm(ggml_meta
 }
 ```
 
-## 38.5 公共入口 API 与上下文生命周期 —— 厨房的「门面」
+## 37.5 公共入口 API 与上下文生命周期 —— 厨房的「门面」
 
 Metal 后端的对外接口定义在 `ggml-metal.h`，而上下文的生命周期管理实现在 `ggml-metal-context.h` 与 `ggml-metal.cpp` 中。这一层把高性能的 Metal 计算能力封装为稳定的 C API，供上层调用。
 
-### 38.5.1 公共入口 API
+### 37.5.1 公共入口 API
 
 ```c
 // === ggml-metal.h：Metal 后端公共入口 ===
@@ -717,7 +717,7 @@ GGML_BACKEND_API ggml_backend_reg_t ggml_backend_metal_reg(void); // 获取 Meta
 #endif
 ```
 
-### 38.5.2 上下文生命周期
+### 37.5.2 上下文生命周期
 
 ```c
 // === ggml_metal_init / ggml_metal_free：上下文创建与销毁 ===
@@ -758,11 +758,11 @@ enum ggml_status ggml_metal_graph_compute(ggml_metal_t ctx, struct ggml_cgraph *
 }
 ```
 
-## 38.6 设备抽象与缓冲区管理 —— 厨房的「设备层」
+## 37.6 设备抽象与缓冲区管理 —— 厨房的「设备层」
 
 设备管理层位于 `ggml-metal-device.h` / `ggml-metal-device.cpp`，负责封装 `MTLDevice`、`MTLCommandQueue`、pipeline 缓存、buffer 等底层对象，并向上提供 C 接口。
 
-### 38.6.1 设备单例与属性
+### 37.6.1 设备单例与属性
 
 ```c
 // === ggml_metal_device_get：获取指定编号的 Metal 设备单例 ===
@@ -795,7 +795,7 @@ bool ggml_metal_device_supports_op(ggml_metal_device_t dev, const struct ggml_te
 }
 ```
 
-### 38.6.2 缓冲区创建、映射与释放
+### 37.6.2 缓冲区创建、映射与释放
 
 ```c
 // === ggml_metal_buffer_init：创建设备缓冲区 ===
@@ -835,7 +835,7 @@ struct ggml_metal_buffer_id ggml_metal_buffer_get_id(ggml_metal_buffer_t buf, co
 }
 ```
 
-## 38.7 Buffer Type 注册中心 —— 厨房的「餐具登记处」
+## 37.7 Buffer Type 注册中心 —— 厨房的「餐具登记处」
 
 `ggml-metal.cpp` 中实现了三种 Buffer Type（Shared / Private / Mapped），它们是后端缓冲区的注册中心，向上对接 `ggml_backend_buffer_type_t` 抽象。
 
@@ -917,11 +917,11 @@ flowchart LR
     Ops --> GPU["GPU 内核接收<br/>buffer + 偏移作为参数"]
 ```
 
-## 38.8 管线注册与按需编译 —— 厨房的「调料架」
+## 37.8 管线注册与按需编译 —— 厨房的「调料架」
 
 `ggml-metal-device.cpp` 实现了大量 `ggml_metal_library_get_pipeline_*` 函数，构成管线的注册与按需编译体系。其核心模式是：**构造唯一管线名 → 查缓存 → 未命中则编译新变体并缓存**。
 
-### 38.8.1 缓存容器与基础管线
+### 37.8.1 缓存容器与基础管线
 
 ```c
 // === ggml_metal_pipelines_init / _free / _add / _get：管线缓存容器 ===
@@ -982,7 +982,7 @@ ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_base(ggml_metal_
 }
 ```
 
-### 38.8.2 管线 specialization 的通用模板
+### 37.8.2 管线 specialization 的通用模板
 
 ```c
 // === ggml_metal_library_get_pipeline_cpy：数据复制管线 ===
@@ -1016,11 +1016,11 @@ flowchart TD
     D --> I["返回 pipeline_with_params<br/>含 smem/nsg 等参数"]
 ```
 
-## 38.9 Flash Attention 与 MoE 特化 —— 厨房的「招牌菜」
+## 37.9 Flash Attention 与 MoE 特化 —— 厨房的「招牌菜」
 
 两类复杂算子在管线获取与参数结构上都有大量特化：`FLASH_ATTN_EXT` 与 `MUL_MAT_ID`（MoE 矩阵乘法）。
 
-### 38.9.1 Flash Attention 管线族
+### 37.9.1 Flash Attention 管线族
 
 ```c
 // === ggml_metal_library_get_pipeline_flash_attn_ext：Flash Attention 主管线 ===
@@ -1080,7 +1080,7 @@ ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_flash_attn_ext(
 }
 ```
 
-### 38.9.2 MoE 矩阵乘法管线
+### 37.9.2 MoE 矩阵乘法管线
 
 ```c
 // === ggml_metal_library_get_pipeline_mul_mm_id：MoE 矩阵乘法管线 ===
@@ -1140,11 +1140,11 @@ flowchart TD
     D --> G
 ```
 
-## 38.10 后端注册与系统探测 —— 厨房的「开业手续」
+## 37.10 后端注册与系统探测 —— 厨房的「开业手续」
 
 `ggml-metal.cpp` 完成最后的拼图：向 ggml 后端系统注册 Metal 后端、枚举设备、登记缓冲区类型，并实现 `ggml_backend_metal_reg()` 这一系统探测入口。
 
-### 38.10.1 后端与设备接口
+### 37.10.1 后端与设备接口
 
 ```c
 // === ggml_backend_metal_reg：获取 Metal 后端注册表（系统探测入口） ===
@@ -1206,7 +1206,7 @@ bool ggml_backend_is_metal(ggml_backend_t backend) {
 }
 ```
 
-### 38.10.2 Buffer Type 与设备能力查询
+### 37.10.2 Buffer Type 与设备能力查询
 
 ```c
 // === ggml_backend_metal_device_get_buffer_type：获取设备缓冲区类型 ===
@@ -1249,7 +1249,7 @@ flowchart TD
     G --> H["后续 graph_compute<br/>进入 38.4 编码流程"]
 ```
 
-## 38.11 设计中的取舍
+## 37.11 设计中的取舍
 
 - 图优化的重排序算法为什么只向前扫描 64 个节点？
   重排序的目的是提升并发度，但扫描过远会带来 O(n²) 的复杂度。限制 `N_FORWARD = 64` 是一个工程上的折中：在绝大多数计算图中，能并行的节点在局部范围内就已经出现，过远的重排收益递减但开销线性增长。
@@ -1266,7 +1266,7 @@ flowchart TD
 - MoE 为什么同时提供 mul_mm_id 与 mul_mv_id 两条路径？
   当 token 数较多时，SIMD group 矩阵乘法的 mul_mm_id 吞吐更高；当 token 数很少时，逐 token 的 mul_mv_id 开销更小。代码以 `ne21_mm_id_min = 32` 为断点自动选择。
 
-## 38.12 动手练习
+## 37.12 动手练习
 
 - 阅读 `ggml-metal-common.cpp` 中的 `ggml_metal_graph_optimize_reorder`，尝试把 `N_FORWARD` 从 64 改为 16，观察对重排序结果的影响。
 - 对比 `concat` 和 `mul_mat` 两个算子的编码函数，列出它们在参数结构体、管线获取、线程组调度上的异同。
@@ -1274,7 +1274,7 @@ flowchart TD
 - 在 `ggml-metal.cpp` 中为 Buffer Type 新增第四种类型（如 `HostVisible`），实现其 `get_name` / `alloc_buffer` / `get_alloc_size` 接口，并接入 `supports_buft` 检查。
 - 模拟一个包含 MUL_MAT_ID 的小图，追踪 `extra_tpe` / `extra_ids` 临时缓冲区的偏移计算，验证其与 `get_alloc_size` 的一致性。
 
-## 38.13 本章小结
+## 37.13 本章小结
 
 这一章中我们学习了 ggml-metal 后端的完整机制。首先，通过 `ggml-metal-common.cpp` 中的内存范围跟踪与图重排序算法，把计算图中互不冲突的节点聚拢在一起，最大化 GPU 并发度；其次，通过 `ggml-metal-ops.cpp` 的算子分发与编码流程，把每个 ggml 算子翻译成 Metal 着色器调用，并利用管线 specialization 按需编译最优内核变体；再次，通过 `ggml-metal.cpp` 的后端注册、三种 Buffer Type 注册中心与设备管理，构建起完整的后端生态；最后，Flash Attention 与 MoE 算子展示了复杂场景下的多内核协同与特化管线设计。这种设计在保证正确性的前提下，充分释放了 Apple Silicon GPU 的计算潜力。
 

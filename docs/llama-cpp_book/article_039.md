@@ -1,5 +1,5 @@
 
-# 40. Hexagon 后端 —— Snapdragon DSP 的"异构协奏曲"
+# 第39章 Hexagon 后端 —— Snapdragon DSP 的"异构协奏曲"
 
 ## 学习目标
 
@@ -13,11 +13,11 @@
 - 掌握 HVX/HMX 计算核心：深入 `matmul-ops.c` 与 `hmx-matmul-ops.c`，理解量化点积与 tile 化矩阵乘的实现。
 - 精通 HVX 工具库：了解 `hvx-base.h` 至 `hvx-arith.h` 中对齐分发与原子向量操作的设计，以及 `hex-dma.h` 和 `worker-pool.c` 提供的底层并发与搬运支持。
 
-## 40.1 生活类比
+## 39.1 生活类比
 
 想象整个 ggml-hexagon 后端是一家「高通 DSP 智能工厂」：`htpdrv_init()` 是厂门的保安，负责检查并加载 `libcdsprpc` 这把「万能钥匙」，随后打开 `rpcmem`、`fastrpc`、`dspqueue` 这三把重要的工具柜。`htp-msg.h` 是厂里的「标准作业单」，`htp_tensor` 是物料标签（类型、尺寸、步长），`htp_general_req` 是任务卡（操作码、标志位、输入输出），`htp_general_rsp` 是回执（状态、耗时、周期数）。`ggml-hexagon.cpp` 是厂长办公室里的调度中心，`ggml_hexagon_registry` 掌管车间，`ggml_hexagon_session` 是流水线班长，负责将主机下达的 `ggml` 指令翻译成 DSP 能听懂的 `htp_general_req`。`htp/main.c` 是 DSP 车间的收发室，`htp_iface_open/start` 是每天早上给 HVX/HMX 上电并分配 VTCM 工位，`htp_packet_callback` 则是分拣员，负责把收到的包裹（请求）分发给不同的工种（`proc_*_req`）。`matmul-ops.c` 与 `hmx-matmul-ops.c` 是车间里的「核心冲压机」与「特快专机」，前者用 HVX 向量点积处理重量，后者用 HMX 硬件做矩阵乘法。`hvx-*.h` 系列是工具的「万用螺丝刀组」，无论加减乘除、指数对数、拷贝重排，都按内存对齐方式（aa/au/ua/uu）自动匹配最合适的工具头。`worker-pool.c` 是「多工位并联系统」，保证每个计算任务都能被多个 DSP 线程瓜分；`hex-dma.c/h` 则是「传送带与升降机」，负责在 DDR 和 VTCM 仓库之间搬运物料。
 
-## 40.2 源码地图
+## 39.2 源码地图
 
 ```
 ggml/src/ggml-hexagon/
@@ -358,11 +358,11 @@ ggml/src/ggml-hexagon/
     └── ggml_backend_hexagon_reg()
 ```
 
-## 40.3 FastRPC 动态加载与 HTP 驱动门卫 —— 打开 host 与 DSP 的「任意门」
+## 39.3 FastRPC 动态加载与 HTP 驱动门卫 —— 打开 host 与 DSP 的「任意门」
 
 `htpdrv_init()` 是整座工厂的「门禁系统」。它不负责任何计算，却决定了 host 能不能和 DSP 说上话。整个流程从「找到 libcdsprpc 这把钥匙」开始，到「把钥匙上的每一个齿（函数指针）都卡进对应的锁孔」结束。消息协议 `htp-msg.h` 则是双方的「普通话」——没有它，host 发过去的 `0x01` 和 DSP 理解的 `0x01` 可能完全是两回事。而 `htp_t_block_size()` 与 `htp_type_nbytes()` 这对翻译官，负责把 GGML 的量化类型（如 Q4_0）翻译成 DSP 理解的字节和块大小单位——DSP 不认识「Q4_0」，它只认识「每 32 个元素打包成 18 字节」。
 
-### 40.3.1 `htpdrv_init()`：驱动加载的入口
+### 39.3.1 `htpdrv_init()`：驱动加载的入口
 
 源码路径：`ggml/src/ggml-hexagon/htp-drv.cpp` - `htpdrv_init()`（287-327行）
 核心类/接口：`htpdrv_init`（驱动初始化入口）
@@ -426,7 +426,7 @@ int htpdrv_init() {
 
 这段代码定义并实现了 Hexagon 后端的驱动初始化入口 `htpdrv_init()`：它通过 `dl_load_library` 加载 `libcdsprpc`，再用 `dlsym` 宏把 `rpcmem_alloc`、`dspqueue_write`、`remote_handle_control` 等 16 个关键符号逐个绑定到进程内的函数指针，任何必需符号缺失都会立即返回 `AEE_EUNABLETOLOAD`，是 host 与 DSP 通信的第一道也是唯一一道门禁。
 
-### 40.3.2 `get_domain()` 与 `get_hex_arch_ver()`：域与架构的探测
+### 39.3.2 `get_domain()` 与 `get_hex_arch_ver()`：域与架构的探测
 
 源码路径：`ggml/src/ggml-hexagon/htp-drv.cpp` - `get_domain()`（329-343行）、`get_hex_arch_ver()`（345-380行）
 核心类/接口：`domain`（DSP 域描述符）、`remote_dsp_capability`
@@ -476,7 +476,7 @@ int get_hex_arch_ver(int domain, int * arch) {
 
 这段代码实现了 host 侧的域与架构探测：`get_domain()` 在静态域表中按 id 查找 `domain` 结构体，`get_hex_arch_ver()` 通过 `remote_handle_control` 向 DSP 发起 `DSPRPC_GET_DSP_INFO` 能力查询，并把返回的裸能力值映射为 68/69/73/75/79/81 这样的架构版本号——后续所有 HVX/HMX 代码路径的条件编译与运行时分发都以这个版本号为依据。
 
-### 40.3.3 `htp-msg.h`：HTP 协议的结构体基础
+### 39.3.3 `htp-msg.h`：HTP 协议的结构体基础
 
 源码路径：`ggml/src/ggml-hexagon/htp/htp-msg.h` - `htp_tensor` / `htp_general_req` / `htp_general_rsp`（1-124行）
 核心类/接口：`htp_tensor`、`htp_general_req`、`htp_general_rsp`
@@ -542,11 +542,11 @@ static inline size_t htp_type_nbytes(uint32_t t) {    // ③ GGML 类型 → 单
 
 这段代码定义了 HTP 协议的三大结构体：`htp_tensor` 是物料标签（类型、四维元素数、四维字节步长），`htp_general_req` 是任务卡（操作码、64 字节参数区、最多 5 个输入 + 1 个输出），`htp_general_rsp` 是回执（状态 + 微秒/周期/指令包三项性能计数）。配套的 `htp_t_block_size()` 与 `htp_type_nbytes()` 则是类型翻译官，把 GGML 的量化类型映射为 DSP 计算 VTCM 预算和 DMA 描述符时所需的块大小与字节数——没有这对函数，DSP 就不知道该为一行 Q4_0 预留多少 VTCM。
 
-## 40.4 Buffer 与量化重排 —— DSP 内存的「打包魔术」
+## 39.4 Buffer 与量化重排 —— DSP 内存的「打包魔术」
 
 共享内存是主机与 DSP 之间的「共享停车场」。但停车场的「车位画法」在两端并不一致：GGML 的标准 Q4_0 块是 18 字节（32 个 int4 + 1 个 fp16 缩放），而 DSP 的 HVX 单元一次想「吞」下去的是排布完全不同的 x4x2 超块。于是 `ggml_backend_hexagon_buffer_context` 负责把车停进来，`repack_*` 负责在车驶入 DSP 车道前重新画车位线。
 
-### 40.4.1 `ggml_backend_hexagon_buffer_context()`：共享缓冲区的构造
+### 39.4.1 `ggml_backend_hexagon_buffer_context()`：共享缓冲区的构造
 
 源码路径：`ggml/src/ggml-hexagon/ggml-hexagon.cpp` - `ggml_backend_hexagon_buffer_context()`（267-292行）
 核心类/接口：`ggml_backend_hexagon_buffer_context`
@@ -591,7 +591,7 @@ bool mmap_to(ggml_hexagon_session * s) {
 
 这段代码定义并实现了主机端的 Hexagon 缓冲区对象：构造时通过 `rpcmem_alloc2()` 在系统堆上分配物理内存，再用 `rpcmem_to_fd()` 拿到文件描述符，最后由 `mmap_to()` 调用 `fastrpc_mmap()` 把同一块内存映射到 DSP 的虚拟地址空间——三步完成后，host 写入 `base` 的数据 DSP 才能看见，反之亦然。
 
-### 40.4.2 `repack_q4_0_q4x4x2()`：量化格式的重排
+### 39.4.2 `repack_q4_0_q4x4x2()`：量化格式的重排
 
 源码路径：`ggml/src/ggml-hexagon/ggml-hexagon.cpp` - `repack_q4_0_q4x4x2()`（498-526行）、`repack_row_q4x4x2()`（394-432行）
 核心类/接口：`block_q4_0`、`QK_Q4_0x4x2`
@@ -643,11 +643,11 @@ static void repack_q4_0_q4x4x2(ggml_tensor * t, const void * data, size_t size) 
 
 这段代码定义并实现了主机端的量化格式重排：`repack_row_q4x4x2()` 把 8 个标准 `block_q4_0`（每块 32 个 int4 + 1 个 fp16 缩放）拆解成 256 个裸 int4，再按 x4x2 布局重新交织——量化值和 8 个 fp16 缩放分段存放，使 DSP 的 HVX 单元能用一次 `vrmpy` 吞下 1024 个量化点积。外层 `repack_q4_0_q4x4x2()` 则负责逐行驱动这一过程，并用 `buf_pd`/`buf_rp` 两个中间缓冲区吸收行尾不对齐的开销。
 
-## 40.5 后端注册、能力判定与会话生命周期 —— 推理引擎的「登记处与质检员」
+## 39.5 后端注册、能力判定与会话生命周期 —— 推理引擎的「登记处与质检员」
 
 `ggml_backend_hexagon_reg()` 是引擎启动的按钮：它先调用 `htpdrv_init()` 加载驱动，再创建 `ggml_hexagon_registry`——一个最多管理 4 个 DSP 会话的「车间主管」。但在调度任何计算任务之前，`ggml_backend_hexagon_device_supports_op()` 会通过一系列 `ggml_hexagon_supported_*` 函数对算子做严格的「背景调查」：类型、形状、连续性、缓冲区归属，任何一项不满足都会被拒之门外。
 
-### 40.5.1 `ggml_hexagon_session::allocate()`：会话的开工仪式
+### 39.5.1 `ggml_hexagon_session::allocate()`：会话的开工仪式
 
 源码路径：`ggml/src/ggml-hexagon/ggml-hexagon.cpp` - `ggml_hexagon_session::allocate()`（921-1054行）
 核心类/接口：`ggml_hexagon_session`、`htp_iface_open`、`dspqueue_create`
@@ -694,7 +694,7 @@ void ggml_hexagon_session::allocate(int dev_id) noexcept(false) {
 
 这段代码定义并实现了 `ggml_hexagon_session` 的会话分配流程：它依次完成域查询、新会话预留、URI 构造、未签名模块启用、`htp_iface_open` 打开句柄、QoS 延迟模式配置、`dspqueue_create` 创建 128KB/64KB 的请求响应队列、队列导出，最后用 `htp_iface_start` 通知 DSP 开始工作——任何一个环节失败都会抛出异常，由外层构造函数 `try/catch` 触发 `release()` 回滚。
 
-### 40.5.2 `ggml_hexagon_supported_mul_mat()`：算子的背景调查
+### 39.5.2 `ggml_hexagon_supported_mul_mat()`：算子的背景调查
 
 源码路径：`ggml/src/ggml-hexagon/ggml-hexagon.cpp` - `ggml_hexagon_supported_mul_mat()`（1852-1892行）
 核心类/接口：`ggml_hexagon_supported_mul_mat`
@@ -728,11 +728,11 @@ static bool ggml_hexagon_supported_mul_mat(const struct ggml_hexagon_session * s
 
 这段代码定义并实现了矩阵乘法算子的能力判定：它对量化权重（Q4_0/Q8_0/IQ4_NL/MXFP4）要求 K 维 32 对齐、行数不超过 16K、且必须落在 Hexagon 的 repack 缓冲区上；对 F16 权重则拒绝置换布局。任何一个条件不满足，`ggml_backend_hexagon_device_supports_op()` 都会把该算子退回 CPU 后端——这就是「质检员」的职责：宁可不跑，也不跑错。
 
-## 40.6 图调度与请求构造 —— 将蓝图变成「任务订单」
+## 39.6 图调度与请求构造 —— 将蓝图变成「任务订单」
 
 `ggml_backend_hexagon_graph_compute()` 是主机端的总工程师。它接收完整的 `ggml_cgraph`（计算蓝图），遍历图中每一个节点，把每个算子翻译成一个 HTP 任务订单（`htp_general_req`），最后通过 `flush()` 等待 DSP 全部回执。翻译过程由 `ggml_hexagon_dispatch_op()` 这个模板函数驱动，它根据算子类型调用对应的 `init_*_req()`「填单员」。
 
-### 40.6.1 `ggml_hexagon_dispatch_op()` 与 `init_binary_req()`：填单与派发
+### 39.6.1 `ggml_hexagon_dispatch_op()` 与 `init_binary_req()`：填单与派发
 
 源码路径：`ggml/src/ggml-hexagon/ggml-hexagon.cpp` - `ggml_hexagon_dispatch_op()`（2301-2321行）、`init_binary_req()`（2323-2347行）
 核心类/接口：`htp_general_req`、`dspqueue_buffer`
@@ -777,7 +777,7 @@ static inline size_t init_binary_req(htp_general_req * req, dspqueue_buffer * bu
 
 这段代码定义并实现了图调度的核心：`ggml_hexagon_dispatch_op()` 是一个模板函数，它根据全局掩码决定是否跳过量化或计算，再把填单工作委派给具体的 `init_*_req` 函数，最后调用 `sess->enqueue()` 把订单和 DMA 缓冲区一起推入 DSP 队列。`init_binary_req()` 则是其中的「填单员」：它把 GGML 的 `MUL_MAT/MUL/ADD/SUB/DIV` 映射为 HTP 操作码，并通过 `htp_req_buff_init()` 为 src0、src1、dst 三个张量分别创建 DSP 队列缓冲区——常量权重走 `DSPQBUF_TYPE_CONSTANT`，激活走 `CPU_WRITE_DSP_READ`，输出走 `DSP_WRITE_CPU_READ`。
 
-### 40.6.2 模块依赖图：从蓝图到订单
+### 39.6.2 模块依赖图：从蓝图到订单
 
 ```mermaid
 graph TD
@@ -794,11 +794,11 @@ graph TD
     K --> L["send_htp_rsp() → 主机 flush()"]
 ```
 
-## 40.7 HTP DSP 主循环 —— `main.c` 里的「车间收发室」
+## 39.7 HTP DSP 主循环 —— `main.c` 里的「车间收发室」
 
 DSP 侧的所有动作都从 `htp_packet_callback()` 开始。它以非阻塞方式不断轮询 `dspqueue`，一旦收到来自主机的「包裹」（`htp_general_req`），就根据包裹上的操作码（`req.op`）分拣——`HTP_OP_MUL_MAT` 交给 `proc_matmul_req()`，`HTP_OP_ROPE` 交给 `proc_rope_req()`。每个「老师傅」都会解包、获取 VTCM、调用真正的计算函数（如 `op_matmul()`），最后用 `send_htp_rsp()` 把回执写回主机。
 
-### 40.7.1 `htp_iface_open()` / `htp_iface_start()`：开工四部曲
+### 39.7.1 `htp_iface_open()` / `htp_iface_start()`：开工四部曲
 
 源码路径：`ggml/src/ggml-hexagon/htp/main.c` - `htp_iface_open()`（37-97行）、`htp_iface_start()`（244-302行）
 核心类/接口：`htp_context`、`HAP_power_request_t`
@@ -860,7 +860,7 @@ AEEResult htp_iface_start(remote_handle64 handle, uint32 sess_id, uint64 dsp_que
 
 这段代码定义并实现了 DSP 侧的开工流程：`htp_iface_open()` 通过 `HAP_power_set` 依次把应用类型设为计算类、DCVS v3 总线/核心 corner 拉满、HVX 与 HMX 上电——相当于「开总闸」；`htp_iface_start()` 则导入 host 传来的 `dspqueue`、分配 8MB VTCM、为每个 HVX 线程创建独立的 DMA 队列、初始化 `worker_pool`，让 DSP 进入「待接收包裹」状态。
 
-### 40.7.2 `htp_packet_callback()`：包裹分拣员
+### 39.7.2 `htp_packet_callback()`：包裹分拣员
 
 源码路径：`ggml/src/ggml-hexagon/htp/main.c` - `htp_packet_callback()`（1376-1628行）
 核心类/接口：`htp_general_req`、`dspqueue`
@@ -916,7 +916,7 @@ static void htp_packet_callback(dspqueue_t queue, int error, void * context) {
 
 这段代码定义并实现了 DSP 侧的请求分拣主循环：`htp_packet_callback()` 用 `dspqueue_read_noblock` 非阻塞地把队列里的包裹读出来，校验请求大小与缓冲区数量后，按 `req.op` 派发给 18 个 `proc_*_req` 处理函数；遇到 `HTP_OPFLAGS_EARLY_WAKEUP` 标志还会提前回写一个唤醒包，避免 host 端长时间阻塞在 `flush()`。
 
-### 40.7.3 `proc_matmul_req()`：矩阵乘老师傅
+### 39.7.3 `proc_matmul_req()`：矩阵乘老师傅
 
 源码路径：`ggml/src/ggml-hexagon/htp/main.c` - `proc_matmul_req()`（381-414行）
 核心类/接口：`htp_ops_context`、`op_matmul`
@@ -951,11 +951,11 @@ static void proc_matmul_req(struct htp_context * ctx, struct htp_general_req * r
 
 这段代码定义并实现了矩阵乘法请求的处理：`proc_matmul_req()` 把收到的 `htp_general_req` 转换成内部 `htp_ops_context`，从 DMA 缓冲区里取出三个数据指针，抢占 VTCM 后调用 `op_matmul()` 执行真正的量化矩阵乘，最后通过 `send_htp_rsp()` 把状态和性能计数写回主机——整个过程被 `profile_start/stop` 包裹，每一跳的耗时都被记录下来。
 
-## 40.8 HVX 向量工具库 —— DSP 算子的「瑞士"质监"刀」
+## 39.8 HVX 向量工具库 —— DSP 算子的「瑞士"质监"刀」
 
 HVX 工具库是所有 DSP 算子的「弹药库」。它的核心设计哲学是对齐分发：同一个 `hvx_add_f32()`，内部根据 dst/src0/src1 三者的 128 字节对齐状态，自动从 `aaa/auu/uaa/uuu` 等 8 个版本中挑出最快的一个——就像一个工具箱能根据螺丝的朝向自动更换最合适的刀头。`hvx-base.h` 提供向量读写与 splat，`hvx-arith.h` 用宏生成加减乘除的 8 变体，`hvx-exp.h` 用泰勒级数展开实现 `exp`，`hvx-copy.h` 处理 fp16↔fp32 的类型转换。
 
-### 40.8.1 `hvx_add_f32()`：对齐自适应的加法分发
+### 39.8.1 `hvx_add_f32()`：对齐自适应的加法分发
 
 源码路径：`ggml/src/ggml-hexagon/htp/hvx-arith.h` - `hvx_add_f32()`（113-127行）
 核心类/接口：`HVX_Vector`、`HVX_UVector`
@@ -994,7 +994,7 @@ static inline void hvx_add_f32(uint8_t * restrict dst, const uint8_t * restrict 
 
 这段代码定义并实现了 HVX 加法的对齐自适应分发：`hvx_add_f32()` 在运行时探测 dst/src0/src1 三者的 128 字节对齐状态，从 8 个由宏生成的底层变体中选出与当前内存布局匹配度最高的一个——`aaa` 走全对齐的 `HVX_Vector` 快速路径，`uuu` 走 `HVX_UVector` 的非对齐路径，从而让同一套业务代码不必为每个算子手写对齐判断。
 
-### 40.8.2 `hvx_vec_exp_f32()`：向量化的指数计算
+### 39.8.2 `hvx_vec_exp_f32()`：向量化的指数计算
 
 源码路径：`ggml/src/ggml-hexagon/htp/hvx-exp.h` - `hvx_vec_exp_f32()`（18-111行）
 核心类/接口：`HVX_Vector`、`Q6_Vqf32_*`
@@ -1036,11 +1036,11 @@ static inline HVX_Vector hvx_vec_exp_f32(HVX_Vector in_vec) {
 
 这段代码定义并实现了 HVX 上的向量化指数计算：它把 `exp(x)` 拆成 `exp(epsilon) * 2^f`，用 `floor(x*log2(e))` 求出 2 的幂次，把残差 `epsilon` 用 7 阶泰勒级数在 QF32 准浮点格式下展开，最后直接改写结果的指数位完成 `ldexp`——全程在向量寄存器里完成，没有一次内存往返。
 
-## 40.9 矩阵乘核心（HVX/HMX） —— 数字世界的「炼钢炉」
+## 39.9 矩阵乘核心（HVX/HMX） —— 数字世界的「炼钢炉」
 
 `matmul-ops.c` 和 `hmx-matmul-ops.c` 是 DSP 上计算矩阵乘法的两座「炼钢炉」。前者用 HVX 向量单元，后者用更专用的 HMX 硬件。量化路径是关键：当输入是 FP32 时，`op_matmul()` 会先调用 `quantize_f32_q8x4x2()` 把激活动态量化为 int8，以利用 HVX 的 `vrmpy` 指令做高速定点运算。数据排布决定了效率——无论是把 FP16 权重交织成 HMX 所需的 tile 格式，还是把量化块加载成 `HVX_Vector_x8`，目的都是让硬件「一口」吃下尽可能多的数据。
 
-### 40.9.1 `op_matmul()`：矩阵乘的总入口
+### 39.9.1 `op_matmul()`：矩阵乘的总入口
 
 源码路径：`ggml/src/ggml-hexagon/htp/matmul-ops.c` - `op_matmul()`（2930-3041行）
 核心类/接口：`htp_matmul_context`、`htp_ops_context`
@@ -1089,7 +1089,7 @@ int op_matmul(struct htp_ops_context * octx) {
 
 这段代码定义并实现了 DSP 侧矩阵乘法的总入口：它先为 src0/src1 分配 VTCM 暂存区并做预算检查，再根据权重类型通过 `htp_mminit_vec_dot()` 选择 `vec_dot_q4x4x2_q8x4x2_*` / `vec_dot_f16_f16_aa_*` 等点积函数族，然后把激活行动态量化为 `q8x4x2`（利用 `quantize_f32_q8x4x2()`），最后交由 `matmul_2d`/`matvec_2d` 在工作线程池上执行真正的向量点积——量化结果被缓存到 `prev_src1_spad`，让相邻算子可以复用，避免重复量化。
 
-### 40.9.2 `vec_dot_q4x4x2_q8x4x2_2x2()`：量化点积核心
+### 39.9.2 `vec_dot_q4x4x2_q8x4x2_2x2()`：量化点积核心
 
 源码路径：`ggml/src/ggml-hexagon/htp/matmul-ops.c` - `vec_dot_q4x4x2_q8x4x2_2x2()`（512-607行）
 核心类/接口：`HVX_Vector_x8`、`Q6_Vw_vrmpy_VbVb`
@@ -1133,7 +1133,7 @@ static void vec_dot_q4x4x2_q8x4x2_2x2(const int n, float * restrict s0, float * 
 
 这段代码定义并实现了 2×2 平铺的量化点积核心：它用 `hvx_vec_load_q8x4x8_full` 加载 1024 个 int8 激活、`hvx_vec_load_q4x4x8_full` 加载 1024 个 int4 权重（通过 `vlut16` 查表去偏），再用一条 `Q6_Vw_vrmpy_VbVb` 在单个 HVX 向量里完成 1024 次定点乘加并归约成 32 个 int32——这就是 DSP 上「一口吞下 1024 个乘法」的魔法所在。
 
-### 40.9.3 `hmx_mat_mul_permuted_w16a32_batched()`：HMX 批处理矩阵乘
+### 39.9.3 `hmx_mat_mul_permuted_w16a32_batched()`：HMX 批处理矩阵乘
 
 源码路径：`ggml/src/ggml-hexagon/htp/hmx-matmul-ops.c` - `hmx_mat_mul_permuted_w16a32_batched()`（811-1034行）
 核心类/接口：`hmx_matmul_w16a32_batched_params_t`、`HAP_compute_res_hmx_lock`
@@ -1182,11 +1182,11 @@ int hmx_mat_mul_permuted_w16a32_batched(struct htp_context *ctx, const hmx_matmu
 
 这段代码定义并实现了 HMX 上的 GQA 分组批处理矩阵乘：它先用 `hmx_compute_chunks` 在 VTCM 预算内解析出最优的 (mc, nc) 分块，再为激活、权重、输出各分配 VTCM 区域并锁定 HMX 硬件；外层按 batch、内层按 GQA 分组滚动，每组内用 DMA 双缓冲预取权重、`interleave_fp16_weight_chunk_to_tiles` 把行主序权重交织成 HMX 所需的 [K][N] tile 布局，最后 `core_dot_chunk_fp16` 让多个 q_head 复用同一份 interleaved 权重——这就是「一份权重，多次矩阵乘」的 GQA 加速秘密。
 
-## 40.10 激活、Softmax 与归一化 —— 输出前的「风味调试间」
+## 39.10 激活、Softmax 与归一化 —— 输出前的「风味调试间」
 
 这部分代码如同菜肴出锅前的「调味间」。`act-ops.c` 负责激活函数，通过统一入口 `execute_op_activations_f32()` 把 SiLU/GELU/SwiGLU/GEGLU 的计算分发给多个 DSP 线程并行；`softmax-ops.c` 实现了高效的 Softmax，`hvx_fast_softmax_f32()` 在 HVX 向量寄存器中完成减最大值、求指数、求和、归一化全部步骤；`unary-ops.c` 处理 RMS Norm、Scale、Sqr 等基础一元运算。
 
-### 40.10.1 `execute_op_activations_f32()`：激活函数的统一入口
+### 39.10.1 `execute_op_activations_f32()`：激活函数的统一入口
 
 源码路径：`ggml/src/ggml-hexagon/htp/act-ops.c` - `execute_op_activations_f32()`（536-652行）
 核心类/接口：`htp_act_context`、`htp_ops_context`
@@ -1232,7 +1232,7 @@ static int execute_op_activations_f32(struct htp_ops_context * octx) {
 
 这段代码定义并实现了激活函数的统一入口：它先校验输入输出必须连续，再按操作码把 `SILU/SwiGLU/GELU/GEGLU` 映射到对应的 `*_per_thread` 函数指针，然后根据 VTCM 预算算出每线程能缓存多少行（双缓冲），把 src0/src1/dst 三块暂存区在 VTCM 里排好，最后交由 `worker_pool` 并行执行——每个线程内部用 DMA 双缓冲把数据从 DDR 搬到 VTCM，算完再搬回去。
 
-### 40.10.2 `hvx_fast_softmax_f32()`：向量化的 Softmax
+### 39.10.2 `hvx_fast_softmax_f32()`：向量化的 Softmax
 
 源码路径：`ggml/src/ggml-hexagon/htp/softmax-ops.c` - `hvx_fast_softmax_f32()`（160-199行）
 核心类/接口：`HVX_Vector`、`htp_softmax_context`
@@ -1267,11 +1267,11 @@ static void hvx_fast_softmax_f32(const uint8_t * restrict src, uint8_t * restric
 
 这段代码定义并实现了 HVX 上的快速 Softmax：它把传统 Softmax 的「求 max → 减 max → exp → 求和 → 除 sum」五步全部塞进向量寄存器，用 `Q6_Vsf_vmax_VsfVsf` 并行求 max、`hvx_vec_exp_f32` 并行算 exp、`hvx_vec_reduce_max_f32`/`hvx_vec_reduce_sum_f32` 跨通道归约——三趟遍历、零次内存往返，是 DSP 上数值稳定性与吞吐量的最佳平衡点。
 
-## 40.11 位置编码、复制与索引 —— 序列数据的「交通指挥」
+## 39.11 位置编码、复制与索引 —— 序列数据的「交通指挥」
 
 这部分代码是模型中的「交通系统」，负责数据的定向移动、格式转换和位置标记。`rope-ops.c` 实现旋转位置编码：先用 `rope_cache_init()` 预计算 cos/sin（支持 YaRN 外推），再在 `rope_job_f32()` 里用 DMA 把数据搬进 VTCM、用 `hvx_rope_f32_aa()`/`hvx_rope_neox_f32_aa()` 完成旋转。`cpy-ops.c`、`get-rows-ops.c`、`set-rows-ops.c`、`binary-ops.c` 则保证数据能柔性流动——F32/F16 类型转换、张量广播、按索引读写行。
 
-### 40.11.1 `op_rope()` 与 `rope_job_f32()`：旋转位置编码
+### 39.11.1 `op_rope()` 与 `rope_job_f32()`：旋转位置编码
 
 源码路径：`ggml/src/ggml-hexagon/htp/rope-ops.c` - `op_rope()`（368-380行）、`rope_job_f32()`（216-302行）
 核心类/接口：`htp_rope_context`、`htp_ops_context`
@@ -1330,7 +1330,7 @@ done: dma_queue_flush(dma_queue);
 
 这段代码定义并实现了 DSP 侧的旋转位置编码：`op_rope()` 是入口，`execute_op_rope_f32()` 分配 VTCM 暂存并组装 `htp_rope_context`（含 YaRN 的 ext_factor/attn_factor/beta_fast/beta_slow），`rope_job_f32()` 则按 batch→seq→head 三层循环，用 DMA 双缓冲把每一行搬进 VTCM，仅在位置 `i2` 变化时调用 `rope_cache_init()` 重算 cos/sin，再用 `hvx_rope_f32_aa()`（标准）或 `hvx_rope_neox_f32_aa()`（Neox）完成旋转——预取与计算流水线交织，把位置编码的开销压到了最低。
 
-### 40.11.2 `op_binary()`：二元运算的形状分发
+### 39.11.2 `op_binary()`：二元运算的形状分发
 
 源码路径：`ggml/src/ggml-hexagon/htp/binary-ops.c` - `op_binary()`（847-858行）
 核心类/接口：`htp_binary_context`、`htp_ops_context`
@@ -1374,11 +1374,11 @@ static int execute_op_binary(struct htp_ops_context * octx) {
 
 这段代码定义并实现了 DSP 侧的二元运算入口：`op_binary()` 先拒绝置换的 src1、只放行 F32/F16，再由 `execute_op_binary()` 根据 src1 的形状自动选择 6 种作业函数之一——标量广播走 `binary_job_scalar`、行广播走 `binary_job_vector_row_broadcast`、同形走 `binary_job_vector_same_shape`、元素重复走 `binary_job_element_repeat`——每种作业内部都用 DMA 双缓冲 + HVX 向量指令实现，确保任意形状组合都能高效执行。
 
-## 40.12 DMA、Worker Pool 与小工具 —— DSP 后端的「后勤三剑客」
+## 39.12 DMA、Worker Pool 与小工具 —— DSP 后端的「后勤三剑客」
 
 具体算子再花哨，没有可靠的后勤也跑不起来。`worker-pool.c` 是 DSP 多线程计算的「人力资源部」，用 `qurt_futex` 做同步、用 `atomic` 做任务分发，让 `matmul` 这样的重体力活能被拆给多个 worker 线程并行完成。`hex-dma.c/h` 是 DSP 内部的「高速传送带」，提供 `dma_queue_push/pop` 等 API 管理 DDR↔VTCM 搬运，支持 1D/2D 传输和乒乓缓冲以掩盖延迟。`hex-fastdiv.h` 用乘法和位移代替昂贵的除法，`hex-dump.h` 和 `hmx-profile.h` 则是调试和性能分析的「显微镜」。
 
-### 40.12.1 `worker_pool_run_func()`：任务分发
+### 39.12.1 `worker_pool_run_func()`：任务分发
 
 源码路径：`ggml/src/ggml-hexagon/htp/worker-pool.c` - `worker_pool_run_func()`（168-176行）、`worker_pool_run_jobs()`（145-165行）
 核心类/接口：`worker_pool_t`、`worker_context_t`
@@ -1429,7 +1429,7 @@ static void worker_pool_main(void * context) {                  // ⑧ worker �
 
 这段代码定义并实现了 DSP 侧的工作线程池：`worker_pool_run_func()` 把同一个函数和数据复制成 N 个任务描述符，`worker_pool_run_jobs()` 推进序列号并唤醒 worker，主线程同步执行 job[0]、其余 worker 用 `atomic_fetch_add` 抢任务——整个分发过程基于 `qurt_futex` 阻塞等待，零轮询、零忙等，是 DSP 上最经济的多线程模型。
 
-### 40.12.2 `dma_queue_push()`：DMA 传输的统一入口
+### 39.12.2 `dma_queue_push()`：DMA 传输的统一入口
 
 源码路径：`ggml/src/ggml-hexagon/htp/hex-dma.h` - `dma_queue_push()`（288-316行）
 核心类/接口：`dma_queue`、`dma_descriptor_2d`、`dma_ptr`
@@ -1468,7 +1468,7 @@ static inline bool dma_queue_push_vtcm_to_ddr(dma_queue * q, dma_ptr dptr, size_
 
 这段代码定义并实现了 DMA 传输的统一入口：`dma_queue_push()` 先尝试 2D 快速路径（所有字段都在 16 位范围内），若步长溢出则逐行降级为多个 1D 传输并用 `dma_queue_pop` 串联；`dma_queue_push_ddr_to_vtcm`/`dma_queue_push_vtcm_to_ddr` 是两个最常用的包装，分别把源/目标步长设为行尺寸以实现连续搬运——上层算子只需调用这两个包装就能完成 DDR↔VTCM 的数据搬运，无需关心底层描述符的位域细节。
 
-### 40.12.3 `init_fastdiv_values()`：用乘法代替除法
+### 39.12.3 `init_fastdiv_values()`：用乘法代替除法
 
 源码路径：`ggml/src/ggml-hexagon/htp/hex-fastdiv.h` - `init_fastdiv_values()`（15-23行）、`fastdiv()`（25-30行）
 核心类/接口：`fastdiv_values`
@@ -1494,7 +1494,7 @@ static inline uint32_t fastmodulo(uint32_t n, uint32_t d, const struct fastdiv_v
 
 这段代码定义并实现了 DSP 上的快速整数除法：`init_fastdiv_values()` 预计算乘法器 `mp` 和移位量 `l`，`fastdiv()` 用一次 64 位乘法加移位替代昂贵的整数除法指令，`fastmodulo()` 再用 `n - fastdiv(n)*d` 拿到余数——在 `binary-ops.c` 的维度循环里，这一对函数被大量调用来把线性行索引拆成 (i03, i02, i01) 三维坐标，是 DSP 侧「以乘代除」的经典范式。
 
-## 40.13 设计中的取舍
+## 39.13 设计中的取舍
 
 **为什么不用标准 CPU/GGML 后端统一处理，而要单独开发 Hexagon 后端？**
 
@@ -1512,7 +1512,7 @@ CPU 后端跑在通用核心上，功耗高、单瓦性能低；DSP 跑在专用
 
 `buf_pd` 用来吸收行尾不对齐（把最后一行填充到 `QK_Q4_0x4x2` 的整数倍），`buf_rp` 用来放重排后的临时结果。两个缓冲区都是行尺寸的两倍，峰值额外内存约几百 KB，完全在 VTCM 预算内。如果不使用中间缓冲区，就得原地重排——但 x4x2 布局的字节密度和标准布局不同（一行 256 个 int4 在标准布局里是 144 字节，在 x4x2 里也是 144 字节，但内部排列完全不同），原地重排会互相覆盖。所以这里的中间缓冲区不是「为了简单」，而是「必须」。
 
-## 40.14 动手练习
+## 39.14 动手练习
 
 - 阅读 `ggml/src/ggml-hexagon/htp-drv.cpp` 的 `htpdrv_init()` 函数（287-327行）和 `ggml/src/ggml-hexagon/htp/htp-msg.h` 中的 `htp_general_req` 结构体定义（107-120行）。
   回答以下问题：
@@ -1532,7 +1532,7 @@ CPU 后端跑在通用核心上，功耗高、单瓦性能低；DSP 跑在专用
   - 在 DSP 侧（`htp/main.c` 和 `htp/unary-ops.c`），分别需要修改 `htp_packet_callback` 的哪个 `case`，以及实现哪个 `*_per_thread` 函数？
   - 请简要描述 `op_unary` 函数内部如何使用 VTCM 和 DMA 完成计算。
 
-## 40.15 本章小结
+## 39.15 本章小结
 
 这一章中我们深入了 Qualcomm Hexagon DSP 后端的完整世界。首先，`htpdrv_init()` 通过 `dlsym` 绑定 `rpcmem_*`、`fastrpc_*`、`dspqueue_*` 等 16 个符号，构建了 host 与 DSP 通信的入口；其次，`htp_tensor`/`htp_general_req`/`htp_general_rsp` 三大结构体与 `htp_t_block_size()`/`htp_type_nbytes()` 构成了 HTP 消息协议的基础；接着，`ggml_hexagon_session` 的 `allocate()` 完成了从域查询、会话预留、VTCM 分配到 DSP 队列导入的完整生命周期；然后，`ggml_backend_hexagon_buffer_context` 通过 `rpcmem_alloc2` + `fastrpc_mmap` 实现共享内存，`repack_q4_0_q4x4x2` 等函数把标准量化格式转换为 DSP 优化的 x4x2 布局；图调度端，`ggml_backend_hexagon_graph_compute()` 遍历计算图，通过 `init_*_req` 模板族把 `ggml_tensor` 翻译为 `htp_general_req` 并入队；DSP 侧，`htp_packet_callback()` 按操作码分发给 18 个 `proc_*_req` 处理函数；计算核心由 `matmul-ops.c`（HVX 量化点积）与 `hmx-matmul-ops.c`（HMX tile 化矩阵乘）双线支撑；`act-ops.c`/`softmax-ops.c`/`unary-ops.c`/`rope-ops.c`/`binary-ops.c`/`cpy-ops.c` 覆盖了激活、归一化、位置编码、数据搬运等全部算子；最后，`worker-pool.c` 与 `hex-dma.c/h` 提供了多线程分发与 DDR↔VTCM 搬运的后勤保障。
 

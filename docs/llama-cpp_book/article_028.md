@@ -1,5 +1,5 @@
 
-# Gemma 家族与多通道创新 —— Google 的"实验场"
+# 第28章 Gemma 家族与多通道创新 —— Google 的"实验场"
 
 ## 学习目标
 
@@ -14,11 +14,11 @@
 - 掌握 laurel 低秩残差块与 gaussian_topk 稀疏门控的实现
 - 能阅读并修改自定义模型构建器，理解 llm_graph_context 的构图 API
 
-## 29.1 生活类比
+## 28.1 生活类比
 
 想象 Gemma 家族是一组 Google 出品的智能翻译工厂，每一代都在解决不同的工业难题：Gemma 初代是标准流水线工厂，RMSNorm → RoPE → Attention → FFN，每一步都是教科书级别的标准作业；Gemma Embedding 是双轨装卸码头，既能处理文本 token（标准集装箱），也能直接接收视觉嵌入（整箱到货），通过 ubatch.token 判断走哪种卸货通道；Gemma2-ISWA 是双层仓库，一部分层只看最近的小窗口（短期仓库），另一部分层看完整历史（长期仓库），大幅节省存储；Gemma3 模板类是工厂设计院，通过 iswa 模板参数，一个设计图纸同时画两套工厂（带/不带滑动窗），编译时再决定具体建哪种；Gemma3n-ISWA 是并行假设实验中心，同时维护 n_altup 个"平行宇宙"，每层只更新其中一条（active），最后用路由器投票决定哪个宇宙最靠谱。其中，laurel 是实验中心的草稿本，在正式实验前先用低秩近似快速演算一遍（L(R(x))），再把草稿笔记加入结果；gaussian_topk 是实验素材的"优选筛"，把低于均值的素材统统扔掉（ReLU 截断），只保留高于均值 f_sparsity_std_mul 倍标准差的优质原料；calc_magnitude 是实验数据的能量表，计算每个平行宇宙的"信号强度" sqrt(sum(x²))，用来归一化宇宙间的相对影响。Gemma4-ISWA 则是极致共享仓库：共享 KV Cache 让多层共用同一批历史货物（不再每层都备货），V 投影省略把 K 当 V 用（偷懒但还能用），每层嵌入注入让每层都额外塞一份"定制小纸条"（per-layer embedding），MoE 自定义路由让多个专家分担不同货物处理，主路由+辅助专家分工合作。f_final_logit_softcapping 是末端正负能量限制器，通过 tanh 把 logits 限制在 ±c 范围内，防止极端值爆炸。就像 Google 不断在工程化上做减法：让同样的工厂能处理更多品种、占用更少仓库、产出更快更稳。
 
-## 29.2 源码地图
+## 28.2 源码地图
 
 ```
 src/models/gemma.cpp
@@ -120,11 +120,11 @@ src/models/gemma4-iswa.cpp
 └── llm_build_gemma4_iswa::project_per_layer_inputs()                  # 投影+缩放+permute
 ```
 
-## 29.3 Gemma 初代基础构建 —— 经典解码器的"通用骨架"
+## 28.3 Gemma 初代基础构建 —— 经典解码器的"通用骨架"
 
 Gemma 初代的实现之所以能成为后续家族的参考模板，是因为它建立了最标准的 Transformer 解码器流水线：标准的 RMSNorm + RoPE + Self-Attention + FFN 流水线，唯一的特色是用 sqrt(n_embd) 对 embedding 做缩放（与 LLaMA 一致），注意力缩放通过 1.0f / sqrtf(float(n_embd_head)) 显式计算，没有 attn_q_norm/attn_k_norm 这种前置归一化，也没有 attn_post_norm 和 ffn_post_norm 的"夹心"结构。它是理解后续 gemma2 / gemma3 / gemma3n / gemma4 进化的起点。
 
-### 29.3.1 llm_build_gemma::llm_build_gemma()：Gemma 初代主构建流程
+### 28.3.1 llm_build_gemma::llm_build_gemma()：Gemma 初代主构建流程
 
 源码路径：`src/models/gemma.cpp` - `llm_build_gemma`（第1-80行）
 
@@ -191,11 +191,11 @@ llm_build_gemma::llm_build_gemma(const llama_model & model, const llm_graph_para
 
 这段代码定义了 Gemma 初代经典解码器的完整构建流程：从 Token Embedding 开始，经过 sqrt(n_embd) 缩放，进入标准的 Pre-Norm Transformer 块循环，每层包含 RMSNorm → QKV 投影 → RoPE → 显式注意力缩放 → 自注意力 → 残差 → RMSNorm → GELU FFN → 残差，最后经过输出归一化和 LM Head 产出 logits。
 
-## 29.4 Gemma Embedding 双模态嵌入 —— 文本与图像的"双轨入口"
+## 28.4 Gemma Embedding 双模态嵌入 —— 文本与图像的"双轨入口"
 
 Embedding 模型需要支持原始嵌入输入，因为多模态场景下，视觉编码器输出已经是向量，直接传入跳过 tokenize。通过 `ubatch.token` 三元判断决定是否乘以 sqrt(n_embd)；引入 attn_q_norm 与 attn_k_norm 在 RoPE 之前做归一化；引入 attn_post_norm 和 ffn_post_norm 形成"pre-norm + post-norm"夹心结构；使用 `build_attn_inp_no_cache()` 因为 Embedding 是非自回归的；用 `hparams.f_attention_scale` 替代硬编码的 sqrt 倒数缩放；`res->t_logits` 未设置，因为只输出 embedding 不输出 logits。
 
-### 29.4.1 llm_build_gemma_embedding::llm_build_gemma_embedding()：嵌入模型主构建流程
+### 28.4.1 llm_build_gemma_embedding::llm_build_gemma_embedding()：嵌入模型主构建流程
 
 源码路径：`src/models/gemma-embedding.cpp` - `llm_build_gemma_embedding`（第3-110行）
 
@@ -274,11 +274,11 @@ llm_build_gemma_embedding::llm_build_gemma_embedding(const llama_model & model, 
 
 这段代码实现了 Gemma Embedding 模型的完整构建流程：核心差异在于第⑤行的三元判断实现文本/视觉双轨入口，第⑦行使用无缓存注意力输入，第⑲⑳㉑㉒行引入 Q/K 前置归一化，第㉖㉚行形成双重 Post-Norm 夹心结构，第㉟行只输出 embedding 不产生 logits。
 
-## 29.5 Gemma2-ISWA 滑动窗口 —— 长上下文的"记忆瘦身术"
+## 28.5 Gemma2-ISWA 滑动窗口 —— 长上下文的"记忆瘦身术"
 
 ISWA（Intermittent Sliding Window Attention）的引入是为了减少 KV Cache 内存占用，只对部分层启用全局注意力。通过 `build_attn_inp_kv_iswa()` 构建双层缓存输入；引入 RoPE 频率按层缩放（`get_rope_freq_base/scale`）；加入 `attn_post_norm` 与 `ffn_post_norm` 形成对称残差；加入 `f_final_logit_softcapping` 通过 tanh 平滑 logits，`ggml_scale → ggml_tanh → ggml_scale` 三步实现软帽。
 
-### 29.5.1 llm_build_gemma2_iswa::llm_build_gemma2_iswa()：ISWA 版主构建流程
+### 28.5.1 llm_build_gemma2_iswa::llm_build_gemma2_iswa()：ISWA 版主构建流程
 
 源码路径：`src/models/gemma2-iswa.cpp` - `llm_build_gemma2_iswa`（第26-188行）
 
@@ -353,11 +353,11 @@ llm_build_gemma2_iswa::llm_build_gemma2_iswa(const llama_model & model, const ll
 
 这段代码实现了 Gemma2-ISWA 的完整构建流程：第⑦行引入 ISWA 双层 KV Cache 输入，第⑩⑪行实现按层 RoPE 频率，第㉔㉘行形成对称的 Post-Norm 夹心结构，第㉟㊱㊲行三步实现 Logit Softcapping（scale → tanh → scale）。
 
-## 29.6 Gemma3 模板类 —— 一个类，两种内存策略
+## 28.6 Gemma3 模板类 —— 一个类，两种内存策略
 
 Gemma3 使用模板参数控制 ISWA，通过 `template<bool iswa>` 在编译期分叉内存输入类型，使用 `std::conditional_t` 优雅切换 `attn_kv` 与 `attn_kv_iswa`；ISWA 模式下启用按层 RoPE 频率缩放，非 ISWA 用全局配置；保留 attn_q_norm / attn_k_norm / attn_post_norm / ffn_post_norm；`f_final_logit_softcapping` 可选启用（`if (hparams.f_final_logit_softcapping)`）；文件末尾显式实例化 `template struct llm_build_gemma3<false/true>`，这是代码复用的经典 C++ 技巧。
 
-### 29.6.1 llm_build_gemma3::llm_build_gemma3<iswa>()：模板化构建流程
+### 28.6.1 llm_build_gemma3::llm_build_gemma3<iswa>()：模板化构建流程
 
 源码路径：`src/models/gemma3.cpp` - `llm_build_gemma3`（第11-103行）
 
@@ -459,11 +459,11 @@ template struct llm_build_gemma3<true>;
 
 这行代码强制编译器生成两个具体的类实例，分别对应标准注意力和 ISWA 注意力版本，避免了在使用时的隐式实例化开销。
 
-## 29.7 Gemma3n 多通道 AltUp —— "并行假设空间"的图构建
+## 28.7 Gemma3n 多通道 AltUp —— "并行假设空间"的图构建
 
 AltUp（Alternating Updates）的核心思想是同时维护 n_altup 个并行表示通道，每层只更新其中一条（active），通过 `altup_predict` 用 router 计算所有通道的预测值，通过 `altup_correct` 用 router 计算修正后的多通道。入参嵌入（inp_per_layer）单独投影到 n_embd_altup 维度，多通道拼接：`ggml_concat(inpL, altup_added, 2)`，输出时通过 `altup_unembd_proj` 投影回单一通道。共享 KV 层（`hparams.has_kv(il)` 为 false）复用之前的 KV Cache，V 投影在 shared KV 层被省略（`if (hparams.has_kv(il))` 分支）。Gaussian TopK 激活稀疏化（`f_sparsity_std_mul` 控制阈值），Laurel 残差块：`tmp = L(R(x)) + x` 的低秩增量，calc_magnitude 计算 sqrt(sum(x²)) 用于幅值归一化，view_2d_slice 从 3D 张量切出 active 通道的 2D 视图。
 
-### 29.7.1 llm_build_gemma3n_iswa::llm_build_gemma3n_iswa()：AltUp 主构建流程
+### 28.7.1 llm_build_gemma3n_iswa::llm_build_gemma3n_iswa()：AltUp 主构建流程
 
 源码路径：`src/models/gemma3n-iswa.cpp` - `llm_build_gemma3n_iswa`（第8-142行）
 
@@ -533,7 +533,7 @@ llm_build_gemma3n_iswa::llm_build_gemma3n_iswa(const llama_model & model, const 
 
 这段代码实现了 Gemma3n 的核心 AltUp 机制：第⑥⑫块完成多通道初始堆叠（主干 + 投影生成的 n_altup-1 个通道），第⑭⑮行在每层执行 predict-correct 两阶段更新，第⑰⑲块通过平均融合将多通道压缩回单通道。
 
-### 29.7.2 llm_build_gemma3n_iswa::calc_magnitude()：向量幅值计算
+### 28.7.2 llm_build_gemma3n_iswa::calc_magnitude()：向量幅值计算
 
 源码路径：`src/models/gemma3n-iswa.cpp` - `calc_magnitude`（第144-146行）
 
@@ -545,7 +545,7 @@ ggml_tensor * llm_build_gemma3n_iswa::calc_magnitude(ggml_tensor * x) {
 
 这段代码实现了向量幅值计算：先逐元素平方（`ggml_sqr`），再按行求和（`ggml_sum_rows`），最后开方（`ggml_sqrt`），得到每个 token 向量的 L2 范数，用于多通道幅值对齐归一化。
 
-### 29.7.3 llm_build_gemma3n_iswa::view_2d_slice()：3D 张量切片
+### 28.7.3 llm_build_gemma3n_iswa::view_2d_slice()：3D 张量切片
 
 源码路径：`src/models/gemma3n-iswa.cpp` - `view_2d_slice`（第149-153行）
 
@@ -559,7 +559,7 @@ ggml_tensor * llm_build_gemma3n_iswa::view_2d_slice(ggml_tensor * x, int idx) {
 
 这段代码从 3D 张量 `[n_embd, n_tokens, n_altup]` 的第3维切出索引为 `idx` 的 2D 视图 `[n_embd, n_tokens]`，实现零拷贝访问特定通道，是 AltUp 机制中频繁使用的核心辅助函数。
 
-### 29.7.4 llm_build_gemma3n_iswa::get_per_layer_inputs()：获取每层额外输入
+### 28.7.4 llm_build_gemma3n_iswa::get_per_layer_inputs()：获取每层额外输入
 
 源码路径：`src/models/gemma3n-iswa.cpp` - `get_per_layer_inputs`（第156-173行）
 
@@ -589,7 +589,7 @@ ggml_tensor * llm_build_gemma3n_iswa::get_per_layer_inputs() {
 
 这段代码实现了每层额外输入的双路径获取：文本模式下通过 token ID 查表并重塑为 `[n_embd_altup, n_layer, n_tokens]`，视觉模式下直接取嵌入矩阵第0行（padding token）广播到所有层。
 
-### 29.7.5 llm_build_gemma3n_iswa::project_per_layer_inputs()：投影每层输入
+### 28.7.5 llm_build_gemma3n_iswa::project_per_layer_inputs()：投影每层输入
 
 源码路径：`src/models/gemma3n-iswa.cpp` - `project_per_layer_inputs`（第176-190行）
 
@@ -615,7 +615,7 @@ ggml_tensor * llm_build_gemma3n_iswa::project_per_layer_inputs(ggml_tensor * inp
 
 这段代码将主干 embedding 投影到每层输入空间，与原始每层输入相加后进行维度置换，使层维度成为最后一维，便于后续逐层 `view_2d_slice` 切片。
 
-### 29.7.6 llm_build_gemma3n_iswa::laurel()：Laurel 低秩残差块
+### 28.7.6 llm_build_gemma3n_iswa::laurel()：Laurel 低秩残差块
 
 源码路径：`src/models/gemma3n-iswa.cpp` - `laurel`（第193-201行）
 
@@ -633,7 +633,7 @@ ggml_tensor * llm_build_gemma3n_iswa::laurel(ggml_tensor * cur, int il) {
 
 这段代码实现了 Laurel 低秩残差块：两个小矩阵乘法实现低秩近似 `L(R(x))`，后接 RMSNorm 和残差相加，相当于在主干上叠加一个轻量级的"修正草稿"。
 
-### 29.7.7 llm_build_gemma3n_iswa::gaussian_topk()：高斯 TopK 稀疏门控
+### 28.7.7 llm_build_gemma3n_iswa::gaussian_topk()：高斯 TopK 稀疏门控
 
 源码路径：`src/models/gemma3n-iswa.cpp` - `gaussian_topk`（第204-210行）
 
@@ -648,7 +648,7 @@ ggml_tensor * llm_build_gemma3n_iswa::gaussian_topk(ggml_tensor * x) {
 
 这段代码实现了基于统计量的稀疏门控：计算均值和标准差，设定阈值为 `mean + f_sparsity_std_mul * std`，只保留高于阈值的激活值（ReLU 截断负值），实现"优选筛"效果。
 
-### 29.7.8 llm_build_gemma3n_iswa::altup_compute_router_modalities()：路由器模态计算
+### 28.7.8 llm_build_gemma3n_iswa::altup_compute_router_modalities()：路由器模态计算
 
 源码路径：`src/models/gemma3n-iswa.cpp` - `altup_compute_router_modalities`（第215-223行）
 
@@ -663,7 +663,7 @@ ggml_tensor * llm_build_gemma3n_iswa::altup_compute_router_modalities(ggml_tenso
 
 这段代码计算每个通道的路由权重：输入先经专用 RMSNorm，再按嵌入维度缩放，通过线性层投影到 `n_altup` 维，最后 tanh 压缩到 [-1, 1] 区间作为混合系数。
 
-### 29.7.9 llm_build_gemma3n_iswa::altup_predict()：AltUp 预测阶段
+### 28.7.9 llm_build_gemma3n_iswa::altup_predict()：AltUp 预测阶段
 
 源码路径：`src/models/gemma3n-iswa.cpp` - `altup_predict`（第227-241行）
 
@@ -690,7 +690,7 @@ ggml_tensor * llm_build_gemma3n_iswa::altup_predict(ggml_tensor * cur, int il) {
 
 这段代码实现了 AltUp 预测阶段：取 active 通道计算路由权重，生成 `n_altup × n_altup` 的系数矩阵，将所有通道作为向量进行线性组合预测下一状态，最后加上残差。
 
-### 29.7.10 llm_build_gemma3n_iswa::altup_correct()：AltUp 修正阶段
+### 28.7.10 llm_build_gemma3n_iswa::altup_correct()：AltUp 修正阶段
 
 源码路径：`src/models/gemma3n-iswa.cpp` - `altup_correct`（第246-263行）
 
@@ -720,11 +720,11 @@ ggml_tensor * llm_build_gemma3n_iswa::altup_correct(ggml_tensor * predictions, g
 
 这段代码实现了 AltUp 修正阶段：计算 active 通道的预测误差（创新项），通过路由器生成的修正系数矩阵将创新项广播并加权分配到所有通道，最后加到预测值上得到修正后的多通道表示。
 
-## 29.8 Gemma4 共享 KV 与每层嵌入 —— "极致稀疏化"的工业实践
+## 28.8 Gemma4 共享 KV 与每层嵌入 —— "极致稀疏化"的工业实践
 
 Gemma4 更激进地共享 KV：大部分层不计算 K/V，直接复用更早层的 KV Cache；通过 `hparams.has_kv(il)` 区分是否为本层的 KV 计算层；全局层（non-SWA）使用 `rope_freqs` 频率因子实现比例 RoPE；V 投影可选省略：若 wv 不存在则直接复用 K 作为 V；引入 MoE 支持：`ffn_gate_inp` 存在时走专家路由；路由 logits 由 attn_out（而非 norm 后的 cur）计算；MoE 场景支持单独的 `ffn_gate_up_exps`（合并的 up/gate 矩阵）；缩放专家：`ffn_gate_up_exps_s`、`ffn_down_exps_s` 提供 per-channel scale；每层嵌入投影：`per_layer_inp_gate → GELU → mul → per_layer_proj → post_norm`；`out_scale` 层缩放因子实现类似 DeepSeek 的残差缩放；V 投影用 `ggml_rms_norm` 而非 build_norm（细节差异）。
 
-### 29.8.1 llm_build_gemma4_iswa::llm_build_gemma4_iswa()：Gemma4 主构建流程
+### 28.8.1 llm_build_gemma4_iswa::llm_build_gemma4_iswa()：Gemma4 主构建流程
 
 源码路径：`src/models/gemma4-iswa.cpp` - `llm_build_gemma4_iswa`（第1-221行）
 
@@ -927,7 +927,7 @@ llm_build_gemma4_iswa::llm_build_gemma4_iswa(const llama_model & model, const ll
 
 这段代码实现了 Gemma4 的极致稀疏化设计：第⑱行通过 `has_kv(il)` 判断是否为 KV 计算层，第⑳行 V 投影可省略（用 K 代替），第㉖行非 KV 层直接复用缓存；第㉚行引入 MoE 分支，第㊳行自定义路由 logits 计算（基于 attn_out 而非 norm 后的 cur），第㊴行使用合并的 `ffn_gate_up_exps` 矩阵；第㊻块实现每层嵌入注入的五步流程；第㊴行层残差缩放类似 DeepSeek 机制。
 
-### 29.8.2 llm_build_gemma4_iswa::view_2d_slice()：3D 切片辅助函数
+### 28.8.2 llm_build_gemma4_iswa::view_2d_slice()：3D 切片辅助函数
 
 源码路径：`src/models/gemma4-iswa.cpp` - `view_2d_slice`（第222-226行）
 
@@ -941,7 +941,7 @@ ggml_tensor * llm_build_gemma4_iswa::view_2d_slice(ggml_tensor * x, int idx) {
 
 与 Gemma3n 相同，从 `[n_embd_per_layer, n_tokens, n_layer]` 切出第 `il` 层的 `[n_embd_per_layer, n_tokens]` 视图。
 
-### 29.8.3 llm_build_gemma4_iswa::get_per_layer_inputs()：获取每层嵌入输入
+### 28.8.3 llm_build_gemma4_iswa::get_per_layer_inputs()：获取每层嵌入输入
 
 源码路径：`src/models/gemma4-iswa.cpp` - `get_per_layer_inputs`（第227-250行）
 
@@ -971,7 +971,7 @@ ggml_tensor * llm_build_gemma4_iswa::get_per_layer_inputs() {
 
 双路径获取每层嵌入：文本模式按 token 查表重塑为 3D，视觉模式取 padding token 嵌入广播到所有层。
 
-### 29.8.4 llm_build_gemma4_iswa::project_per_layer_inputs()：投影每层输入
+### 28.8.4 llm_build_gemma4_iswa::project_per_layer_inputs()：投影每层输入
 
 源码路径：`src/models/gemma4-iswa.cpp` - `project_per_layer_inputs`（第251-266行）
 
@@ -997,7 +997,7 @@ ggml_tensor * llm_build_gemma4_iswa::project_per_layer_inputs(ggml_tensor * inpu
 
 将主干 embedding 投影到每层空间，与原始每层输入相加归一化后置换维度，便于逐层 `view_2d_slice` 切片。
 
-## 29.9 设计中的取舍
+## 28.9 设计中的取舍
 
 **为什么 Gemma 要引入这么多 Post-Norm（attn_post_norm, ffn_post_norm）？**
 
@@ -1019,7 +1019,7 @@ AltUp 用 n_altup 倍的显存/计算（仅 active 通道计算 Attention/FFN，
 
 attn_out = Attention(x) + x 包含了原始残差信息，未经过 FFN Pre-Norm 的压缩，信息量更大。直接对 attn_out 做 RMSNorm + 缩放 + 线性投影得到 logits，避免了信息瓶颈。这是一个"早路由"的设计选择，trade-off 是路由决策与专家计算的特征分布可能不完全对齐。
 
-## 29.10 动手练习
+## 28.10 动手练习
 
 - 对比 Gemma 各代的 RMSNorm 数量与位置
   - 阅读 `src/models/gemma.cpp`、`src/models/gemma2-iswa.cpp`、`src/models/gemma3.cpp`、`src/models/gemma3n-iswa.cpp`、`src/models/gemma4-iswa.cpp`，对比五份源码中每一层调用 `build_norm()` 的次数与对象。
@@ -1081,7 +1081,7 @@ attn_out = Attention(x) + x 包含了原始残差信息，未经过 FFN Pre-Norm
     4. Gemma4 中 `inp_per_layer` 经过 `per_layer_inp_gate → GELU → mul → per_layer_proj → per_layer_post_norm` 五步，最终如何与残差流相加？
     5. 为什么 Gemma3 模板类没有 per-layer input 机制？
 
-## 29.11 本章小结
+## 28.11 本章小结
 
 这一章中我们学习了 Gemma 家族从初代到 Gemma4 的完整演进脉络。首先我们分析了 Gemma 初代作为标准 Transformer 解码器的基础骨架，确立了 RMSNorm + RoPE + Attention + GELU FFN 的核心范式；其次我们探讨了 Gemma Embedding 如何通过三元判断支持文本/视觉双轨入口，并引入了 Q/K 前置归一化与双重 Post-Norm 夹心结构；接着我们深入了 Gemma2-ISWA 的滑动窗口机制，理解了双层 KV Cache 与按层 RoPE 频率如何实现长上下文的记忆瘦身；然后我们剖析了 Gemma3 模板类通过编译期特化实现 ISWA/标准双模式零开销切换的工程技巧；之后我们详细拆解了 Gemma3n 的 AltUp 多通道架构，包括多通道堆叠、predict-correct 两阶段更新、Laurel 低秩残差、Gaussian TopK 稀疏门控以及多通道融合回单通道的完整流程；最后我们解读了 Gemma4 的极致稀疏化设计：共享 KV Cache、V 投影省略、每层嵌入动态注入、自定义 MoE 路由以及层残差缩放等前沿技术的组合应用。
 

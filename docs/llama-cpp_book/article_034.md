@@ -2,7 +2,7 @@
 
 
 
-# 精密机床加工仓库：GGML 张量计算框架的核心架构与执行引擎深度解析
+# 第34章 精密机床加工仓库：GGML 张量计算框架的核心架构与执行引擎深度解析
 
 ## 学习目标
 
@@ -18,7 +18,7 @@
 - 掌握内存管理基础设施：`aligned_malloc`、动态分配器、图分配器、缓冲区抽象
 - 掌握 GGUF 文件格式的读写：元数据 KV、张量信息、序列化与反序列化
 
-## 1.1 生活类比：精密机床加工仓库
+## 34.1 生活类比：精密机床加工仓库
 
 想象 GGML 是一个**精密机床加工仓库**，负责将原始材料（张量数据）加工成最终的复杂工件（计算结果）：
 
@@ -48,7 +48,7 @@
 
 **总控中心（调度器）**：`ggml_backend_sched` 多车间协调中心，将工单分配到不同车间，平衡负载、优化传输、支持并行生产。
 
-## 1.2 源码地图
+## 34.2 源码地图
 
 ```
 ggml/include/ggml.h
@@ -490,11 +490,11 @@ ggml/src/ggml-threading.cpp
 
 ```
 
-## 1.3 仓库图纸与乐高积木：ggml_tensor 核心结构与计算图拓扑
+## 34.3 仓库图纸与乐高积木：ggml_tensor 核心结构与计算图拓扑
 
 GGML 的核心设计哲学是**延迟执行**：你并不直接计算张量，而是通过 API 构建一张「计算图蓝图」（`ggml_cgraph`），最后再由后端统一执行。这种设计将「定义计算」与「执行计算」解耦，使得跨后端调度、图优化、内存规划成为可能。
 
-### 1.3.1 ggml_tensor 核心结构定义：乐高积木的属性与连接点
+### 34.3.1 ggml_tensor 核心结构定义：乐高积木的属性与连接点
 
 `ggml_tensor` 是 GGML 中的「乐高积木」，每个积木不仅知道自己的形状，还记录了自己是如何由其他积木拼装而成的。
 
@@ -532,7 +532,7 @@ struct ggml_tensor {
 
 这段代码定义了 GGML 核心数据结构 `ggml_tensor`，它不仅包含张量的数据类型、形状、步长等基础属性，还内嵌了计算图拓扑信息（操作类型、源张量、视图关系）和算子参数存储。这种设计使得张量本身就是计算图的节点，天然支持延迟执行和自动微分。
 
-### 1.3.2 ggml_cgraph 计算图结构定义：蓝图的拓扑骨架
+### 34.3.2 ggml_cgraph 计算图结构定义：蓝图的拓扑骨架
 
 **源码路径**：`ggml/include/ggml.h`（约第 250-300 行）
 
@@ -551,7 +551,7 @@ struct ggml_cgraph {
 };
 ```
 
-### 1.3.3 计算图构建流程图
+### 34.3.3 计算图构建流程图
 
 ```mermaid
 graph TD
@@ -565,7 +565,7 @@ graph TD
     H --> I[反向传播子图]
 ```
 
-### 1.3.4 张量生命周期管理 API：从原材料到成品的工序单
+### 34.3.4 张量生命周期管理 API：从原材料到成品的工序单
 
 **源码路径**：`ggml/include/ggml.h`（第 680-760 行）、`ggml/src/ggml.c`（`ggml_init` 等实现）
 
@@ -592,11 +592,11 @@ void ggml_set_loss(struct ggml_tensor * tensor);    // 损失节点
 
 这一段代码定义了 GGML 的核心数据结构与张量生命周期管理 API。`ggml_context` 是内存池容器，`ggml_tensor` 是计算图节点，`ggml_cgraph` 是拓扑排序后的执行计划。`dup_tensor` 用于需要独立内存的场景（如 `add` 结果），`view_tensor` 用于零拷贝形状变换与 in-place 操作基础。
 
-## 1.4 量具与检测仪：张量属性查询与诊断 —— 张量形状检查大全
+## 34.4 量具与检测仪：张量属性查询与诊断 —— 张量形状检查大全
 
 GGML 提供了一套完整的**张量体检工具**，后端在执行前会通过这些函数判断张量布局，选择最优内核（如连续内存走 GEMM，非连续走逐元素内核）。
 
-### 1.4.1 形状判定函数：尺寸量具
+### 34.4.1 形状判定函数：尺寸量具
 
 **源码路径**：`ggml/include/ggml.h`（第 647-651 行）、`ggml/src/ggml.c`（第 1380-1420 行）
 
@@ -609,7 +609,7 @@ bool ggml_is_3d(const struct ggml_tensor * tensor);      // ne[3] == 1
 int  ggml_n_dims(const struct ggml_tensor * tensor);     // 实际维度数（去除尾随的 1）
 ```
 
-### 1.4.2 内存结构判定 —— 连续性与转置检测：精密卡尺与角度仪
+### 34.4.2 内存结构判定 —— 连续性与转置检测：精密卡尺与角度仪
 
 **源码路径**：`ggml/include/ggml.h`（第 654-666 行）、`ggml/src/ggml.c`（第 1474-1560 行）
 
@@ -650,7 +650,7 @@ bool ggml_is_contiguous_n(const struct ggml_tensor * tensor, int start_dim) {
 }
 ```
 
-### 1.4.3 尺寸计算与类型查询：计量单位换算表
+### 34.4.3 尺寸计算与类型查询：计量单位换算表
 
 **源码路径**：`ggml/include/ggml.h`（第 615-641 行）、`ggml/src/ggml.c` 对应实现
 
@@ -668,11 +668,11 @@ bool ggml_is_quantized(enum ggml_type type);                 // 是否为量化�
 
 这组函数是后端内核选择、内存分配、量化反量化的基础判据。
 
-## 1.5 数学工具箱：基础算术与一元激活函数 —— 张量加工的「数学工具箱」
+## 34.5 数学工具箱：基础算术与一元激活函数 —— 张量加工的「数学工具箱」
 
 GGML 的算子构建遵循统一模板：**创建结果张量 → 填充 `op` 与 `op_params` → 挂载 `src`**。这种设计使得新增算子只需关注数学定义，自动获得图构建、反向传播、多后端分发能力。
 
-### 1.5.1 统一实现：ggml_unary_impl 一元算子工厂
+### 34.5.1 统一实现：ggml_unary_impl 一元算子工厂
 
 **源码路径**：`ggml/src/ggml.c`（第 5886-5901 行）
 
@@ -699,7 +699,7 @@ static struct ggml_tensor * ggml_unary_impl(
 
 **深度解析**：`ggml_unary_impl` 是所有一元算子的「统一模具」。它通过 `inplace` 参数决定使用「VIP 加急机床」（`view_tensor`，共享内存）还是「标准复制机床」（`dup_tensor`，独立元数据）。`op_params[0]` 存储具体的 `ggml_unary_op` 枚举值（如 `GGML_UNARY_OP_RELU`、`GGML_UNARY_OP_GELU`），后端内核在执行时通过 `switch(result->op_params[0])` 分发到具体数学函数。这种「枚举驱动」设计消除了虚函数调用开销，实现了零开销抽象。
 
-### 1.5.2 二元算术运算：双工位加工台（支持广播与 in-place）
+### 34.5.2 二元算术运算：双工位加工台（支持广播与 in-place）
 
 **源码路径**：`ggml/include/ggml.h`（第 900-980 行）、`ggml/src/ggml.c` 对应实现
 
@@ -712,7 +712,7 @@ struct ggml_tensor * ggml_mul(struct ggml_context * ctx, struct ggml_tensor * a,
 struct ggml_tensor * ggml_div(struct ggml_context * ctx, struct ggml_tensor * a, struct ggml_tensor * b);
 ```
 
-### 1.5.3 一元逐元素操作完整名单：各类专用模具
+### 34.5.3 一元逐元素操作完整名单：各类专用模具
 
 **源码路径**：`ggml/include/ggml.h`（第 1120-1340 行）
 
@@ -744,7 +744,7 @@ struct ggml_tensor * ggml_round(struct ggml_context * ctx, struct ggml_tensor * 
 struct ggml_tensor * ggml_trunc(struct ggml_context * ctx, struct ggml_tensor * a); // 向零取整
 ```
 
-### 1.5.4 激活函数大家族：非线性模具库
+### 34.5.4 激活函数大家族：非线性模具库
 
 **源码路径**：`ggml/include/ggml.h`（第 1180-1340 行）、`ggml/src/ggml.c`（第 2727-2820 行）
 
@@ -782,7 +782,7 @@ struct ggml_tensor * ggml_silu_back(struct ggml_context * ctx, struct ggml_tenso
 | `gelu_erf` | `0.5 * x * (1 + erf(x/√2))` | 最高 | 慢 | 精度敏感场景 |
 | `gelu_quick` | `x * sigmoid(1.702 * x)` | 中 | 最快 | 移动端/量化推理 |
 
-### 1.5.5 融合缩放与偏置：ggml_scale_impl 熔铸炉
+### 34.5.5 融合缩放与偏置：ggml_scale_impl 熔铸炉
 
 **源码路径**：`ggml/include/ggml.h`（第 1552-1579 行）、`ggml/src/ggml.c`（第 3289-3323 行）
 
@@ -796,9 +796,9 @@ struct ggml_tensor * ggml_scale_bias_inplace(struct ggml_context * ctx, struct g
 
 **内部实现**：`op_params` 存储 `[s, b]` 两个 float，后端内核融合乘加，减少内存带宽。
 
-## 1.6 计算核心：归约、归一化与矩阵运算 —— 深度学习的「计算核心」
+## 34.6 计算核心：归约、归一化与矩阵运算 —— 深度学习的「计算核心」
 
-### 1.6.1 归约操作：压缩机
+### 34.6.1 归约操作：压缩机
 
 **源码路径**：`ggml/include/ggml.h`（第 1051-1084 行）、`ggml/src/ggml.c`（第 2471-2500 行）
 
@@ -811,7 +811,7 @@ struct ggml_tensor * ggml_count_equal(struct ggml_context * ctx, struct ggml_ten
 struct ggml_tensor * ggml_cumsum(struct ggml_context * ctx, struct ggml_tensor * a);     // 前缀和
 ```
 
-### 1.6.2 归一化三大剑客：ggml_norm_impl 等精密平衡器
+### 34.6.2 归一化三大剑客：ggml_norm_impl 等精密平衡器
 
 **源码路径**：`ggml/include/ggml.h`（第 1450-1510 行）、`ggml/src/ggml.c`（第 3047-3180 行）
 
@@ -834,7 +834,7 @@ struct ggml_tensor * ggml_group_norm(struct ggml_context * ctx, struct ggml_tens
 
 **RMSNorm vs LayerNorm**：RMSNorm 去除了均值减法，仅保留均方根缩放，计算量减半且无需减均值的内存访问，成为 LLaMA 等模型的标配。
 
-### 1.6.3 矩阵运算核心：ggml_mul_mat 等重型机床
+### 34.6.3 矩阵运算核心：ggml_mul_mat 等重型机床
 
 **源码路径**：`ggml/include/ggml.h`（第 1517-1546 行）、`ggml/src/ggml.c`（第 3199-3283 行）
 
@@ -858,7 +858,7 @@ struct ggml_tensor * ggml_solve_tri(struct ggml_context * ctx, struct ggml_tenso
 - `ids` 形状 `[batch, n_tokens]`，指定每个 token 走哪个专家
 - 后端内核根据 `ids` 分散读取 `as` 对应切片，完成 `b @ as[expert]^T`
 
-### 1.6.4 门控线性单元家族：ggml_glu_impl 核心实现
+### 34.6.4 门控线性单元家族：ggml_glu_impl 核心实现
 
 **源码路径**：`ggml/include/ggml.h`（第 1351-1447 行）、`ggml/src/ggml.c`（第 2897-2990 行）
 
@@ -882,9 +882,9 @@ struct ggml_tensor * ggml_swiglu_oai(struct ggml_context * ctx, struct ggml_tens
 
 **GLU 核心计算公式**：`output = gate_fn(gate) * value`，其中 `gate` 与 `value` 要么来自同一张量沿通道切半，要么由 `split` 版本分别提供。`op_params` 存储 `[glu_op枚举, swapped标志]`。
 
-## 1.7 重塑师：形状变换、视图与数据移动 —— 乐高积木的「重塑师」
+## 34.7 重塑师：形状变换、视图与数据移动 —— 乐高积木的「重塑师」
 
-### 1.7.1 连续化与重塑：ggml_cont_impl 等整形机
+### 34.7.1 连续化与重塑：ggml_cont_impl 等整形机
 
 **源码路径**：`ggml/include/ggml.h`（第 1656-1736 行）、`ggml/src/ggml.c`（第 3468-3702 行）
 
@@ -900,7 +900,7 @@ struct ggml_tensor * ggml_reshape_2d(struct ggml_context * ctx, struct ggml_tens
 struct ggml_tensor * ggml_reshape_4d(struct ggml_context * ctx, struct ggml_tensor * a, int64_t ne0, int64_t ne1, int64_t ne2, int64_t ne3);
 ```
 
-### 1.7.2 零拷贝形状手术：ggml_view_impl 等视图变换
+### 34.7.2 零拷贝形状手术：ggml_view_impl 等视图变换
 
 **源码路径**：`ggml/include/ggml.h`（第 1739-1780 行）、`ggml/src/ggml.c`（第 3704-3769 行）
 
@@ -917,7 +917,7 @@ struct ggml_tensor * ggml_permute(struct ggml_context * ctx, struct ggml_tensor 
 struct ggml_tensor * ggml_transpose(struct ggml_context * ctx, struct ggml_tensor * a);
 ```
 
-### 1.7.3 数据设置与复制：ggml_set_impl 等镶嵌工具
+### 34.7.3 数据设置与复制：ggml_set_impl 等镶嵌工具
 
 **源码路径**：`ggml/include/ggml.h`（第 1582-1653 行）、`ggml/src/ggml.c`（第 3337-3462 行）
 
@@ -946,9 +946,9 @@ struct ggml_tensor * ggml_set_rows(struct ggml_context * ctx, struct ggml_tensor
 | `view` | 零拷贝、共享数据 | 极快 | reshape、permute、transpose、in-place 算子基础 |
 | `dup` | 复制元数据+分配新内存 | 较慢 | 需要独立副本、非连续转连续、图分支汇合点 |
 
-## 1.8 CV任务的算子仓库：卷积、池化与图像处理
+## 34.8 CV任务的算子仓库：卷积、池化与图像处理
 
-### 1.8.1 卷积运算家族：ggml_conv_1d 等滑动窗口机床
+### 34.8.1 卷积运算家族：ggml_conv_1d 等滑动窗口机床
 
 **源码路径**：`ggml/include/ggml.h`（第 1976-2170 行）、`ggml/src/ggml.c`（第 4467-4708 行）
 
@@ -971,7 +971,7 @@ struct ggml_tensor * ggml_conv_transpose_1d(struct ggml_context * ctx, struct gg
 struct ggml_tensor * ggml_conv_transpose_2d_p0(struct ggml_context * ctx, struct ggml_tensor * a, struct ggml_tensor * b, int stride);
 ```
 
-### 1.8.2 卷积的矩阵化关键：ggml_im2col 展开台
+### 34.8.2 卷积的矩阵化关键：ggml_im2col 展开台
 
 **源码路径**：`ggml/include/ggml.h`（第 2119-2132 行）、`ggml/src/ggml.c`（第 4400-4442 行）
 
@@ -991,7 +991,7 @@ struct ggml_tensor * ggml_im2col(
 
 **原理**：将输入图像按滑动窗口展开为 `[KH*KW*IC, OH*OW]` 矩阵，卷积核展平为 `[OC, KH*KW*IC]`，卷积即 `mul_mat(kernel, im2col(input))`。深度卷积每个通道独立，参数量大幅减少。
 
-### 1.8.3 池化、上采样与填充：降采样与修边机
+### 34.8.3 池化、上采样与填充：降采样与修边机
 
 **源码路径**：`ggml/include/ggml.h`（第 2171-2340 行）、`ggml/src/ggml.c` 对应实现
 
@@ -1016,9 +1016,9 @@ struct ggml_tensor * ggml_roll(struct ggml_context * ctx, struct ggml_tensor * a
 struct ggml_tensor * ggml_tri(struct ggml_context * ctx, struct ggml_tensor * a, enum ggml_tri_type type); // 三角矩阵 mask
 ```
 
-## 1.9 注意力之链：注意力机制与位置编码 —— 序列模型的「注意力之链」
+## 34.9 注意力之链：注意力机制与位置编码 —— 序列模型的「注意力之链」
 
-### 1.9.1 Softmax 及其扩展：ggml_soft_max_impl 等归一化熔炉
+### 34.9.1 Softmax 及其扩展：ggml_soft_max_impl 等归一化熔炉
 
 **源码路径**：`ggml/include/ggml.h`（第 1868-1919 行）、`ggml/src/ggml.c`（第 4017-4068 行）
 
@@ -1041,7 +1041,7 @@ struct ggml_tensor * ggml_soft_max_ext_back(struct ggml_context * ctx, struct gg
 void ggml_soft_max_add_sinks(struct ggml_tensor * a, struct ggml_tensor * sinks);
 ```
 
-### 1.9.2 融合算子：ggml_flash_attn_ext Flash Attention
+### 34.9.2 融合算子：ggml_flash_attn_ext Flash Attention
 
 **源码路径**：`ggml/include/ggml.h`（第 2412-2431 行）、`ggml/src/ggml.c`（第 5404-5442 行）
 
@@ -1064,7 +1064,7 @@ struct ggml_tensor * ggml_flash_attn_back(...); // 反向传播
 
 **Flash Attention 的工程价值**：将 `O(N^2)` 显存占用的注意力矩阵拆分为块，在 SRAM 内完成 softmax，实现显存与算力的双重节省。
 
-### 1.9.3 旋转位置编码：ggml_rope_impl 等 RoPE
+### 34.9.3 旋转位置编码：ggml_rope_impl 等 RoPE
 
 **源码路径**：`ggml/include/ggml.h`（第 1926-2061 行）、`ggml/src/ggml.c`（第 4138-4264 行）
 
@@ -1107,9 +1107,9 @@ void ggml_rope_yarn_corr_dims(int n_dims, int n_ctx_orig, float freq_base, float
 
 **RoPE 的数学本质**：将位置编码融入 Query/Key 的复数旋转，`q_k = q * exp(i * pos * freq)`，实现相对位置感知且支持外推。
 
-## 1.10 状态追踪：状态空间与循环模型 —— RNN和Mamba的「状态追踪」
+## 34.10 状态追踪：状态空间与循环模型 —— RNN和Mamba的「状态追踪」
 
-### 1.10.1 状态空间模型（SSM）
+### 34.10.1 状态空间模型（SSM）
 
 **源码路径**：`ggml/include/ggml.h`（第 2445-2459 行）、`ggml/src/ggml.c`（第 5559-5646 行）
 
@@ -1130,7 +1130,7 @@ struct ggml_tensor * ggml_ssm_scan(
 );
 ```
 
-### 1.10.2 RWKV 家族
+### 34.10.2 RWKV 家族
 
 **源码路径**：`ggml/include/ggml.h`（第 2518-2548 行）、`ggml/src/ggml.c`（第 5767-5882 行）
 
@@ -1151,7 +1151,7 @@ struct ggml_tensor * ggml_rwkv_wkv7(
 );
 ```
 
-### 1.10.3 门控线性注意力与 DeltaNet
+### 34.10.3 门控线性注意力与 DeltaNet
 
 **源码路径**：`ggml/include/ggml.h`（第 2528-2584 行）、`ggml/src/ggml.c` 对应实现
 
@@ -1173,9 +1173,9 @@ struct ggml_tensor * ggml_gated_delta_net(
 
 **共性特征**：这些算子通常接受 `state` 张量作为输入，输出新 `state`，允许跨序列递归处理长时间依赖，无需保留全部历史（对比标准 Transformer 的 KV Cache）。
 
-## 1.11 研发工坊：自定义算子与高层训练框架 —— 扩展与优化的「研发工坊」
+## 34.11 研发工坊：自定义算子与高层训练框架 —— 扩展与优化的「研发工坊」
 
-### 1.11.1 突破内置算子限制：ggml_map_custom1_impl 等自定义算子
+### 34.11.1 突破内置算子限制：ggml_map_custom1_impl 等自定义算子
 
 **源码路径**：`ggml/include/ggml.h`（第 2598-2682 行）、`ggml/src/ggml.c`（第 5915-6106 行）
 
@@ -1207,7 +1207,7 @@ struct ggml_tensor * ggml_custom_4d(
 struct ggml_tensor * ggml_custom_inplace(struct ggml_context * ctx, struct ggml_tensor * a, struct ggml_tensor ** args, int n_args, ggml_custom_op_t fun, int n_tasks, void * userdata);
 ```
 
-### 1.11.2 训练框架：ggml_opt_init 等自动化流水线
+### 34.11.2 训练框架：ggml_opt_init 等自动化流水线
 
 **源码路径**：`ggml/include/ggml-opt.h`、`ggml/src/ggml-opt.cpp`
 
@@ -1243,9 +1243,9 @@ graph LR
     F -.->|grad_accs 累积梯度| A
 ```
 
-## 1.12 仓库与运输系统：内存管理与缓冲区抽象 —— 高效的「仓库与运输系统」
+## 34.12 仓库与运输系统：内存管理与缓冲区抽象 —— 高效的「仓库与运输系统」
 
-### 1.12.1 分配器三个等级：从线性货架到智能仓储
+### 34.12.1 分配器三个等级：从线性货架到智能仓储
 
 **源码路径**：`ggml/include/ggml-alloc.h`、`ggml/src/ggml-alloc.c`
 
@@ -1267,7 +1267,7 @@ bool ggml_gallocr_alloc_graph(ggml_gallocr_t galloc, struct ggml_cgraph * graph)
 size_t ggml_gallocr_get_buffer_size(ggml_gallocr_t galloc, int buffer_id);
 ```
 
-### 1.12.2 核心算法：vbuffer 与 ggml_gallocr 智能管理员
+### 34.12.2 核心算法：vbuffer 与 ggml_gallocr 智能管理员
 
 **源码路径**：`ggml/src/ggml-alloc.c`（`ggml_gallocr_allocate_node` 第 550-623 行、`ggml_gallocr_free_node` 第 625-645 行）
 
@@ -1312,7 +1312,7 @@ bool ggml_op_can_inplace(enum ggml_op op) {
 }
 ```
 
-### 1.12.3 缓冲区抽象与跨后端复制：通用集装箱接口
+### 34.12.3 缓冲区抽象与跨后端复制：通用集装箱接口
 
 **源码路径**：`ggml/include/ggml-backend.h`、`ggml/src/ggml-backend.cpp`
 
@@ -1332,9 +1332,9 @@ void ggml_backend_tensor_copy(struct ggml_tensor * src, struct ggml_tensor * dst
 void ggml_backend_tensor_copy_async(ggml_backend_t backend_src, ggml_backend_t backend_dst, struct ggml_tensor * src, struct ggml_tensor * dst);
 ```
 
-## 1.13 万能转换器与智能配送系统：后端抽象与多设备调度 —— 「万能转换器」和「智能配送系统」
+## 34.13 万能转换器与智能配送系统：后端抽象与多设备调度 —— 「万能转换器」和「智能配送系统」
 
-### 1.13.1 三层抽象体系：设备、后端、缓冲区类型
+### 34.13.1 三层抽象体系：设备、后端、缓冲区类型
 
 **源码路径**：`ggml/include/ggml-backend.h`
 
@@ -1346,7 +1346,7 @@ ggml_backend_dev_t          →  物理设备（RTX 4090、Apple M2 NPU 等）
 ggml_backend_t              →  后端实例（具体实现的句柄，含函数表指针）
 ```
 
-### 1.13.2 三阶段图拆分：ggml_backend_sched_split_graph 调度器
+### 34.13.2 三阶段图拆分：ggml_backend_sched_split_graph 调度器
 
 **源码路径**：`ggml/include/ggml-backend.h`（第 317-352 行）、`ggml/src/ggml-backend.cpp`（第 750-830 行）
 
@@ -1390,9 +1390,9 @@ flowchart TD
     F --> G[ggml_backend_sched_graph_compute 执行]
 ```
 
-## 1.14 海关集装箱：GGUF 文件格式 —— 模型的「海关集装箱」
+## 34.14 海关集装箱：GGUF 文件格式 —— 模型的「海关集装箱」
 
-### 1.14.1 GGUF 文件组成
+### 34.14.1 GGUF 文件组成
 
 ```
 GGUF 文件结构：
@@ -1407,7 +1407,7 @@ GGUF 文件结构：
 └─────────────────────┘
 ```
 
-### 1.14.2 核心读写 API
+### 34.14.2 核心读写 API
 
 **源码路径**：`ggml/include/gguf.h`、`ggml/src/gguf.cpp`
 
@@ -1439,7 +1439,7 @@ void gguf_set_tensor_data(struct gguf_context * ctx, const char * name, const vo
 bool gguf_write_to_file(const struct gguf_context * ctx, const char * fname, bool only_meta);
 ```
 
-### 1.14.3 内部实现：gguf_reader/gguf_writer 类
+### 34.14.3 内部实现：gguf_reader/gguf_writer 类
 
 **源码路径**：`ggml/src/gguf.cpp`（`gguf_reader` 第 509-808 行、`gguf_writer_buf/file` 第 178-320 行）
 
@@ -1459,9 +1459,9 @@ static void gguf_write_out(const struct gguf_context * ctx, writer_t & gw, bool 
 }
 ```
 
-## 1.15 通用工具箱：基础设施与工具集 —— 跨平台的「通用工具箱」
+## 34.15 通用工具箱：基础设施与工具集 —— 跨平台的「通用工具箱」
 
-### 1.15.1 跨平台内存与文件
+### 34.15.1 跨平台内存与文件
 
 **源码路径**：`ggml/src/ggml.c`（`ggml_aligned_malloc` 第 326-373 行、`ggml_fopen` 第 607-627 行）
 
@@ -1474,7 +1474,7 @@ void ggml_aligned_free(void * ptr, size_t size);
 FILE * ggml_fopen(const char * fname, const char * mode);
 ```
 
-### 1.15.2 错误处理与调试
+### 34.15.2 错误处理与调试
 
 **源码路径**：`ggml/src/ggml.c`（`ggml_abort` 第 245-263 行、`ggml_print_backtrace` 第 151-230 行）
 
@@ -1488,7 +1488,7 @@ GGML_NORETURN void ggml_abort(const char * file, int line, const char * fmt, ...
 void ggml_print_backtrace(void);
 ```
 
-### 1.15.3 时间测量与版本信息
+### 34.15.3 时间测量与版本信息
 
 **源码路径**：`ggml/include/ggml.h`（第 603-607 行）
 
@@ -1502,9 +1502,9 @@ const char * ggml_version(void);    // 版本字符串
 const char * ggml_commit(void);     // Git commit hash
 ```
 
-## 1.16 并发与轻量化保障：线程同步、量化与性能优化
+## 34.16 并发与轻量化保障：线程同步、量化与性能优化
 
-### 1.16.1 全局临界区：ggml_critical_section_start
+### 34.16.1 全局临界区：ggml_critical_section_start
 
 **源码路径**：`ggml/src/ggml-threading.cpp`（第 5-11 行）
 
@@ -1515,7 +1515,7 @@ void ggml_critical_section_end(void)   { ggml_critical_section_mutex.unlock(); }
 ```
 **用途**：量化表惰性初始化、全局状态保护（如 `ggml_quantize_init` 内部调用）。
 
-### 1.16.2 量化系统接口
+### 34.16.2 量化系统接口
 
 **源码路径**：`ggml/include/ggml.h`、`ggml/src/ggml.c`（`ggml_quantize_chunk` 约第 7566-7811 行）
 
@@ -1535,7 +1535,7 @@ size_t ggml_quantize_chunk(enum ggml_type type, const float * src, void * dst, i
 | IQ 系列 | IQ2_XXS, IQ3_S, IQ4_NL | 可变 | 查找表非精确量化 |
 | 新锐 | MXFP4, NVFP4, TQ1_0 | 32/64 | 硬件原生 FP4/三元量化 |
 
-### 1.16.3 类型特征表：ggml_type_traits
+### 34.16.3 类型特征表：ggml_type_traits
 
 **源码路径**：`ggml/include/ggml.h`（约第 1930-1950 行）、`ggml/src/ggml.c` `type_traits` 静态数组
 
@@ -1551,42 +1551,42 @@ struct ggml_type_traits {
 ```
 每种类型（F32/F16/BF16/Q4_0/Q8_0/...）在编译期注册特征，运行时通过 `ggml_get_type_traits(type)` 查询，实现量化/反量化的多态分发。
 
-## 1.17 设计中的取舍
+## 34.17 设计中的取舍
 
-### 为什么不用统一的算子基类 + 虚函数分发？
+### 34.17.1 为什么不用统一的算子基类 + 虚函数分发？
 
 **答案**：性能与零开销抽象。
 - C 风格的 `op` 枚举 + `op_params` 字节数组避免了虚函数表查找、动态分配、指针追踪。
 - 后端内核通过 `switch(op)` 直接分发，编译器可内联优化。
 - `op_params` 紧凑存储（64 字节）消除了每个算子单独分配参数结构的开销。
 
-### 为什么用 `view_tensor` 实现 in-place 而不是单独的 in-place 标记？
+### 34.17.2 为什么用 `view_tensor` 实现 in-place 而不是单独的 in-place 标记？
 
 **答案**：统一内存模型。
 - `view` 天然表达「共享数据、不同形状/偏移」，in-place 本质是「输出 view 输入」。
 - 内存分配器（gallocr）只需检查 `view_src` 与 `n_children==0` 即可判断可否复用，无需额外标记。
 - 反向传播时 `view` 的梯度自然累加到源张量，符合自动微分链式法则。
 
-### GGUF 为什么要用「键值对 + 张量数组」而非扁平结构？
+### 34.17.3 GGUF 为什么要用「键值对 + 张量数组」而非扁平结构？
 
 **答案**：可扩展性与流式读取。
 - KV 区与张量区分离，允许只读元数据（`only_meta=true`）而不加载权重。
 - 新增字段不破坏旧版本解析器（忽略未知 key）。
 - 张量信息数组支持 `mmap` 直接映射，`ggml_backend_tensor_alloc` 时按 offset 定位数据。
 
-### 为什么 `ggml_tensor` 用 `nb` 字节步长而非 `strides` 元素步长？
+### 34.17.4 为什么 `ggml_tensor` 用 `nb` 字节步长而非 `strides` 元素步长？
 
 **答案**：原生支持量化类型。量化类型（如 Q4_0）每 32 个元素占 18 字节，非整数倍元素大小，字节步长 `nb` 可精确描述任意量化布局，元素步长则无法表示。
 
-### 为什么 `op_params` 用字节数组而非结构体？
+### 34.17.5 为什么 `op_params` 用字节数组而非结构体？
 
 **答案**：避免每个算子单独 `malloc` 参数结构，消除内存碎片与分配开销。所有参数序列化压扁在 64 字节定长数组，`ggml_set_op_params_i32/f32` 统一读写，缓存友好且零开销。
 
-### `ggml_gallocr` 为何采用生命周期分析而非简单引用计数？
+### 34.17.6 `ggml_gallocr` 为何采用生命周期分析而非简单引用计数？
 
 **答案**：支持 in-place 内存复用。引用计数无法感知「父张量仅被一个子节点使用且无 view 引用」这一 in-place 条件。gallocr 通过 `n_children`/`n_views` 精确建模张量生命周期，实现激进内存复用。
 
-## 1.18 动手练习
+## 34.18 动手练习
 
 1. **阅读 GGML 算子实现：统一模板分析**
    选择三个算子进行分析：
@@ -1670,7 +1670,7 @@ struct ggml_type_traits {
    
    提示：可以参考 llama.cpp 的 simple infer 执行流程，理解上面这个宏观流程如何映射到具体 GGML 函数调用
 
-## 1.19 本章小结
+## 34.19 本章小结
 
 这一章中我们学习了 GGML 张量计算框架的核心基础设施。首先深入剖析了 `ggml_tensor` 与 `ggml_cgraph` 两大核心数据结构，理解了张量的类型、形状、步长、操作拓扑与视图关系，以及计算图的节点拓扑序、引用计数与梯度管理。其次系统梳理了张量属性查询家族，掌握了连续性、转置、维度数等判别逻辑对后端内核选择的决定性影响。接着详细讲解了算子构建的统一模板：从一元算子 `ggml_unary_impl` 到二元算术、激活函数、归一化、矩阵乘法、GLU 门控、形状变换、卷积、注意力、RoPE、SSM/RWKV 等全谱系算子的创建模式与参数编码。随后探讨了反向传播引擎的图构建机制，包括前向图扩展、反向图扩展、梯度累加器管理与各算子梯度公式分发。在内存管理层面，对比了三级分配器的设计演进，重点分析了 `ggml_gallocr` 的生命周期分析、in-place 复用条件与 view 共享机制。后端抽象部分揭示了缓冲区类型、设备、后端三层解耦与多后端调度器的三阶段图拆分算法。GGUF 文件格式解析了元数据 KV、张量信息与数据区的二进制布局及读写流程。最后覆盖了跨平台工具、量化系统、类型特征表等基础设施。
 

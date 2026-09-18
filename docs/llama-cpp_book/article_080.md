@@ -1,6 +1,6 @@
 
 
-# 第79章 OpenAI / Anthropic 协议兼容层 —— 跨厂商的"语言同声传译"
+# 第80章 OpenAI / Anthropic 协议兼容层 —— 跨厂商的"语言同声传译"
 
 ## 学习目标
 
@@ -14,7 +14,7 @@
 - 理解HTTP服务器抽象层设计：Pimpl模式封装cpp-httplib、中间件链（认证/状态检查）、静态资源服务与流式响应桥接
 - 掌握CORS反向代理的安全实现：URL解析、协议白名单验证、头部清洗与超时控制
 
-## 79.1 生活类比
+## 80.1 生活类比
 
 把llama-server的基础设施想象成一家**国际快递中转枢纽**：
 - **server_tokens** = 智能集装箱系统：普通货物（文本Token）与特殊货物（图像/音频集装箱）混装，每个集装箱贴有唯一RFID标签（FNV哈希），支持整箱装卸与部分拆箱（keep_first）
@@ -25,7 +25,7 @@
 - **CORS代理** = 跨境转运专用通道：proxy_request是检查货物目的地（URL白名单）、更换包装标签（头部清洗）、安排专线运输（600秒超时）的特殊物流通道
 就像枢纽需要协调不同规格的集装箱与多国语言文件，llama-server的infrastructure层默默支撑着上层繁杂的协议与数据格式差异。
 
-## 79.2 源码地图
+## 80.2 源码地图
 
 ```
 tools/server/server-common.h
@@ -158,11 +158,11 @@ tools/server/server-cors-proxy.h
 └── proxy_handler_get()             # GET代理处理器
 ```
 
-## 79.3 server_tokens 类 —— 多模态 Token 的"集装箱式"封装
+## 80.3 server_tokens 类 —— 多模态 Token 的"集装箱式"封装
 
 `server_tokens` 是 llama-server 中承载多模态输入的核心数据结构。它像一个**智能集装箱系统**，既能装载普通货物（文本 Token），又能装载特殊货物（图像/音频媒体块），并通过 RFID 标签（`map_idx_to_media` 映射）实现 O(1) 定位。这种设计统一了文本与多模态的处理路径，让上层推理逻辑无需感知底层数据的异构性。
 
-### 79.3.1 类结构总览
+### 80.3.1 类结构总览
 
 下表展示 `server_tokens` 类的完整接口分布，按功能域分组呈现：
 
@@ -218,7 +218,7 @@ classDiagram
     server_tokens ..> mtmd::input_chunk_ptr : 持有
 ```
 
-### 79.3.2 双构造入口与生命周期管理
+### 80.3.2 双构造入口与生命周期管理
 
 **源码路径：`tools/server/server-common.cpp` - `server_tokens` 构造函数（第195-196行）**
 
@@ -247,7 +247,7 @@ server_tokens(server_tokens&&) = default;
 server_tokens& operator=(server_tokens&&) = default;
 ```
 
-### 79.3.3 operator[] 与 size/empty：容器的"读写门禁"
+### 80.3.3 operator[] 与 size/empty：容器的"读写门禁"
 
 **源码路径：`tools/server/server-common.h`（第132-133行、第166-168行）**
 
@@ -262,7 +262,7 @@ bool empty() const { return tokens.empty(); }                              // �
 - `operator[]` 提供了类似 `std::vector` 的下标访问，非 const 版本返回值拷贝（因 `llama_token` 是 int 类型，拷贝成本可忽略），const 版本返回 const 引用以禁止修改。
 - `size()` 与 `empty()` 直接委托给内部 `tokens` 向量，是 STL 风格的容器接口，方便与标准算法（如 `std::find`、范围 for）协同工作。
 
-### 79.3.4 pos_next()：位置与 Token 的"时空转换器"
+### 80.3.4 pos_next()：位置与 Token 的"时空转换器"
 
 **源码路径：`tools/server/server-common.cpp` - `pos_next()`（第200-248行）**
 
@@ -319,7 +319,7 @@ llama_pos server_tokens::pos_next(int64_t n_tokens) const {
 | 纯文本 | = token 数 | = token 数 | 一一对应 |
 | 多模态 | > token 数 | < n_pos | 一个媒体块占据多个位置，但只产生少量占位 token |
 
-### 79.3.5 size_up_to_pos()：逆向映射的"定位导航"
+### 80.3.5 size_up_to_pos()：逆向映射的"定位导航"
 
 **源码路径：`tools/server/server-common.cpp` - `size_up_to_pos()`（第250-281行）**
 
@@ -356,7 +356,7 @@ size_t server_tokens::size_up_to_pos(llama_pos max_pos) const {
 
 这段代码实现了**位置到 Token 索引的逆映射**：给定最大位置 `max_pos`，返回不超过该位置的最大 token 索引。逻辑与 `pos_next()` 镜像对称，都是在媒体块边界处处理 `n_pos` 与 `n_tok` 的差异。
 
-### 79.3.6 str() / find_chunk()：调试与媒体块定位
+### 80.3.6 str() / find_chunk()：调试与媒体块定位
 
 **源码路径：`tools/server/server-common.cpp` - `str()`（第283-300行）、`find_chunk()`（第302-309行）**
 
@@ -394,9 +394,9 @@ const mtmd::input_chunk_ptr & server_tokens::find_chunk(size_t idx) const {
 - `str()` 遍历 token 序列，对 `LLAMA_TOKEN_NULL` 占位符输出 `<embd>` 标记，最后列出所有媒体块的起始索引，用于调试日志中快速判断容器状态。
 - `find_chunk()` 在 `map_idx_to_media` 中查找指定索引对应的媒体块，利用 `std::map` 的 O(logN) 查找；若不存在则抛出运行时异常，这种"快速失败"策略便于在开发阶段尽早暴露逻辑错误。
 
-### 79.3.7 push_back 系列：容器的"装配流水线"
+### 80.3.7 push_back 系列：容器的"装配流水线"
 
-#### 79.3.7.1 push_back(llama_token)：单文本 token 入箱
+#### 80.3.7.1 push_back(llama_token)：单文本 token 入箱
 
 **源码路径：`tools/server/server-common.cpp`（第311-317行）**
 
@@ -412,7 +412,7 @@ void server_tokens::push_back(llama_token tok) {
 **逐行注释与解释**：
 - 第312-313行：显式拒绝 `LLAMA_TOKEN_NULL`，因为占位符只能由 `push_back(chunk)` 创建，直接调用此重载插入占位符会破坏 `map_idx_to_media` 的一致性。
 
-#### 79.3.7.2 push_back(const mtmd_input_chunk*)：媒体块入箱的"标准化作业"
+#### 80.3.7.2 push_back(const mtmd_input_chunk*)：媒体块入箱的"标准化作业"
 
 **源码路径：`tools/server/server-common.cpp` - `push_back(chunk)`（第319-341行）**
 
@@ -447,7 +447,7 @@ void server_tokens::push_back(const mtmd_input_chunk * chunk) {
 
 **本质区别**：图像/音频是"压缩表示"（大量位置压缩为少量占位 Token），文本是"原样传递"。这种设计让 Transformer 的位置编码能正确作用于媒体内容的每个位置，同时保持 KV 缓存索引的紧凑。
 
-#### 79.3.7.3 push_back(server_tokens&)：合并另一容器
+#### 80.3.7.3 push_back(server_tokens&)：合并另一容器
 
 **源码路径：`tools/server/server-common.cpp`（第343-359行）**
 
@@ -472,7 +472,7 @@ void server_tokens::push_back(server_tokens & tokens) {
 - 第344-346行：先逐个复制 token 序列。
 - 第347-358行：若源容器有多模态数据，要求当前容器也必须是多模态（`GGML_ASSERT`），然后遍历源容器的 `map_idx_to_media`，深拷贝每个媒体块并以 `start_idx + 原索引` 为新键插入当前容器的映射中，保证合并后索引连续正确。
 
-### 79.3.8 insert() / get_text_tokens() / set_token()：非多模态专用工具
+### 80.3.8 insert() / get_text_tokens() / set_token()：非多模态专用工具
 
 **源码路径：`tools/server/server-common.cpp`（第361-375行）**
 
@@ -499,7 +499,7 @@ void server_tokens::set_token(llama_pos pos, llama_token id) {
 - `set_token()` 允许修改指定位置的 token，为推测式解码的"接受/拒绝"步骤提供写入能力。
 - 三个函数均用 `GGML_ASSERT(!has_mtmd)` 限制仅在纯文本模式下使用，避免在多模态场景下误用导致 `map_idx_to_media` 不一致。
 
-### 79.3.9 keep_first()：KV 缓存截断的"安全剪刀"
+### 80.3.9 keep_first()：KV 缓存截断的"安全剪刀"
 
 **源码路径：`tools/server/server-common.cpp` - `keep_first()`（第377-400行）**
 
@@ -535,7 +535,7 @@ void server_tokens::keep_first(size_t n) {
 - 第388-396行：遍历 `map_idx_to_media`，删除所有起始索引 `>= n` 的媒体块。
 - 第398行：`tokens.resize(n)` 完成实际截断。
 
-### 79.3.10 detokenize() / clone() / validate() / process_chunk()：序列化与编码
+### 80.3.10 detokenize() / clone() / validate() / process_chunk()：序列化与编码
 
 **源码路径：`tools/server/server-common.cpp`（第402-522行）**
 
@@ -622,7 +622,7 @@ int32_t server_tokens::process_chunk(
 - `validate()` 检查每个 token：普通 token 必须在词汇表范围内，占位符必须有对应的媒体块且块大小正确，用于推理前的合法性校验。
 - `process_chunk()` 将指定媒体块送入 `mtmd_helper_eval_chunk_single` 进行编码（图像/音频→embedding），记录处理耗时，是多模态推理的实际执行单元。
 
-### 79.3.11 get_common_prefix()：多模态感知的"指纹比对"
+### 80.3.11 get_common_prefix()：多模态感知的"指纹比对"
 
 **源码路径：`tools/server/server-common.cpp` - `get_common_prefix()`（第415-459行）**
 
@@ -669,11 +669,11 @@ size_t server_tokens::get_common_prefix(const server_tokens & b) const {
 - 纯文本模式：逐 token 比对，遇到第一个不匹配即返回。
 - 多模态模式：遇到双方均为 `LLAMA_TOKEN_NULL` 时，比较媒体块的 **ID（FNV哈希）** 与 **token数量**，而非逐个比较占位符。匹配成功则一次性跳过整个媒体块（`i += n_tok_a - 1`），实现 O(媒体块数) 而非 O(token数) 的比较复杂度。
 
-## 79.4 基础工具函数集 —— 文字处理的"瑞士军刀"
+## 80.4 基础工具函数集 —— 文字处理的"瑞士军刀"
 
 这些函数构成了服务端处理 JSON、字符串、Token 等基础数据类型的"标准库"。它们虽不直接参与推理，却是参数解析、错误处理、响应格式化的基石。
 
-### 79.4.1 json_value()：带默认值与类型安全的 JSON 取值器
+### 80.4.1 json_value()：带默认值与类型安全的 JSON 取值器
 
 **源码路径：`tools/server/server-common.h`（第52-63行）**
 
@@ -702,7 +702,7 @@ static T json_value(const json & body, const std::string & key, const T & defaul
 
 该函数是整个参数解析层的"安全网"，使客户端传入错误类型时服务端仍能优雅降级。
 
-### 79.4.2 format_error_response()：标准化错误响应生成器
+### 80.4.2 format_error_response()：标准化错误响应生成器
 
 **源码路径：`tools/server/server-common.cpp` - `format_error_response()`（第18-47行）**
 
@@ -728,7 +728,7 @@ json format_error_response(const std::string & message, const enum error_type ty
 - 第19-29行：`switch` 根据错误类型枚举同时设置 HTTP 状态码（`code`）与语义化类型字符串（`type_str`），覆盖了从客户端错误（400/401/403/404）到服务端错误（500/501/503）的完整谱系。
 - 第31行：返回统一的 JSON 对象 `{code, message, type}`，客户端可通过 `type` 字段做精细化错误分发。
 
-### 79.4.3 random_string() / gen_chatcmplid() / gen_tool_call_id()：唯一标识生成器
+### 80.4.3 random_string() / gen_chatcmplid() / gen_tool_call_id()：唯一标识生成器
 
 **源码路径：`tools/server/server-common.cpp`（第53-76行）**
 
@@ -758,7 +758,7 @@ std::string gen_tool_call_id() {
 - `gen_chatcmplid()` 添加 `chatcmpl-` 前缀，符合 OpenAI `chat.completion` 对象的 ID 命名规范。
 - `gen_tool_call_id()` 直接复用，用于工具调用链路追踪。
 
-### 79.4.4 JSON 类型探测三件套：参数解析的"类型守卫"
+### 80.4.4 JSON 类型探测三件套：参数解析的"类型守卫"
 
 **源码路径：`tools/server/server-common.cpp`（第528-570行）**
 
@@ -803,7 +803,7 @@ bool json_is_array_and_contains_numbers(const json & data) {
 - `json_is_array_and_contains_numbers()`：判断是否为**包含至少一个整数的数组**，用于批量提示词分词的分支判断。
 - 三个函数均采用早出（early return）策略，避免不必要的遍历。
 
-### 79.4.5 json_get_nested_values()：嵌套 JSON 的"路径取值器"
+### 80.4.5 json_get_nested_values()：嵌套 JSON 的"路径取值器"
 
 **源码路径：`tools/server/server-common.cpp` - `json_get_nested_values()`（第572-594行）**
 
@@ -832,7 +832,7 @@ json json_get_nested_values(const std::vector<std::string> & paths, const json &
 - 路径分割使用 `string_split` 以 `/` 为分隔符，逐层深入 JSON 对象。
 - 若某层路径不存在，`valid_path` 置 false，最终不将该路径加入结果集，避免返回 null 值污染调用方逻辑。
 
-### 79.4.6 base64_decode()：Base64 解码的"还原机"
+### 80.4.6 base64_decode()：Base64 解码的"还原机"
 
 **源码路径：`tools/server/server-common.cpp`（第166-196行，第876-897行有重复实现）**
 
@@ -872,7 +872,7 @@ static inline raw_buffer base64_decode(const std::string & encoded_string) {
 - 末尾 `if (i)` 处理不足 4 字符的尾组，填充 0 后仅输出 `i-1` 个字节（因最后一个 6bit 组实际只贡献部分字节）。
 - 注意文件中存在两个完全相同的实现（第166行和第876行），建议后续重构合并以降低维护成本。
 
-### 79.4.7 tokens_to_str() 与 tokens_to_output_formatted_string()：Token→字符串转换
+### 80.4.7 tokens_to_str() 与 tokens_to_output_formatted_string()：Token→字符串转换
 
 **源码路径：`tools/server/server-common.cpp`（第1938-1972行）**
 
@@ -916,7 +916,7 @@ std::string tokens_to_output_formatted_string(const llama_context * ctx, const l
 - `tokens_to_str` 提供三重载：模板版本接受任意迭代器，上下文版本自动从 model 提取 vocab，词汇表版本直接使用 vocab。
 - `tokens_to_output_formatted_string()` 专为流式输出设计：当 token 解码后为单字节且最高位为 1（如 UTF-8 多字节序列的后续字节被单独切分），将其转为 `byte: \xHH` 字面量，防止输出乱码。
 
-### 79.4.8 safe_json_to_str()：安全的 JSON 序列化
+### 80.4.8 safe_json_to_str()：安全的 JSON 序列化
 
 **源码路径：`tools/server/server-common.cpp` - `safe_json_to_str()`（第1934-1936行）**
 
@@ -930,9 +930,9 @@ std::string safe_json_to_str(const json & data) {
 - `dump(-1, ' ', false, ...)` 指定紧凑格式（indent=-1）、空格分隔、不强制 ASCII 转义。
 - `error_handler_t::replace` 表示遇到非法 UTF-8 字节时用替换字符（U+FFFD）替代，而不是抛出异常，确保 SSE 流式输出不会因个别脏字符中断。
 
-## 79.5 LoRA 适配器管理 —— 参数高效的"微调指挥家"
+## 80.5 LoRA 适配器管理 —— 参数高效的"微调指挥家"
 
-### 79.5.1 lora_all_alora()：Alora 模式全检测
+### 80.5.1 lora_all_alora()：Alora 模式全检测
 
 **源码路径：`tools/server/server-common.cpp` - `lora_all_alora()`（第82-94行）**
 
@@ -955,7 +955,7 @@ bool lora_all_alora(const std::vector<common_adapter_lora_info> & loras) {
 - 遍历所有**非零缩放**的 LoRA 适配器，若任意一个的 `alora_n_invocation_tokens == 0`（未启用 Alora 机制），立即返回 `false`。
 - 只有**所有**非零适配器均为 Alora 且至少存在一个时返回 `true`，确保"全 Alora"语义的严格性。
 
-### 79.5.2 are_lora_equal() 与 lora_get_enabled_ids()：相等性比较与启用 ID 提取
+### 80.5.2 are_lora_equal() 与 lora_get_enabled_ids()：相等性比较与启用 ID 提取
 
 **源码路径：`tools/server/server-common.cpp`（第131-159行）**
 
@@ -988,7 +988,7 @@ std::vector<size_t> lora_get_enabled_ids(const std::vector<common_adapter_lora_i
 - `are_lora_equal()` 比较两个 LoRA 集合的大小与每个位置的 `scale` 和 `ptr`（适配器指针），故意忽略 `path` 字段，因为同一路径加载的适配器指针必然相同，比较 path 无额外收益。
 - `lora_get_enabled_ids()` 返回所有 `scale > 0` 的适配器索引列表，用于 `lora_should_clear_cache()` 判断当前是否有启用的非 Alora 适配器。
 
-### 79.5.3 lora_should_clear_cache()：KV 缓存清理策略
+### 80.5.3 lora_should_clear_cache()：KV 缓存清理策略
 
 **源码路径：`tools/server/server-common.cpp` - `lora_should_clear_cache()`（第100-116行）**
 
@@ -1029,7 +1029,7 @@ flowchart TD
     F -- 否 --> E
 ```
 
-### 79.5.4 parse_lora_request()：请求解析为 ID→Scale 映射
+### 80.5.4 parse_lora_request()：请求解析为 ID→Scale 映射
 
 **源码路径：`tools/server/server-common.cpp` - `parse_lora_request()`（第118-129行）**
 
@@ -1050,9 +1050,9 @@ std::map<int, float> parse_lora_request(const json & data) {
 - `json_value` 提供默认值（id 默认 -1，scale 默认 0.0f），避免字段缺失时抛异常。
 - 注意：若 JSON 包含重复 ID，`std::map` 会保留最后一个值（覆盖语义）。
 
-## 79.6 多模态预处理流水线 —— 图像音频的"Token 化翻译官"
+## 80.6 多模态预处理流水线 —— 图像音频的"Token 化翻译官"
 
-### 79.6.1 fnv_hash()：媒体数据的"指纹生成器"
+### 80.6.1 fnv_hash()：媒体数据的"指纹生成器"
 
 **源码路径：`tools/server/server-common.cpp` - `fnv_hash()`（第653-665行）**
 
@@ -1073,7 +1073,7 @@ static std::string fnv_hash(const uint8_t * data, size_t len) {
 - 逐字节异或后乘法，利用乘法的雪崩效应确保输入微小变化产生完全不同的哈希值。
 - 为每个图像/音频文件生成唯一 ID，用于 `server_tokens::map_idx_to_media` 的去重键、`get_common_prefix()` 的媒体块身份比对、MTMD 编码器的缓存键。
 
-### 79.6.2 process_mtmd_prompt()：多模态分词总入口
+### 80.6.2 process_mtmd_prompt()：多模态分词总入口
 
 **源码路径：`tools/server/server-common.cpp` - `process_mtmd_prompt()`（第667-696行）**
 
@@ -1119,7 +1119,7 @@ flowchart LR
     K --> L["tokens + map_idx_to_media"]
 ```
 
-### 79.6.3 tokenize_input_subprompt()：四种提示格式的统一解析器
+### 80.6.3 tokenize_input_subprompt()：四种提示格式的统一解析器
 
 **源码路径：`tools/server/server-common.cpp` - `tokenize_input_subprompt()`（第706-736行）**
 
@@ -1167,7 +1167,7 @@ static server_tokens tokenize_input_subprompt(const llama_vocab * vocab, mtmd_co
 | `{"prompt_string": "..."}` | `tokenize_mixed()` | 否 |
 | `{"prompt_string": "...", "multimodal_data": [...]}` | `base64_decode` → `process_mtmd_prompt()` | **是** |
 
-### 79.6.4 tokenize_input_prompts()：批量提示分词入口
+### 80.6.4 tokenize_input_prompts()：批量提示分词入口
 
 **源码路径：`tools/server/server-common.cpp` - `tokenize_input_prompts()`（第738-755行）**
 
@@ -1192,7 +1192,7 @@ std::vector<server_tokens> tokenize_input_prompts(const llama_vocab * vocab, mtm
 - 否则（字符串、数字数组、单个对象）作为单个子提示处理。
 - 最后检查结果非空，防止空提示进入推理流程。
 
-### 79.6.5 validate_utf8()：流式输出的"安全裁缝"
+### 80.6.5 validate_utf8()：流式输出的"安全裁缝"
 
 **源码路径：`tools/server/server-common.cpp` - `validate_utf8()`（第631-651行）**
 
@@ -1218,7 +1218,7 @@ size_t validate_utf8(const std::string& text) {
 - 从字符串末尾向前检查最后 1~4 字节，若发现多字节序列的首字节（`0xC0`/`0xE0`/`0xF0` 头）但后续字节数不足，返回截断长度。
 - 与 `is_valid_utf8()` 的"全或无"不同，`validate_utf8()` 返回的是**可安全发送的最大长度**，确保流式输出的每个 SSE chunk 独立合法。
 
-### 79.6.6 handle_media()：媒体 URL 的三通道处理器
+### 80.6.6 handle_media()：媒体 URL 的三通道处理器
 
 **源码路径：`tools/server/server-common.cpp` - `handle_media()`（第795-835行）**
 
@@ -1288,9 +1288,9 @@ flowchart TD
     F --> G["out_files"]
 ```
 
-## 79.7 OpenAI API 参数解析 —— 兼容层的"字段翻译官"
+## 80.7 OpenAI API 参数解析 —— 兼容层的"字段翻译官"
 
-### 79.7.1 oaicompat_completion_params_parse()：/completions 端点解析
+### 80.7.1 oaicompat_completion_params_parse()：/completions 端点解析
 
 **源码路径：`tools/server/server-common.cpp` - `oaicompat_completion_params_parse()`（第762-793行）**
 
@@ -1337,7 +1337,7 @@ flowchart TD
     I --> J["llama_params"]
 ```
 
-### 79.7.2 oaicompat_chat_params_parse()：/chat/completions 端点解析
+### 80.7.2 oaicompat_chat_params_parse()：/chat/completions 端点解析
 
 **源码路径：`tools/server/server-common.cpp` - `oaicompat_chat_params_parse()`（第840-872行）**
 
@@ -1354,9 +1354,9 @@ json oaicompat_chat_params_parse(json & body, const server_chat_params & opt, st
 **解释**：
 该函数较长（约300行），核心是将 OpenAI Chat 格式的 `messages`（含文本、图像 URL、工具调用）转换为内部 `server_tokens` 序列，同时处理 `tools`/`tool_choice`/`response_format` 等结构化输出参数。`out_files` 输出参数收集所有媒体数据，供后续 `process_mtmd_prompt()` 使用。
 
-## 79.8 协议转换引擎 —— OpenAI 与 Anthropic 格式的"同声传译"
+## 80.8 协议转换引擎 —— OpenAI 与 Anthropic 格式的"同声传译"
 
-### 79.8.1 convert_responses_to_chatcmpl()：Responses API → Chat Completion 降级转换
+### 80.8.1 convert_responses_to_chatcmpl()：Responses API → Chat Completion 降级转换
 
 **源码路径：`tools/server/server-common.cpp` - `convert_responses_to_chatcmpl()`（第1126-1547行，约420行）**
 
@@ -1448,7 +1448,7 @@ flowchart TD
     L --> M["Chat Completion\n请求体"]
 ```
 
-### 79.8.2 convert_anthropic_to_oai()：Anthropic Messages → OpenAI Chat 转换
+### 80.8.2 convert_anthropic_to_oai()：Anthropic Messages → OpenAI Chat 转换
 
 **源码路径：`tools/server/server-common.cpp` - `convert_anthropic_to_oai()`（第1549-1794行，约245行）**
 
@@ -1510,9 +1510,9 @@ json convert_anthropic_to_oai(const json & body) {
 - 使用 `std::shared_ptr` 在 lambda 捕获中安全延长 `request`/`response` 生命周期，防止异步写入期间对象被销毁。
 - 非流式响应直接 `set_content()` 一次性写入。
 
-## 79.12 CORS 反向代理 —— 内嵌的"通道小信使"
+## 80.9 CORS 反向代理 —— 内嵌的"通道小信使"
 
-### 79.12.1 proxy_request()：三层安全校验的转发核心
+### 80.9.1 proxy_request()：三层安全校验的转发核心
 
 **源码路径：`tools/server/server-cors-proxy.h` - `proxy_request()`（第15-61行）**
 
@@ -1584,7 +1584,7 @@ flowchart TD
     L --> M["返回 proxy"]
 ```
 
-### 79.12.2 proxy_handler_post() / proxy_handler_get()：代理处理器
+### 80.9.2 proxy_handler_post() / proxy_handler_get()：代理处理器
 
 **源码路径：`tools/server/server-cors-proxy.h`（第63-69行）**
 
@@ -1601,29 +1601,29 @@ static server_http_context::handler_t proxy_handler_get = [](const server_http_r
 **逐行注释与解释**：
 - 两个处理器是 `server_http_context::handler_t` 类型的 lambda，分别指定 HTTP 方法为 POST 和 GET，调用 `proxy_request()` 完成转发。
 
-## 79.13 设计中的取舍
+## 80.10 设计中的取舍
 
-### 为什么 server_tokens 删除拷贝构造但保留移动语义？
+### 80.10.1 为什么 server_tokens 删除拷贝构造但保留移动语义？
 
 **答案**：媒体块由 `mtmd::input_chunk_ptr`（智能指针）管理，拷贝会导致双重释放或引用计数混淆。移动语义实现零成本所有权转移，符合 RAII 原则。上层若需复制，显式调用 `clone()` 深拷贝。
 
-### 为什么 LoRA 缓存清理策略不对称（current 非 Alora 必须清理，next 非 Alora 必须清理）？
+### 80.10.2 为什么 LoRA 缓存清理策略不对称（current 非 Alora 必须清理，next 非 Alora 必须清理）？
 
 **答案**：**单向污染原则**。非 Alora LoRA 直接修改模型权重，污染 KV 缓存；Alora 通过额外调用 token 隔离缓存，不污染。
 - `current` 有非 Alora → 缓存已被污染，切换任何配置都必须清理
 - `next` 有非 Alora → 新配置会污染缓存，必须清理旧缓存重建
 
-### 为什么 SSE 格式要实现三套（OpenAI标准、Responses、Anthropic）而不是统一一种？
+### 80.10.3 为什么 SSE 格式要实现三套（OpenAI标准、Responses、Anthropic）而不是统一一种？
 
 **答案**：**生态兼容性优先**。客户端 SDK（openai-python、anthropic-sdk、各类前端库）强绑定特定 SSE 格式。统一格式会破坏现有客户端生态，迁移成本极高。三套格式化函数共享 `safe_json_to_str()` 核心序列化，边际维护成本可控。
 
-### 为什么 `validate_utf8()` 返回截断长度而 `is_valid_utf8()` 返回布尔值？
+### 80.10.4 为什么 `validate_utf8()` 返回截断长度而 `is_valid_utf8()` 返回布尔值？
 
 **答案**：**流式 vs 批量的场景差异**。
 - 批量响应（非流式）：要么完整合法要么拒绝 → `is_valid_utf8()` 布尔门卫
 - 流式响应：Token 级增量发送，必然出现截断多字节字符 → `validate_utf8()` 裁剪到最近合法边界，保证每个 SSE chunk 独立合法
 
-## 79.14 动手练习
+## 80.11 动手练习
 
 1. **多模态 Token 容器深度剖析**
    - 阅读 `tools/server/server-common.cpp` 第200-248行（`pos_next()`）、250-281行（`size_up_to_pos()`）和319-341行（`push_back(chunk)`），回答：
@@ -1664,7 +1664,7 @@ static server_http_context::handler_t proxy_handler_get = [](const server_http_r
      3. `proxy_request()` 中对目标URL的验证包含哪三层安全检查（协议、Host、认证信息）？为什么明确禁止 `password` 字段？
      4. 如果要将CORS代理的超时时间从600秒改为可配置参数，需要修改 `server_http_proxy` 构造的哪部分？涉及哪些结构体的变更？
 
-## 79.15 本章小结
+## 80.12 本章小结
 
 这一章中我们学习了 llama-server 基础设施层的核心组件。首先深入剖析了 `server_tokens` 这一多模态 Token 容器，理解它如何通过 `LLAMA_TOKEN_NULL` 占位符与 `map_idx_to_media` 映射统一管理文本与图像/音频块，并掌握了 `pos_next()`/`size_up_to_pos()` 解决位置编码与 Token 索引不匹配的核心算法。其次掌握了基础工具函数集：随机标识生成、JSON 类型探测、Base64 解码等。接着分析了 LoRA 适配器管理机制，特别是 Alora 模式对 KV 缓存热切换的支持。然后追踪了多模态预处理全流水线：FNV 哈希指纹生成、MTMD 分词入口、四种提示格式统一解析、三通道媒体 URL 安全处理。之后详细对比了 OpenAI Responses API 与 Anthropic Messages API 到 Chat Completion 的双向协议转换逻辑。随后剖析了三种 SSE 流式响应格式（OpenAI标准、Responses事件类型、Anthropic自适应）的差异化实现，以及双重 UTF-8 校验机制。最后剖析了 HTTP 服务器核心的 Pimpl 封装、中间件链（API Key认证+状态检查）、流式响应桥接器，以及 CORS 反向代理的三层安全校验与头部清洗机制。
 

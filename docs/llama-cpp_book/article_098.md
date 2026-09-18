@@ -1,6 +1,6 @@
 
 
-# 第97章 模型转换验证工具链 —— 转换质量的“质检流水线”
+# 第98章 模型转换验证工具链 —— 转换质量的“质检流水线”
 
 ## 学习目标
 
@@ -12,13 +12,13 @@
 - 了解 Hugging Face Hub 的自动化模型发布流程（创建仓库、合集、上传）
 - 能够使用工具链诊断转换问题：从 token 一致性到张量级调试
 
-## 97.1 生活类比
+## 98.1 生活类比
 
 想象模型转换是**将一本外文书籍翻译成中文**：原始模型（PyTorch）是原版外文原著，转换后的模型（GGUF）是中文译本。Logits 对比就像对比两本书的“目录索引”是否一致，检查章节对应关系是否完整；NMSE 检查则如同请专业校对员逐段对比翻译的准确度，量化每一个词语的数值精度；语义检查（Cosine Similarity）确保两本书的“核心思想”保持一致，即使措辞不同，传递的意义也应相同；Token 对比则像检查两本书的“字母表”是否完全对应，确保字符编码基础一致；而 Safetensors 检查则类似于检查原书的印刷质量——纸张、油墨和排版的物理细节是否完好无损。
 
 整个工具链就像**出版社的质检流水线**，每一道工序各司其职：`run-org-model.py` 是原版印刷机，负责生成官方标准答案；`compare-logits.py` 是快速校对员，先粗略检查页码是否对应；`check-nmse.py` 是精密测量仪，量化翻译误差的精确数值；`semantic_check.py` 是内容审核员，确保翻译后的意思没跑偏；`inspect-org-model.py` 是纸张质量检测仪，检查原始模型的物理特性；最后 HF 工具集扮演发行物流的角色，把验收合格的书送到书店上架。
 
-## 97.2 源码地图
+## 98.2 源码地图
 
 在深入每个脚本的细节之前，我们先鸟瞰整个工具链的全貌。下面的源码地图展示了所有脚本的组织结构，可以帮助我们快速定位每个模块在流水线中的位置。它以树状图形式，清晰地展示了 `causal`、`embedding` 和 `utils` 三个主要目录下的所有工具及其核心函数。
 
@@ -100,7 +100,7 @@ examples/model-conversion/scripts/
         └── __main__                 # 命令行入口
 ```
 
-## 97.3 因果模型参考输出生成 —— 原始模型的“标准答案”制造机
+## 98.3 因果模型参考输出生成 —— 原始模型的“标准答案”制造机
 
 在生活类比中，我们提到了出版社质检流水线的概念。本节的主角 `run-org-model.py` 正是这套流水线中的“原版印刷机”，它负责生产用于后续所有质检环节的“黄金标准”——即原始模型的参考 logits。
 
@@ -125,7 +125,7 @@ graph TD
 
 **为什么需要参考输出？** 模型转换如同“翻译”，你需要原始模型的输出作为“标准答案”来验证翻译质量。logits 是模型对下一个 token 的“预测分数”，嵌入向量是文本的“数值指纹”。通过对比转换前后的这些输出，你可以量化转换的准确度。`run-org-model.py` 解决了生成参考 logits 的核心问题，具体来说：它支持多模态模型自动检测（`AutoModelForImageTextToText` vs `AutoModelForCausalLM`），通过分块处理长输入（batch_size=512）避免显存溢出，支持未发布模型动态导入（`UNRELEASED_MODEL_NAME` 环境变量），提取最后一个 token 的 logits 并保存为二进制文件，还支持调试模式追踪模型内部计算。
 
-### `load_model_and_tokenizer()`：加载模型与词元分析器
+### 98.3.1 `load_model_and_tokenizer()`：加载模型与词元分析器
 
 源码路径：`examples/model-conversion/scripts/causal/run-org-model.py` - `load_model_and_tokenizer()`（24-86行）
 
@@ -221,7 +221,7 @@ def load_model_and_tokenizer(model_path, device="auto"):
 
 这段代码是模型加载的核心流程。它首先加载分词器（tokenizer）和配置（config），然后根据设备参数设置 `device_map` 决定模型运行在 CPU、GPU 还是自动选择。对于多模态模型，它检测 `text_config` 并切换配置，同时记录 `multimodal` 标志以便后续选择正确的加载类。对于未发布的新模型，它通过 `UNRELEASED_MODEL_NAME` 环境变量动态构造模块路径，尝试从 transformers 源码导入专用模型类。最后根据模型类型分别使用 `AutoModelForImageTextToText`（多模态）或 `AutoModelForCausalLM`（标准因果模型）完成加载。
 
-### `parse_arguments()`：命令行参数入口
+### 98.3.2 `parse_arguments()`：命令行参数入口
 
 源码路径：`examples/model-conversion/scripts/causal/run-org-model.py` - `parse_arguments()`（16-22行）
 
@@ -243,7 +243,7 @@ def parse_arguments():
 
 这段代码定义了脚本的命令行接口。通过 `argparse` 库，它注册了四个关键参数：模型路径（`--model-path`）、可选的提示词文件（`--prompt-file`）、调试开关（`--verbose`）和设备选择（`--device`）。其中设备参数默认为 `"auto"`，让 transformers 自动选择最优硬件。`--verbose` 时脚本会为每个叶子模块注册前向钩子，输出所有中间张量的摘要信息，用于深度调试模型内部计算。
 
-### `enable_torch_debugging()` 与 `get_prompt()`：调试与提示词获取
+### 98.3.3 `enable_torch_debugging()` 与 `get_prompt()`：调试与提示词获取
 
 源码路径：`examples/model-conversion/scripts/causal/run-org-model.py` - `enable_torch_debugging()`（88-90行）与 `get_prompt()`（92-98行）
 
@@ -271,7 +271,7 @@ def get_prompt(args):
 
 `enable_torch_debugging` 是调试模式的核心工具。它遍历模型中所有叶子模块（如 `Linear`、`LayerNorm` 等），为每个模块注册前向钩子。当模型前向传播时，钩子会记录每个模块的输入输出张量摘要，让你可以精确追踪数据流经每一层的数值变化。`get_prompt` 则实现了提示词的三级获取策略：命令行文件 > 环境变量 > 默认值，保证了测试的可重复性。
 
-### `main()`：分块推理与 logits 提取
+### 98.3.4 `main()`：分块推理与 logits 提取
 
 源码路径：`examples/model-conversion/scripts/causal/run-org-model.py` - `main()`（100-147行）
 
@@ -361,7 +361,7 @@ if __name__ == "__main__":
 
 这段代码是参考 logits 生成的主流程。它首先解析参数并加载模型，然后通过 `tokenizer` 将提示词转为 token ID，接着以 512 为批次大小分块推理整个序列。关键技巧在于使用 `past_key_values` 实现 KV 缓存复用，这避免了重复计算历史 token 的键值对（复杂度从 O(n²) 降为 O(n)）。最后提取最后一个 token 的 logits（这正是 next token prediction 的概率分布），打印 Top 5 预测供人工检查，并通过 `save_output_data` 将 logits、token IDs 和 prompt 保存到 `data/` 目录供后续对比使用。
 
-### `__main__`：嵌入向量的批量提取器
+### 98.3.5 `__main__`：嵌入向量的批量提取器
 
 源码路径：`examples/model-conversion/scripts/causal/run-casual-gen-embeddings-org.py` - `__main__`（1-101行）
 
@@ -506,7 +506,7 @@ with torch.no_grad():
 
 这段代码实现了：**从原始 PyTorch 因果模型提取逐 token 的嵌入向量**。它支持未发布模型的动态导入，将每个 token 的嵌入向量保存为二进制和文本文件，并打印前3个值和后3个值的摘要便于快速检查，为后续语义一致性验证提供参考基准。
 
-## 97.4 Logits 对比与质量评估 —— 模型转换的“精度测量仪”
+## 98.4 Logits 对比与质量评估 —— 模型转换的“精度测量仪”
 
 在生成参考 logits 之后，我们需要一种机制来量化转换质量。`compare-logits.py` 提供了快速检查功能，在计算 NMSE 之前先进行“轻量级” sanity check——验证形状匹配、计算最大绝对差异、对比 PyTorch 和 llama.cpp 的 Top 10 预测结果。而 `check-nmse.py` 则提供精确的数值评估，通过归一化均方误差（NMSE）这个指标，消除数据规模影响，给出分级解读。
 
@@ -526,7 +526,7 @@ graph TD
     I -->|NMSE >= 1e-2| K[NEEDS REVIEW<br/>需要人工复核]
 ```
 
-### `quick_logits_check()`：轻量级快速对比
+### 98.4.1 `quick_logits_check()`：轻量级快速对比
 
 源码路径：`examples/model-conversion/scripts/causal/compare-logits.py` - `quick_logits_check()`（20-46行）
 
@@ -576,7 +576,7 @@ def quick_logits_check(pytorch_file, llamacpp_file):
 
 这段代码实现了 logits 的快速 sanity check。它首先从二进制文件加载两个模型的 logits（`np.fromfile` 直接从文件读取原始字节流并解析为 float32 数组），然后检查形状是否匹配（形状不匹配直接失败）。接着计算两个 logits 数组的差值，通过 `np.max(np.abs(diff))` 获取最大绝对差异作为数值精度的粗粒度指标。最关键的是它输出了两个模型各自 Top 10 预测的 logits 值（通过 `np.argsort` 排序获取最大值的索引，再用来索引原数组）——如果两个模型的 Top 10 预测有显著差异，即使 NMSE 数值不大，实际生成行为也会相差很大。这个快速检查是后续 NMSE 计算的前置步骤，可以在几秒内发现问题。
 
-### `main()` 与 `__main__`：快速检查的完整流程
+### 98.4.2 `main()` 与 `__main__`：快速检查的完整流程
 
 源码路径：`examples/model-conversion/scripts/causal/compare-logits.py` - `main()`（49-86行）与 `__main__`（88-89行）
 
@@ -644,7 +644,7 @@ if __name__ == "__main__":
 
 这段代码是快速检查的主流程。它首先从环境变量获取模型路径和名称，构造两个 logits 文件的路径，并检查文件是否存在。接着先执行 token 一致性检查（这是 logits 对比的前置条件），然后调用 `quick_logits_check` 进行 logits 对比。根据检查结果设置不同的退出码（成功为 0，失败调用 `exit_with_warning` 退出码为 1），方便在 shell 脚本中作为子命令调用时自动判断结果。
 
-### `calculate_nmse()` 与 `interpret_nmse()`：数值精度测量仪
+### 98.4.3 `calculate_nmse()` 与 `interpret_nmse()`：数值精度测量仪
 
 源码路径：`examples/model-conversion/scripts/utils/check-nmse.py` - `calculate_nmse()`（13-21行）与 `interpret_nmse()`（42-54行）
 
@@ -700,7 +700,7 @@ def interpret_nmse(nmse):
 
 通过 `interpret_nmse` 的分级解读，你可以快速判断转换质量：Perfect（🎉）、Excellent（✅）、Good（👍）、Acceptable（⚠️）、Poor（❌），从 Perfect 到 Very poor 共分 8 个等级，每个等级都有明确的数值区间和对应的视觉标识，使得质量评估一目了然。
 
-### `load_logits()`：支持多格式的加载器
+### 98.4.4 `load_logits()`：支持多格式的加载器
 
 源码路径：`examples/model-conversion/scripts/utils/check-nmse.py` - `load_logits()`（23-40行）
 
@@ -740,7 +740,7 @@ def load_logits(file_path):
 
 这段代码实现了对多种文件格式的兼容加载。它根据文件后缀自动选择加载策略：`.npy` 使用 NumPy 原生格式，`.bin` 直接读取原始二进制字节流，其他格式尝试解析为文本（支持带索引和不带索引两种格式）。这种多格式支持让工具链可以灵活对接不同的模型输出保存格式，无论是标准二进制还是人类可读的文本文件都能统一处理。
 
-### `main()`：完整评估流程与结果输出
+### 98.4.5 `main()`：完整评估流程与结果输出
 
 源码路径：`examples/model-conversion/scripts/utils/check-nmse.py` - `main()`（56-160行）
 
@@ -869,7 +869,7 @@ if __name__ == "__main__":
 
 这段代码是 NMSE 评估的主流程。它首先从环境变量获取模型路径，构造参考文件（PyTorch）和测试文件（llama.cpp）的路径，然后加载两个 logits 文件。加载后检查形状是否匹配，如果不匹配则直接失败。接下来计算 NMSE、MSE、最大绝对误差和平均绝对误差等多个指标，并输出参考方差和 dB 单位值。最后根据 NMSE 值给出分级解读和详细指导，并设置退出码（PASS 为 0，NEEDS REVIEW 为 1），方便在 shell 脚本中自动判断。
 
-## 97.5 嵌入模型参考与语义检查 —— 语义一致性的“向量罗盘”
+## 98.5 嵌入模型参考与语义检查 —— 语义一致性的“向量罗盘”
 
 嵌入模型的验证与因果模型有所不同——它关注的是**语义一致性**而非预测概率分布。`run-original-model.py` 负责提取原始模型的嵌入向量（支持两种模式：SentenceTransformer 含 Pooling/Dense 层与原生 AutoModel），而 `semantic_check.py` 则通过余弦相似度、向量模长对比和相似度矩阵差异等多个维度评估转换质量。
 
@@ -890,7 +890,7 @@ graph TD
     J --> K
 ```
 
-### `run-original-model.py`：嵌入模型参考输出生成
+### 98.5.1 `run-original-model.py`：嵌入模型参考输出生成
 
 源码路径：`examples/model-conversion/scripts/embedding/run-original-model.py` - `parse_arguments()`（26-53行）
 
@@ -930,7 +930,7 @@ def parse_arguments():
 
 这段代码定义了嵌入模型脚本的命令行接口。它提供四个参数：模型路径、提示词文件路径、SentenceTransformer 模式开关和设备选择。特别重要的是 `--use-sentence-transformers` 开关——它决定了后续模型加载和推理的方式：启用时应用完整的分层流水线（含 Pooling、Dense 和 Normalize），不启用时仅使用基础模型输出。
 
-### `load_model_and_tokenizer()`：双模式加载器
+### 98.5.2 `load_model_and_tokenizer()`：双模式加载器
 
 源码路径：`examples/model-conversion/scripts/embedding/run-original-model.py` - `load_model_and_tokenizer()`（55-135行）
 
@@ -1022,7 +1022,7 @@ def load_model_and_tokenizer(model_path, use_sentence_transformers=False, device
 
 这段代码实现了双模式的模型加载。SentenceTransformer 模式会加载完整的分层处理流水线，包括 Pooling（池化）、Dense（全连接）和 Normalize（归一化）层；AutoModel 模式则仅加载基础编码器。设备映射在 `"auto"` 模式下进行了特殊处理：优先 CUDA，其次 Apple MPS，最后 CPU。代码中包含一段关于 `sliding_window` 的打印逻辑——它提示开发者可在此处手动覆盖滑动窗口大小以进行测试，但当前实现仅打印原始值，并未修改配置。对于未发布模型，它支持动态导入专用类。关键设计是 `sliding_window` 的检查——这确保了滑动窗口注意力掩码的正确性。
 
-### `get_prompt()` 与 `main()`：提示词管理与嵌入生成
+### 98.5.3 `get_prompt()` 与 `main()`：提示词管理与嵌入生成
 
 源码路径：`examples/model-conversion/scripts/embedding/run-original-model.py` - `get_prompt()`（137-147行）与 `main()`（149-252行）
 
@@ -1171,7 +1171,7 @@ if __name__ == "__main__":
 
 这段代码是嵌入模型参考输出生成的主流程。在 SentenceTransformer 模式下，它调用 `model.encode()` 生成句子级嵌入（含完整的 Pooling/Dense/Normalize 流水线）；在标准模式下，它通过 `model(**encoded)` 获取 `last_hidden_state` 作为逐 token 嵌入。两种模式都会打印 token 信息和嵌入向量摘要，最终通过 `save_output_data` 统一保存为二进制和文本格式。
 
-### `cosine_similarity()`：批量余弦相似度计算
+### 98.5.4 `cosine_similarity()`：批量余弦相似度计算
 
 源码路径：`examples/model-conversion/scripts/utils/semantic_check.py` - `cosine_similarity()`（14-37行）
 
@@ -1215,7 +1215,7 @@ def cosine_similarity(a, b=None):
 
 `cosine_similarity` 实现了余弦相似度的批量计算。它首先将输入升维为2D，然后通过 `np.linalg.norm` 计算每行向量的 L2 范数（即向量模长），将零范数替换为极小值防止除法错误。接着将向量归一化为单位向量，最后通过 `np.dot` 点积计算所有向量对之间的相似度，返回形状为 `[a.shape[0], b.shape[0]]` 的相似度矩阵。
 
-### `load_embeddings_from_file()`：多格式嵌入加载
+### 98.5.5 `load_embeddings_from_file()`：多格式嵌入加载
 
 源码路径：`examples/model-conversion/scripts/utils/emantic_check.py` - `load_embeddings_from_file()`（39-44行）
 
@@ -1235,7 +1235,7 @@ def load_embeddings_from_file(filename, n_tokens, n_embd):
 
 `load_embeddings_from_file` 根据数据长度自动判断嵌入类型——如果长度恰好等于 `n_embd`，说明是单个池化向量；否则是 `n_tokens` 个逐 token 向量。这种设计让同一工具能够同时支持两种输出格式。
 
-### `read_prompt_from_file()`：提示词文件读取器
+### 98.5.6 `read_prompt_from_file()`：提示词文件读取器
 
 源码路径：`examples/model-conversion/scripts/utils/semantic_check.py` - `read_prompt_from_file()`（144-150行）
 
@@ -1258,7 +1258,7 @@ def read_prompt_from_file(file_path):
 
 这段代码实现了提示词文件的安全读取。它使用 UTF-8 编码读取文件（保证中文等非 ASCII 字符正确处理），去除首尾空白字符。对文件不存在和其他异常进行了区分处理，并统一通过 `exit(1)` 退出程序，确保在 shell 脚本调用时能够捕获失败。
 
-### `test_single_prompt_similarity()`：多维度语义对比
+### 98.5.7 `test_single_prompt_similarity()`：多维度语义对比
 
 源码路径：`examples/model-conversion/scripts/utils/semantic_check.py` - `test_single_prompt_similarity()`（46-142行）
 
@@ -1371,7 +1371,7 @@ def test_single_prompt_similarity(python_emb, cpp_emb, tokens, prompt):
 
 这段代码实现了嵌入向量的多维度对比。它首先检测是否池化模式（单向量），然后分别进行：**模长对比**检查向量从原点出发的距离（数值尺度），通过 `np.linalg.norm` 计算欧几里得范数，如果模长比例接近1说明数值尺度一致，比例偏差过大说明可能存在缩放问题；**模型内相似度矩阵**检查每个模型内部 token 之间的关系结构，通过嵌套循环对每个 token 对调用 `cosine_similarity`，如果转换正确，两个模型的 token 间相似关系应该保持一致；**跨模型相似度**检查同名 token 在两个模型中的方向一致性；以及最终的**相似度矩阵差异**综合指标——通过 `cosine_similarity(python_emb)` 直接计算整个嵌入矩阵的相似度矩阵，然后逐元素相减得到差异矩阵，再计算 `max_diff`、`mean_diff` 和 `rms_diff` 三个统计量。**为什么同时使用模长对比和余弦相似度、而非只用一个指标？** 模长对比和余弦相似度分别衡量向量空间中的两个维度：模长反映了“数值尺度”（离原点多远），余弦相似度反映了“方向一致性”（朝哪个方向）。如果只对比余弦相似度，那么模长差异（例如转换过程中引入的缩放因子）不会被发现；如果只对比模长，那么方向偏差（例如某些维度被翻转）也不会被捕获。两者结合才能全面评估嵌入空间的保真度。
 
-### `main()`：语义验证完整流程
+### 98.5.8 `main()`：语义验证完整流程
 
 源码路径：`examples/model-conversion/scripts/utils/semantic_check.py` - `main()`（152-256行）
 
@@ -1484,7 +1484,7 @@ if __name__ == "__main__":
 
 这段代码是语义验证的主流程。它首先检查 token 一致性（嵌入对比的前置条件），然后加载原始模型获取配置信息，从二进制文件加载两个模型的嵌入向量，最后执行详细比较并输出汇总。质量分级基于平均跨模型余弦相似度：大于 0.95 为 Excellent，大于 0.90 为 Very Good，大于 0.80 为 Good，大于 0.70 为 Fair，否则为 Poor 并触发警告退出。
 
-## 97.6 转换工具通用组件 —— 调试与验证的“瑞士军刀”
+## 98.6 转换工具通用组件 —— 调试与验证的“瑞士军刀”
 
 `common.py` 是整个模型转换验证工具链的核心基础设施，提供了环境变量管理、张量调试输出、RoPE 调试补丁、数据保存与对比、版本检查等功能。`inspect-org-model.py` 则专注于 Safetensors 模型的深度检查，帮助你定位转换中的潜在问题。
 
@@ -1502,7 +1502,7 @@ graph TD
     F & G & H --> I[定位问题层/参数]
 ```
 
-### `get_model_name_from_env_path()` 与 `save_output_data()`：工具链的“基础设施”
+### 98.6.1 `get_model_name_from_env_path()` 与 `save_output_data()`：工具链的“基础设施”
 
 源码路径：`examples/model-conversion/scripts/utils/common.py` - `get_model_name_from_env_path()`（10-25行）与 `save_output_data()`（127-166行）
 
@@ -1567,7 +1567,7 @@ def save_output_data(data, tokens, prompt, model_name, type_suffix="", output_di
 
 `get_model_name_from_env_path` 是工具链的“命名服务”。它统一从环境变量提取模型路径，验证文件存在性，并剥离 `.gguf` 后缀返回规范化的模型名称。`save_output_data` 则是工具链的“档案管理员”，它以统一格式保存四类数据：logits/嵌入的二进制和文本格式、token 的二进制格式、以及带提示词和 token 描述的元信息文件。这种标准化命名和保存方式让不同脚本之间可以无缝衔接。
 
-### `debug_hook()` 与前向钩子机制
+### 98.6.2 `debug_hook()` 与前向钩子机制
 
 源码路径：`examples/model-conversion/scripts/utils/common.py` - `debug_hook()`（78-87行）
 
@@ -1598,7 +1598,7 @@ def debug_hook(name):
 
 这段代码是调试钩子的工厂函数。它返回一个闭包函数，当注册到 PyTorch 模块上时，会在该模块的前向传播被触发时自动执行。钩子函数统一处理输入和输出：如果是单个张量直接摘要；如果是元组或列表则取第一个张量。通过这种方式，你可以在不修改模型代码的情况下，追踪每个模块的输入输出特征。
 
-### `summarize()`：张量调试输出
+### 98.6.3 `summarize()`：张量调试输出
 
 源码路径：`examples/model-conversion/scripts/utils/common.py` - `summarize()`（28-75行）
 
@@ -1678,7 +1678,7 @@ def summarize(tensor: torch.Tensor, name: str, max_seq: int = 3, max_vals: int =
 
 这段代码是张量调试的核心工具。它模仿 llama.cpp 的 `ggml_debug` 输出格式，以一种紧凑但信息丰富的方式显示张量内容。**二维分支处理逻辑**：3D 张量取 `[batch, seq, hidden]` 中的 `seq` 作为序列长度；2D 张量按 `[seq, hidden]` 处理并升维为 3D（补 `batch=1`）；4D 张量取 `seq` 维度，显示时展平 `heads` 和 `dim_per_head`；对于不支持的维度直接跳过。只显示前3个序列和后3个序列的头尾值，中间用省略号省略。同时打印张量的形状、每个显示序列的首尾数值，以及整个张量的总和。这种“摘要”式输出非常适合在调试时快速了解一个张量的数值分布和规模，而无需打印全部数十万个数值。
 
-### `setup_rope_debug()`：RoPE 调试补丁
+### 98.6.4 `setup_rope_debug()`：RoPE 调试补丁
 
 源码路径：`examples/model-conversion/scripts/utils/common.py` - `setup_rope_debug()`（90-124行）
 
@@ -1720,7 +1720,7 @@ def setup_rope_debug(model_module_path: str, function_name: str = "apply_rotary_
 
 这段代码实现了对旋转位置编码（RoPE）函数的猴子补丁调试。它通过 `importlib` 导入指定模块中的 `apply_rotary_pos_emb` 函数，设置 torch 的打印选项（完整打印不截断、6位小数），然后用包装函数替换原始函数。包装函数在调用原始函数之前和之后分别记录 Q 和 K 张量的摘要，这样你就可以看到 RoPE 变换前后的数值变化。**为什么需要这种调试方式？** 因为 RoPE 的正确性直接影响模型的位置编码能力，问题可能出在 theta 值、旋转维度等细节上。通过对比输入输出，你可以迅速确认旋转是否按预期工作。这个功能对于排查位置编码相关问题（如 theta 值错误）非常有帮助。
 
-### `compare_tokens()`：Token 级一致性对比
+### 98.6.5 `compare_tokens()`：Token 级一致性对比
 
 源码路径：`examples/model-conversion/scripts/utils/common.py` - `compare_tokens()`（169-210行）
 
@@ -1780,7 +1780,7 @@ def compare_tokens(original, converted, type_suffix="", output_dir="data"):
 
 这段代码实现了 token 级的一致性检查。**为什么 token 检查是 logits/嵌入对比的前置条件？** 因为如果分词结果不同（token 序列不一致），那么 logits 或嵌入向量的位置对应关系就毫无意义——第 i 个位置的 logits 可能对应不同的 token 内容。通过 `np.array_equal` 进行完全一致检查，如果存在差异则定位到具体位置并显示前 10 个不匹配样例。
 
-### `show_version_warning()` 与 `exit_with_warning()`：版本兼容性检查
+### 98.6.6 `show_version_warning()` 与 `exit_with_warning()`：版本兼容性检查
 
 源码路径：`examples/model-conversion/scripts/utils/common.py` - `show_version_warning()`（212-221行）、`get_model_transformers_version()`（223-239行）与 `exit_with_warning()`（241-258行）
 
@@ -1851,7 +1851,7 @@ def exit_with_warning(message, model_path):
 
 这三个函数构成了版本兼容性检查机制。`get_model_transformers_version` 从模型的 `config.json` 中读取构建时使用的 transformers 版本。`show_version_warning` 通过 `packaging.version` 进行语义化版本比较，判断当前版本是否低于模型要求。`exit_with_warning` 在脚本失败退出时检查版本差异，如果发现不匹配则输出明确的升级建议。
 
-### `inspect-org-model.py` 核心函数：Safetensors 模型检查
+### 98.6.7 `inspect-org-model.py` 核心函数：Safetensors 模型检查
 
 源码路径：`examples/model-conversion/scripts/utils/inspect-org-model.py` - `get_weight_map()`（28-37行）、`get_all_tensor_names()`（39-54行）与 `list_all_tensors()`（123-155行）
 
@@ -1954,7 +1954,7 @@ def list_all_tensors(
 
 这段代码实现了张量列表功能，支持两种显示模式。**两种模式的差异**：**简洁模式**（`--list-all-short`）通过 `normalize_tensor_name` 将具体层号替换为 `#` 模式（如 `model.layers.0.self_attn.q_proj.weight` → `model.layers.#.self_attn.q_proj.weight`），然后去重显示不同张量类型的模式——这样你可以快速了解模型的架构设计（哪些层存在哪些类型的张量）；**完整模式**（`--list-all`）显示所有张量的实际名称和层号——这种模式适合精确定位特定层的张量。当 `show_sizes` 开启时，还会显示每个张量的 dtype、shape 和大小，并计算模型总大小，这对于了解模型结构和内存占用非常有用。
 
-### `print_tensor_info()` 与 `main()`：单张量详细检查
+### 98.6.8 `print_tensor_info()` 与 `main()`：单张量详细检查
 
 源码路径：`examples/model-conversion/scripts/utils/inspect-org-model.py` - `print_tensor_info()`（157-191行）与 `main()`（193-228行）
 
@@ -2092,7 +2092,7 @@ if __name__ == "__main__":
 
 `print_tensor_info` 实现了单个张量的深度检查。它通过 `find_tensor_file` 定位张量所在文件，然后使用 `safe_open` 安全读取张量（`framework="pt"` 返回 PyTorch 格式张量，`device="cpu"` 强制在 CPU 上操作），显示形状、数据类型、大小，并可选择显示前 `num_values` 个展平数值。`main` 函数则统一处理命令行参数：支持三种操作模式（完整列表、简洁列表、单张量检查）和多个参数（模型路径、数值数量、大小显示），并验证模型路径的合法性。
 
-### `compare_tokens.py`：命令行 token 对比工具
+### 98.6.9 `compare_tokens.py`：命令行 token 对比工具
 
 源码路径：`examples/model-conversion/scripts/utils/compare_tokens.py` - `parse_arguments()`（9-39行）与 `main()`（41-62行）
 
@@ -2179,11 +2179,11 @@ if __name__ == "__main__":
 
 这个脚本是 `common.compare_tokens` 的命令行封装。它通过位置参数接收原始模型和转换后模型的名称，可选的后缀和目录参数。在 `verbose` 模式下，它会读取并打印两个模型的 prompt 文件内容，帮助用户确认测试条件一致。最终通过 `sys.exit(0 if result else 1)` 将布尔结果转换为 shell 可识别的退出码，实现自动化脚本中的流程控制。
 
-## 97.7 Hugging Face 集成工具集 —— 模型发布的“自动化流水线”
+## 98.7 Hugging Face 集成工具集 —— 模型发布的“自动化流水线”
 
 完成转换和验证后，下一步是将模型发布到 Hugging Face Hub。这一节介绍四个工具脚本，它们组成了完整的发布流水线：创建合集（Collection）→ 创建模型仓库 → 上传 GGUF 文件 → 添加到合集。
 
-### 发布流水线总览
+### 98.7.1 发布流水线总览
 
 以下流程图展示了完整的发布流水线：从创建合集到添加模型的四个步骤依次执行，最终在浏览器中验证结果：
 
@@ -2195,7 +2195,7 @@ graph TD
     D --> E[浏览器验证<br/>合集页面 + 模型页面]
 ```
 
-### `hf-create-collection.py`：创建 HF 合集
+### 98.7.2 `hf-create-collection.py`：创建 HF 合集
 
 源码路径：`examples/model-conversion/scripts/utils/hf-create-collection.py` - `create_collection()`（9-56行）、`main()`（58-91行）与 `__main__`（93-94行）
 
@@ -2311,7 +2311,7 @@ if __name__ == "__main__":
 
 这段代码是创建 Hugging Face 合集的核心逻辑。它首先检查环境中是否存在 `HF_TOKEN` 或 `HUGGINGFACE_HUB_TOKEN` 环境变量用于身份验证，然后初始化 API 客户端，并通过 `api.whoami()` 验证用户身份（`whoami` 会调用 Hugging Face API 确认 token 对应的用户名）。接着调用 `api.create_collection()` 创建合集，其中包含标题、描述、私有设置和命名空间等参数。**`--return-slug` 参数在脚本链式调用中起到什么作用？** 它使脚本只输出 collection slug（合集标识符），便于在 shell 脚本中捕获该值并传递给下游脚本，实现了脚本间的数据传递与自动化流水线。
 
-### `hf-create-model.py`：创建模型仓库与模型卡片
+### 98.7.3 `hf-create-model.py`：创建模型仓库与模型卡片
 
 源码路径：`examples/model-conversion/scripts/utils/hf-create-model.py` - 脚本主体（1-90行）
 
@@ -2399,7 +2399,7 @@ if not args.dry_run and repo_url:
 
 这段代码是模型仓库创建与模型卡片生成的核心流程。它首先构造仓库 ID（`namespace/model_name-GGUF`），然后通过 `api.create_repo()` 创建仓库。接着根据模型类型（因果模型或嵌入模型）选择不同的模板文件，加载模板并用模型名称、命名空间和基础模型信息填充占位符，最终通过 `api.upload_file()` 将生成的 README.md 上传到仓库作为模型卡片。**为什么建议先使用 `--dry-run` 模式检查模型卡片？** 因为 dry-run 模式可以预览生成的模型卡片内容和仓库信息，确保模板填充正确、命名规范，避免创建出错误的仓库或上传不完整的模型卡片。
 
-### `hf-upload-gguf-model.py`：上传 GGUF 文件
+### 98.7.4 `hf-upload-gguf-model.py`：上传 GGUF 文件
 
 源码路径：`examples/model-conversion/scripts/utils/hf-upload-gguf-model.py` - `upload_gguf_file()`（1-51行）与 `__main__`（53-63行）
 
@@ -2472,7 +2472,7 @@ upload_gguf_file(args.gguf_model_path, args.repo_id, args.name)
 
 这段代码是 GGUF 文件上传的核心逻辑。它首先验证本地文件是否存在，然后构造仓库内的文件名（默认使用本地文件名），通过 `api.upload_file()` 将文件上传到指定的 Hugging Face 模型仓库，并自动生成 commit message（“Upload {filename}”）。上传成功后打印文件的可访问 URL 便于用户在浏览器中验证。
 
-### `hf-add-model-to-collection.py`：添加模型到合集
+### 98.7.5 `hf-add-model-to-collection.py`：添加模型到合集
 
 源码路径：`examples/model-conversion/scripts/utils/hf-add-model-to-collection.py` - `add_model_to_collection()`（26-76行）、`main()`（84-103行）与 `__main__`（105-106行）
 
@@ -2565,7 +2565,7 @@ if __name__ == "__main__":
 
 这段代码是将模型添加到合集的逻辑。它首先通过 `api.whoami()` 验证用户身份，然后通过 `api.model_info()` 确认模型存在（防止添加不存在的模型），最后调用 `api.add_collection_item()` 将模型添加到指定合集。这样你就可以将多个 GGUF 模型组织在一个合集下，方便管理和展示。
 
-## 97.8 设计中的取舍
+## 98.8 设计中的取舍
 
 这一节我们来探讨本工具链中几个关键设计决策背后的思考。
 
@@ -2585,7 +2585,7 @@ if __name__ == "__main__":
 
 答：L2 距离衡量的是向量在欧几里得空间中的绝对距离，它同时受模长和方向的影响。但对于嵌入向量，我们通常更关心“语义方向”的一致性——两个向量在方向上一致但模长不同，我们仍认为它们语义相近（如词频的影响）。余弦相似度通过归一化消除了模长的影响，纯粹衡量方向一致性，因此更适合语义相似度的评估。L2 距离更适合衡量数值的绝对误差（如权重矩阵的转换精度），而余弦相似度更适合衡量语义的保真度。
 
-## 97.9 动手练习
+## 98.9 动手练习
 
 - 手动执行一次完整的转换验证流程
   - 假设你已将 `TinyLlama/TinyLlama-1.1B-Chat-v1.0` 转换为 GGUF 格式，请按以下步骤操作：
@@ -2652,7 +2652,7 @@ if __name__ == "__main__":
     - `normalize_tensor_name()` 函数在什么时候有用？
     - 如果发现某个张量的数值全为0或NaN，可能是什么原因？
 
-## 97.10 本章小结
+## 98.10 本章小结
 
 这一章中我们深入学习了模型转换验证工具链的完整体系。首先我们了解了 `run-org-model.py` 和 `run-casual-gen-embeddings-org.py` 如何生成参考 logits 和嵌入向量，作为转换验证的“黄金标准”。其次，我们掌握了 `compare-logits.py` 的快速检查流程和 `check-nmse.py` 的精确数值评估方法，理解了 NMSE 这一归一化指标的设计原理和分级解读方式。接着，我们学习了 `semantic_check.py` 的多维度语义验证技术，包括模长对比、余弦相似度和相似度矩阵差异分析。然后，我们探讨了 `common.py` 和 `inspect-org-model.py` 提供的通用调试工具，特别是张量摘要输出、RoPE 调试补丁和 Safetensors 深度检查能力。最后，我们完整梳理了 Hugging Face 自动化发布流水线，包括创建合集、创建模型仓库、上传文件、添加到合集四个步骤。
 

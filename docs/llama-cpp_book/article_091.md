@@ -1,6 +1,6 @@
 
 
-# 第90章 示例程序全景概览 —— 走进大模型推理的“咖啡教学厨房”
+# 第91章 示例程序全景概览 —— 走进大模型推理的“咖啡教学厨房”
 
 ## 学习目标
 
@@ -13,7 +13,7 @@
 - 理解 debug 示例中 `has_pooling` 检测、`print_tokenized_prompt` 调试输出，以及 `print_usage` 模板化用法说明等辅助函数的设计思想
 - 能够基于示例骨架开发自定义推理应用，并理解各示例之间的设计取舍
 
-## 90.1 生活类比 —— 从咖啡厨房到推理流水线
+## 91.1 生活类比 —— 从咖啡厨房到推理流水线
 
 想象你走进一家**咖啡店的开放式教学厨房**，整条流水线从点单到出餐都在眼前展开。柜台上的磨豆机、咖啡机、奶泡壶和杯具，就像 llama.cpp 提供的模型、上下文和后端资源。
 
@@ -25,7 +25,7 @@
 
 如果在后厨安装监控摄像头，就能观察每道工序的中间状态，这对应 `eval-callback`。想知道咖啡机从休眠状态恢复后第一杯出品需要多久，则可以使用 `idle`。而 `debug` 更像品控实验室，会把 logits、embeddings、token ID 和 prompt 全部记录下来。
 
-## 90.2 源码地图 —— 五个示例的目录指南
+## 91.2 源码地图 —— 五个示例的目录指南
 
 ```text
 README.md
@@ -86,9 +86,9 @@ examples/debug/debug.cpp
 └── main()
 ```
 
-## 90.3 `main()` —— 生命周期五部曲的舞台总调度
+## 91.3 `main()` —— 生命周期五部曲的舞台总调度
 
-### 90.3.1 `main()` 源码全景 —— 从参数到退出的主干道
+### 91.3.1 `main()` 源码全景 —— 从参数到退出的主干道
 
 源码路径：`examples/simple/simple.cpp` - `main()`（源码第 14—150 行）  
 以下代码块中的编号是**代码块内部编号**，不是源文件行号。
@@ -232,7 +232,7 @@ llama_model_free(model);
 
 ⑬ 手动计算并打印整体解码速度：用 `t_main_end - t_main_start` 得到总耗时（微秒），再除以 `1000000.0f` 转为秒；`n_decode / 秒数` 即为吞吐率。⑭ `llama_perf_sampler_print()` 输出采样器调用次数和耗时，`llama_perf_context_print()` 输出上下文相关的 prompt 处理、生成速度和阶段耗时。手动测量的总生成速度与这两个统计接口互相补充：前者反映应用层观察到的整体时间，后者提供 llama.cpp 内部阶段的分解信息。
 
-### 90.3.2 `print_usage()` —— 参数错误的恢复性提示
+### 91.3.2 `print_usage()` —— 参数错误的恢复性提示
 
 源码路径：`examples/simple/simple.cpp` - `print_usage()`（源码第 8—12 行）
 
@@ -255,7 +255,7 @@ static void print_usage(int, char ** argv) {
 
 因此，帮助函数不仅用于显式的 `--help` 场景，也承担参数错误后的恢复性提示职责。
 
-### 90.3.3 生命周期架构 —— 五阶段可视化
+### 91.3.3 生命周期架构 —— 五阶段可视化
 
 ```mermaid
 flowchart TD
@@ -275,11 +275,11 @@ flowchart TD
 
 这个生命周期骨架是所有 llama.cpp 示例程序共用的主干。后续各节将逐一填充其中的细节。
 
-## 90.4 `llama_tokenize()`、`llama_decode()` 与 `llama_sampler_sample()` —— 文本到 token 再到文本的往返旅程
+## 91.4 `llama_tokenize()`、`llama_decode()` 与 `llama_sampler_sample()` —— 文本到 token 再到文本的往返旅程
 
 本节是一个源码解析单元，重点分析 simple 示例如何把文本转换为 token，如何执行首轮 prompt 解码，以及如何逐 token 生成输出。
 
-### 90.4.1 `llama_tokenize()` —— 两阶段 tokenization
+### 91.4.1 `llama_tokenize()` —— 两阶段 tokenization
 
 源码路径：`examples/simple/simple.cpp` - `main()`（源码第 53—75 行）
 
@@ -316,7 +316,7 @@ if (llama_tokenize(vocab,
 
 这种方式避免了反复扩容和拷贝，是 C API 中常见的“两次调用获取长度再填充”模式。值得关注的是，两次调用中 `add_special` 和 `parse_special` 两个布尔参数保持一致（均为 `true`），确保探测阶段和填充阶段使用相同的分词行为。
 
-### 90.4.2 `llama_token_to_piece()` —— 将 token ID 转回文本片段
+### 91.4.2 `llama_token_to_piece()` —— 将 token ID 转回文本片段
 
 源码路径：`examples/simple/simple.cpp` - `main()`（源码第 113—127 行）
 
@@ -345,7 +345,7 @@ for (auto id : prompt_tokens) {
 
 一个 token 不一定对应完整单词。BPE 分词可能把一个词拆成多个 token，也可能把多个字节合并成一个 token。因此，这段代码主要用于观察 token 到文本片段的映射，而不是验证字符串逐字节重构。
 
-### 90.4.3 生成循环架构 —— 自回归的节拍器
+### 91.4.3 生成循环架构 —— 自回归的节拍器
 
 ```mermaid
 flowchart LR
@@ -365,7 +365,7 @@ flowchart LR
     A --> B
 ```
 
-### 90.4.4 `llama_decode()` 与 `llama_sampler_sample()` —— 逐 token 自回归生成
+### 91.4.4 `llama_decode()` 与 `llama_sampler_sample()` —— 逐 token 自回归生成
 
 源码路径：`examples/simple/simple.cpp` - `main()`（源码第 129—168 行）
 
@@ -429,7 +429,7 @@ for (int n_pos = 0;
 
 `fflush(stdout)`（⑥）对命令行流式输出很重要。标准输出通常带有缓冲，`printf()` 返回并不代表字符已经显示在终端上。逐 token 刷新可以降低用户看到新内容的等待时间；代价是频繁系统调用可能降低吞吐。生产应用可以采用小块缓冲策略，在保留流式体验的同时减少刷新次数。
 
-### 90.4.5 `llama_model_has_encoder()` 与 `llama_model_decoder_start_token()` —— 处理 encoder-decoder 模型
+### 91.4.5 `llama_model_has_encoder()` 与 `llama_model_decoder_start_token()` —— 处理 encoder-decoder 模型
 
 源码路径：`examples/simple/simple.cpp` - `main()`（源码第 129—149 行）
 
@@ -464,7 +464,7 @@ if (llama_model_has_encoder(model)) {
 
 `llama_model_decoder_start_token()`（④）返回模型元数据中指定的 decoder 起始 token。`LLAMA_TOKEN_NULL`（⑤）表示模型没有提供有效的起始 token，此时示例回退到词表的 BOS token。这个回退策略提升了不同模型之间的兼容性，但不保证适合所有模型；对于特定架构，应优先遵循该架构的官方起始 token 约定。
 
-### 90.4.6 设计取舍 —— 简单并不意味着简陋
+### 91.4.6 设计取舍 —— 简单并不意味着简陋
 
 simple 示例刻意保持“简单”，但这种简单背后是明确的设计取舍：
 
@@ -480,9 +480,9 @@ simple 通过手动解析让读者直接看到参数读取、范围判断和异�
 
 simple 通过 `n_ctx = n_prompt + n_predict - 1` 计算上下文长度，从数学上保证 prompt + 生成 token 不会超出上下文。这避免了运行时检测的开销，但要求用户提供的 prompt 不能超过预期长度。simple-chat 面对无限对话可能，必须运行时检测。
 
-## 90.5 `llama_chat_apply_template()` —— 多轮对话的聊天模板渲染器
+## 91.5 `llama_chat_apply_template()` —— 多轮对话的聊天模板渲染器
 
-### 90.5.1 `llama_sampler` —— 组装多样化采样链
+### 91.5.1 `llama_sampler` —— 组装多样化采样链
 
 源码路径：`examples/simple-chat/simple-chat.cpp` - `main()`（源码第 82—87 行）
 
@@ -509,7 +509,7 @@ simple-chat 使用 Min-P、Temperature 和 Distribution 组合采样。Min-P（�
 
 采样器链的执行顺序就是添加顺序，这一点在设计时很重要，改变添加顺序会改变整个采样行为。例如，如果先执行温度调整再过滤 Min-P，与先过滤再调温，效果完全不同。与 simple 的贪心采样相比，这种配置更适合自然、多样的对话回复。
 
-### 90.5.2 采样器链架构 —— 分工协作的三级流水线
+### 91.5.2 采样器链架构 —— 分工协作的三级流水线
 
 ```mermaid
 flowchart LR
@@ -524,7 +524,7 @@ flowchart LR
     F[传统贪心采样<br/>llama_sampler_init_greedy] --> E
 ```
 
-### 90.5.3 `generate` —— 封装单轮生成与上下文溢出检查
+### 91.5.3 `generate` —— 封装单轮生成与上下文溢出检查
 
 源码路径：`examples/simple-chat/simple-chat.cpp` - `main()`（源码第 88—137 行）
 
@@ -630,7 +630,7 @@ auto generate = [&](const std::string & prompt) {
 
 `generate` 中的旧 API 查询只用于两个目的：判断 KV memory 是否为空，以及计算已经使用的上下文位置。现代版本若移除了这两个接口，应使用对应的新 memory/sequence 查询接口实现相同逻辑。
 
-### 90.5.4 聊天渲染架构 —— 增量渲染的时序图
+### 91.5.4 聊天渲染架构 —— 增量渲染的时序图
 
 源码路径：`examples/simple-chat/simple-chat.cpp` - `main()`（源码第 138—180 行）
 
@@ -652,7 +652,7 @@ sequenceDiagram
     Note over Main,Tmpl: 下一轮循环...
 ```
 
-### 90.5.5 `llama_chat_apply_template()` —— 增量渲染聊天历史
+### 91.5.5 `llama_chat_apply_template()` —— 增量渲染聊天历史
 
 源码路径：`examples/simple-chat/simple-chat.cpp` - `main()`（源码第 138—180 行）
 
@@ -741,7 +741,7 @@ while (true) {
 
 ⑨ 的第二次调用使用 `nullptr, 0` 作为输出缓冲区，根据 API 约定，当缓冲区为 `NULL` 且长度为 0 时，函数返回所需长度（而非负数）。这用于获取下一轮渲染的起始偏移量。
 
-### 90.5.6 `llama_chat_message` —— 管理消息历史与释放资源
+### 91.5.6 `llama_chat_message` —— 管理消息历史与释放资源
 
 源码路径：`examples/simple-chat/simple-chat.cpp` - `main()`（源码第 141—183 行）
 
@@ -772,7 +772,7 @@ llama_model_free(model);
 
 采样器、上下文和模型（⑤）仍然遵循逆序释放原则。
 
-### 90.5.7 设计取舍 —— 聊天示例的工程决策
+### 91.5.7 设计取舍 —— 聊天示例的工程决策
 
 **为什么 simple-chat 采用增量渲染？**
 
@@ -786,11 +786,11 @@ llama_model_free(model);
 
 这是基于“模板字符串长度与 token 数同量级”的经验假设。它不是数学保证，但避免了大多数情况下的重新分配。真正的保障来自随后的扩容检查。
 
-## 90.6 `common_debug_cb_eval()` 与 `llama_synchronize()` —— 观测计算图与测量空闲性能
+## 91.6 `common_debug_cb_eval()` 与 `llama_synchronize()` —— 观测计算图与测量空闲性能
 
 本节是一个源码解析单元，分别从空间和时间两个维度观察推理：eval-callback 观察计算节点和中间张量，idle 测量设备空闲后的首次解码延迟。
 
-### 90.6.1 文件级依赖 —— 引入回调示例的头文件
+### 91.6.1 文件级依赖 —— 引入回调示例的头文件
 
 源码路径：`examples/eval-callback/eval-callback.cpp` - 文件开头（源码第 1—10 行）
 
@@ -819,7 +819,7 @@ llama_model_free(model);
 
 这些头文件共同提供了“解析参数 → 初始化模型 → 注册回调 → 执行一次解码”的运行环境。
 
-### 90.6.2 `main()` —— 注册计算图评估回调
+### 91.6.2 `main()` —— 注册计算图评估回调
 
 源码路径：`examples/eval-callback/eval-callback.cpp` - `main()`（源码第 37—72 行）
 
@@ -887,7 +887,7 @@ int main(int argc, char ** argv) {
 
 `common_init_from_params()`（⑤）把公共初始化步骤集中起来，返回的初始化对象负责模型与上下文的生命周期管理，减少了重复清理代码。
 
-### 90.6.3 回调机制架构 —— 计算图中的观察者模式
+### 91.6.3 回调机制架构 —— 计算图中的观察者模式
 
 ```mermaid
 flowchart LR
@@ -907,7 +907,7 @@ flowchart LR
     B --> H
 ```
 
-### 90.6.4 `run()` —— 执行单次前向计算
+### 91.6.4 `run()` —— 执行单次前向计算
 
 源码路径：`examples/eval-callback/eval-callback.cpp` - `run()`（源码第 14—35 行）
 
@@ -963,7 +963,7 @@ static bool run(
 
 ⑤ 和 ④ 的顺序值得注意：先检查空输入再打印 token 数，避免无意义的日志输出。每个 token ID 单独打印（⑥），虽然简单却便于用户在调用回调之前就了解输入情况。
 
-### 90.6.5 `main()` —— 测量 GPU 空闲后的解码延迟
+### 91.6.5 `main()` —— 测量 GPU 空闲后的解码延迟
 
 源码路径：`examples/idle/idle.cpp` - `main()`（源码第 19—81 行）
 
@@ -1095,7 +1095,7 @@ s=\sqrt{\frac{\sum x_i^2-\frac{(\sum x_i)^2}{n}}{n-1}}
 
 ⑮ 每次实验之后清空 memory 并同步，避免上一轮 KV 状态影响下一次测量。
 
-### 90.6.6 空闲测试架构 —— 时间扫描与统计
+### 91.6.6 空闲测试架构 —— 时间扫描与统计
 
 ```mermaid
 flowchart TB
@@ -1120,7 +1120,7 @@ flowchart TB
     D --> E
 ```
 
-### 90.6.7 设计取舍 —— 测量与观测的方法论
+### 91.6.7 设计取舍 —— 测量与观测的方法论
 
 **为什么 eval-callback 跳过预热？**
 
@@ -1134,9 +1134,9 @@ GPU 后端常常异步提交任务。若只测量 `llama_decode()` 调用前后�
 
 一个 token 的计算时间已经足够触发设备唤醒。使用更长的 prompt 会混入 token 处理时间，使测量失去针对性。但同时也应该注意，某些 GPU 可能对小 batch 有额外调度开销，因此真实应用中的空闲延迟可能需要用代表性 batch 重新测量。
 
-## 90.7 `debug.cpp` —— 模型输出的品控实验室
+## 91.7 `debug.cpp` —— 模型输出的品控实验室
 
-### 90.7.1 `print_usage()` —— 带模板替换的帮助文本
+### 91.7.1 `print_usage()` —— 带模板替换的帮助文本
 
 源码路径：`examples/debug/debug.cpp` - `print_usage()`（源码第 10—24 行）
 
@@ -1179,7 +1179,7 @@ static void print_usage(int /*argc*/, char ** argv) {
 
 随后第二次替换（③）把字面量 `{prog}` 替换为实际程序名。该函数使用原始字符串保存多行帮助文本，避免大量转义。这种模板化方式让帮助文本与程序名解耦，方便代码复用。
 
-### 90.7.2 `has_pooling()` —— 判断 embedding 输出形状
+### 91.7.2 `has_pooling()` —— 判断 embedding 输出形状
 
 源码路径：`examples/debug/debug.cpp` - `has_pooling()`（源码第 26—34 行）
 
@@ -1202,7 +1202,7 @@ static bool has_pooling(llama_context * ctx) {
 
 没有池化时，通常按 token 获取 embeddings；启用池化后，通常按序列获取一个聚合向量。该判断决定后续调用 `llama_get_embeddings()` 还是 `llama_get_embeddings_seq()`。
 
-### 90.7.3 `output_data` —— 提取、归一化 logits 与 embeddings
+### 91.7.3 `output_data` —— 提取、归一化 logits 与 embeddings
 
 源码路径：`examples/debug/debug.cpp` - `output_data::output_data()`（源码第 70—112 行）
 
@@ -1297,7 +1297,7 @@ embedding 路径（③）根据 pooling 状态（④）决定向量个数：有�
 
 logits 路径（⑩）则读取最后一个 token 位置的词表分数。`const_cast`（⑪）在这里是必要的，因为 C API 返回 `const float *`，而 `output_data` 需要可写的指针。
 
-### 90.7.4 `save_output_data()` —— 以多种格式持久化结果
+### 91.7.4 `save_output_data()` —— 以多种格式持久化结果
 
 源码路径：`examples/debug/debug.cpp` - `save_output_data()`（源码第 115—158 行）
 
@@ -1379,7 +1379,7 @@ static void save_output_data(
 
 这种多格式并存的设计兼顾了机器处理与人工排查的双重需求，是调试工具的理想实践。
 
-### 90.7.5 `print_tokenized_prompt()` —— 打印 token 与文本片段
+### 91.7.5 `print_tokenized_prompt()` —— 打印 token 与文本片段
 
 源码路径：`examples/debug/debug.cpp` - `print_tokenized_prompt()`（源码第 161—177 行）
 
@@ -1439,7 +1439,7 @@ static void print_tokenized_prompt(
 
 `piece(128, '\0')`（④）先创建固定 128 字节的缓冲区。对于普通 token 通常足够，但特殊 token、长字节片段或未来 API 行为都可能使返回长度超过 128。更稳妥的实现应在返回“所需容量”的情况下扩容并重新调用，或使用项目提供的动态 token-to-piece 包装函数。
 
-### 90.7.6 `run()` 与 `main()` —— 执行调试流程并管理生命周期
+### 91.7.6 `run()` 与 `main()` —— 执行调试流程并管理生命周期
 
 源码路径：`examples/debug/debug.cpp` - `run()`（源码第 180—204 行）与 `main()`（源码第 207—237 行）
 
@@ -1567,7 +1567,7 @@ int main(int argc, char ** argv) {
 
 `main()` 的 ② 使用 `common_params_parse` 并传入 `print_usage` 作为参数，这使得 `--help` 和参数错误都能正确显示帮助信息。④ 创建 `base_callback_data` 用于张量过滤，但与 eval-callback 示例不同，这里的回调数据来自 `params.tensor_filter`，说明 debug 示例使用回调来筛选特定的张量进行打印。
 
-### 90.7.7 调试流程架构 —— 数据提取与保存流水线
+### 91.7.7 调试流程架构 —— 数据提取与保存流水线
 
 ```mermaid
 flowchart LR
@@ -1599,7 +1599,7 @@ flowchart LR
     end
 ```
 
-### 90.7.8 设计取舍 —— 调试工具的实用哲学
+### 91.7.8 设计取舍 —— 调试工具的实用哲学
 
 **为什么 `print_usage` 使用正则表达式清理缩进？**
 
@@ -1613,7 +1613,7 @@ flowchart LR
 
 C++17 的 `std::filesystem` 提供跨平台的文件/目录操作，替代了 `mkdir` 或 `CreateDirectory` 等平台相关调用。代价是需要 C++17 编译支持。
 
-## 90.8 设计中的取舍 —— 示例程序的工程智慧
+## 91.8 设计中的取舍 —— 示例程序的工程智慧
 
 **为什么 simple 使用贪心采样，而 simple-chat 使用概率采样？**
 
@@ -1643,7 +1643,7 @@ GPU 后端常常异步提交任务。若只测量 `llama_decode()` 调用前后�
 
 采样器、上下文、模型和后端之间存在依赖关系。通常先释放 sampler，再释放 context，再释放 model，最后释放 backend，能够避免对象访问已经销毁的底层资源。例如，如果在释放模型之前释放上下文，上下文内部的 KV 缓存引用可能指向已经释放的模型权重。统一遵循逆序释放可以消除这类隐患。
 
-## 90.9 动手练习
+## 91.9 动手练习
 
 1. **修改 simple 示例：支持自定义采样参数**
 
@@ -1669,7 +1669,7 @@ GPU 后端常常异步提交任务。若只测量 `llama_decode()` 调用前后�
 
    在 token 打印基础上增加 Top-10 概率、指定层张量检查、动态采样参数和中间结果保存。修改采样配置后通常需要重建 sampler，以确保内部状态与新参数一致。可以考虑添加“暂停/继续”机制，让用户在生成过程中实时查看中间状态。
 
-## 90.10 本章小结
+## 91.10 本章小结
 
 本章从 simple、simple-chat、eval-callback、idle 和 debug 几个示例出发，建立了 llama.cpp 推理应用的统一心智模型：后端初始化、模型加载、上下文创建、推理执行、采样输出和资源释放。
 

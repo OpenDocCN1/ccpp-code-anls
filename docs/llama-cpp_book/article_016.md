@@ -1,6 +1,6 @@
 
 
-# 批处理与微批次调度 —— 推理任务的「交通指挥中心」
+# 第16章 批处理与微批次调度 —— 推理任务的「交通指挥中心」
 
 ## 学习目标
 
@@ -11,11 +11,11 @@
 - 理解 ubatch_add 的内存编排机制：shared_ptr data_t 与扁平 seq_id_data 的指针算术
 - 能阅读 LLAMA_BATCH_DEBUG 调试输出，定位批处理相关问题
 
-## 15.1 生活类比
+## 16.1 生活类比
 
 想象 llama.cpp 的批处理系统是一座物流公司的调度中心。客户提交的原始发货清单好比 `llama_batch`，上面可能缺字段、可能填错位置；而调度中心的总调度员 `llama_batch_allocr` 则负责清点校验与分批装车。真正开上高速的卡车是 `llama_ubatch`，它结构紧凑、字段齐全，还附带 `shared_ptr` 货车所有权凭证。调度中心里的标准容器规格对应着类型别名，如 `pos_set_t`、`seq_set_t` 等，统一用同一规格的箱子避免尺寸混乱。私有状态字段 `used`、`out_ids`、`n_used` 则像工作台账本，记录哪些货已发、哪些待发、发给谁。`init()` 的校验阶段是调度员对照发货单检查地址是否合法、重量是否超标；补全阶段自动填上默认收货地址与默认发货时间；统计阶段则建立哪些客户拼车、哪些路线重合的运筹表。三种拆分策略如同三种拼车规则：`split_simple` 来一辆空车塞到满就走，最简单且不考虑拼车；`split_equal` 找几个终点相同方向的客户拼满一辆方阵车，在 prompt processing 阶段最高效；`split_seq` 则像同一目的地的货物一节节车皮地发，适合 decode 阶段逐序列推进。`ubatch_add()` 的内存编排好比调度员把发货单抄写到装车清单 udata，用指针算术把多页发货单钉在一起。`shared_ptr<data_t>` 是货车的所有权凭证，确保卡车在运输途中不会被销毁。`seq_set` 位图则是客户编号的位掩码，让 O(1) 判断哪些客户可以拼车。总之，调度中心需要权衡拼车效率与送达时效，`llama_batch_allocr` 也在 KV 缓存复用与计算图效率之间精妙平衡。
 
-## 15.2 源码地图
+## 16.2 源码地图
 
 ```mermaid
 graph LR
@@ -122,7 +122,7 @@ src/llama-batch.cpp
     ├── llama_batch_init
     └── llama_batch_free
 
-## 15.3 `llama_ubatch` 数据结构与类型别名
+## 16.3 `llama_ubatch` 数据结构与类型别名
 
 ```mermaid
 graph LR
@@ -143,7 +143,7 @@ graph LR
 
 **`llama_ubatch` 是计算图真正消费的「最小推理单元」**。与 `llama_batch`（用户输入的原始批数据）不同，`llama_ubatch` 是经过校验、补全与切分后的内部表示。它持有 token、位置、序列 ID、输出标志等核心字段，每个字段都有内存语义说明（size / idx / val）。通过 `std::shared_ptr<data_t> data` 管理自有数据，外部数据则不持有所有权，实现零拷贝共享。`b_equal_seqs` 标记所有序列集是否等长，是 MHA 等路径的重要分支依据。`is_pos_2d()` 通过 `n_pos >= 3` 判断是否为 M-RoPE（如视觉位置 = y/x/other）场景。`equal_seqs()` 返回 `b_equal_seqs != 0`，供调用方查询等长标志。内部 `data_t` 结构聚合所有 std::vector，`seq_id_data` 是连续的扁平存储区，`seq_id[i]` 通过指针算术指向其中片段。**文件级类型别名共同构成批处理的数据基石**：`using pos_set_t = std::set<llama_pos>`：每条序列出现过的位置集合（保证有序且唯一）；`using seq_cpl_t = std::vector<bool>`：耦合序列矩阵的每一行（动态长度适配 LLAMA_MAX_SEQ）；`using idx_vec_t = std::vector<int32_t>`：序列集对应的 token 索引列表（拆分阶段的核心数据结构）；`using seq_set_t = std::bitset<LLAMA_MAX_SEQ>`：用位图表示 token 的序列归属集合（O(1) 重叠检测）。
 
-### 15.3.1 `llama_ubatch`：核心字段与状态查询
+### 16.3.1 `llama_ubatch`：核心字段与状态查询
 
 ```mermaid
 flowchart TD
@@ -225,7 +225,7 @@ struct llama_ubatch {
 
 这段代码定义了 `llama_ubatch` 结构体，它是计算图消费的最小推理单元，包含 token/embd/pos/seq_id 等扁平字段，通过 `data_t` 统一管理内存所有权，`b_equal_seqs` 标记等长序列以支持高性能 MHA 路径，`is_pos_2d()` 用于识别 M-RoPE 等多维位置编码场景。
 
-### 15.3.2 文件级类型别名：批处理的「标准容器规格」
+### 16.3.2 文件级类型别名：批处理的「标准容器规格」
 
 ```mermaid
 graph LR
@@ -247,7 +247,7 @@ using seq_set_t = std::bitset<LLAMA_MAX_SEQ>;       // 序列集位图（O(1) �
 
 这段代码定义了四个核心类型别名：`pos_set_t` 用 `std::set` 保证序列位置有序唯一；`seq_cpl_t` 用 `std::vector<bool>` 动态适配最大序列数；`idx_vec_t` 存储 token 索引列表；`seq_set_t` 用 `std::bitset` 实现序列归属的位图表示，支持 O(1) 位运算判断序列集重叠，是 `split_equal` 高效去重的关键。
 
-## 15.4 `llama_batch_allocr` 骨架、构造函数与私有状态
+## 16.4 `llama_batch_allocr` 骨架、构造函数与私有状态
 
 ```mermaid
 flowchart TD
@@ -262,7 +262,7 @@ flowchart TD
 
 **`llama_batch_allocr` 是整个批次处理流水线的「调度中枢」**。构造时接收 `n_pos_per_embd`（每个 token/embedding 的位置数量，普通模型为 1，M-RoPE 模型为 3+）。通过环境变量 `LLAMA_BATCH_DEBUG` 控制调试日志详细程度（0/1/2 三档）。内部维护 `seq_pos[s]`（每条序列的位置集合）与 `seq_cpl[s0][s1]`（序列间耦合关系矩阵）。提前为 `LLAMA_MAX_SEQ` 条序列分配好 `seq_pos` 与 `seq_cpl`，避免运行时重复分配。`seq_idx` 初始化为 -1，对应「该序列在 ubatch 中不出现」的语义。**私有状态字段构成完整的「工作台账本」**：`batch`：缓存当前处理的原始批数据（const 引用访问）；`vocab`：仅用于调试的词表指针，供 `ubatch_print` 反查 token 文本；`seq_id_0`：默认单序列 `{0}` 的 `std::array`，自动补全 `n_seq_id` 与 `seq_id` 时使用；`used[]` / `n_used`：拆分阶段的「已消费」账本，分别记录每个 token 是否已被拆分到某个 ubatch；`out_ids`：本批次中需要采样输出的 token 在原 batch 中的索引列表；`debug`：从 `LLAMA_BATCH_DEBUG` 环境变量读取的调试级别（0/1/2）。
 
-### 15.4.1 `llama_batch_allocr::llama_batch_allocr()` 构造函数
+### 16.4.1 `llama_batch_allocr::llama_batch_allocr()` 构造函数
 
 ```mermaid
 flowchart LR
@@ -298,7 +298,7 @@ llama_batch_allocr::llama_batch_allocr(uint32_t n_pos_per_embd) : n_pos_per_embd
 
 这段代码实现了构造函数：读取 `LLAMA_BATCH_DEBUG` 环境变量设置调试级别，预分配 `seq_pos` 与 `seq_cpl` 容器避免运行时扩容，`seq_idx` 初始化为 -1 哨兵值表示序列未出现。
 
-### 15.4.2 `llama_batch_allocr` 私有状态全景
+### 16.4.2 `llama_batch_allocr` 私有状态全景
 
 ```mermaid
 graph TB
@@ -384,7 +384,7 @@ private:
 
 这段代码展示了 `llama_batch_allocr` 的私有状态全貌：缓存原始 batch、词表指针、位置维度、嵌入维度、最大序列数、输出计数、自动补全生成的字段数组、默认序列数组、耦合标志与矩阵、序列位置集合、序列集位图与反向索引、序列映射、拆分阶段的工作台账本（out_ids、n_used、used）以及调试级别。
 
-## 15.5 `llama_batch_allocr::init()` 输入校验阶段
+## 16.5 `llama_batch_allocr::init()` 输入校验阶段
 
 ```mermaid
 flowchart TD
@@ -402,7 +402,7 @@ flowchart TD
 
 **`init()` 是分配器的入口，负责把用户的 `llama_batch` 变成可消费的内部状态**。第一步：硬性校验 `n_tokens > 0`、`n_seq_max <= LLAMA_MAX_SEQ`。逐 token 校验 `token[i]` 是否在词汇表范围内（`vocab.n_tokens()`）。逐 token 逐序列校验 `seq_id[i][s]` 是否在 `[0, n_seq_max)` 范围内。任一校验失败即 `return false`，并打印详细错误位置与值。这一阶段是「零信任」策略：哪怕上层调用方再可信，也必须在分配器侧重新校验。配合 `LLAMA_LOG_ERROR` 输出可定位的诊断信息，方便用户排查批数据问题。
 
-### 15.5.1 `llama_batch_allocr::init()` 硬性校验
+### 16.5.1 `llama_batch_allocr::init()` 硬性校验
 
 ```mermaid
 flowchart TD
@@ -473,7 +473,7 @@ bool llama_batch_allocr::init(
 
 这段代码实现了 `init()` 的校验阶段：先 `clear()` 重置状态，缓存 batch 与 vocab，断言 token 数大于 0，校验 `n_seq_max` 不超上限，逐 token 检查 token ID 是否在词表范围，逐 token 逐序列检查 `seq_id` 是否在合法范围，任一失败即报错返回 false。
 
-## 15.6 `llama_batch_allocr::init()` 字段自动补全阶段
+## 16.6 `llama_batch_allocr::init()` 字段自动补全阶段
 
 ```mermaid
 flowchart TD
@@ -496,7 +496,7 @@ flowchart TD
 
 **`init()` 在校验通过后会自动生成缺失字段**。若 `n_seq_id` 为空：默认每个 token 归属于单序列 `{0}`（`seq_id_0`）。若 `seq_id` 为空：同上，每行指向 `seq_id_0.data()`。若 `pos` 为空：根据 `memory->seq_pos_max(s)` 推断每个序列的起始位置。位置推断逻辑：依据 token 的首个 seq_id 取 `p0[seq_id]`，并对所有关联序列更新 `p0` 为 `pos[i]+1`。若 `logits` 为空：根据 `output_all` 决定是「全部输出」还是「仅最后一个 token 输出」。`output_all=true` 但部分 logits 已被设为 0 时：打印 WARN 并强制覆盖为全输出（embeddings 必需场景）。
 
-### 15.6.1 `llama_batch_allocr::init()` 自动补全
+### 16.6.1 `llama_batch_allocr::init()` 自动补全
 
 ```mermaid
 flowchart TD
@@ -604,7 +604,7 @@ flowchart TD
 
 这段代码实现了字段自动补全：`n_seq_id` 与 `seq_id` 默认指向单序列 `{0}`；`pos` 根据 KV 缓存最大位置续写，并为共享 token 的多序列同步更新起始位置；`logits` 根据 `output_all` 决定全输出或仅最后 token，若用户传了 logits 但要求全输出则强制覆盖并警告。
 
-## 15.7 `llama_batch_allocr::init()` 序列耦合关系统计阶段
+## 16.7 `llama_batch_allocr::init()` 序列耦合关系统计阶段
 
 ```mermaid
 flowchart TD
@@ -621,7 +621,7 @@ flowchart TD
 
 **`init()` 的统计阶段会构建序列间的耦合关系**。`has_cpl` 全局标记：是否有任何序列对存在耦合。`seq_pos[s]`：序列 s 在本批次中出现过的所有位置（用 `std::set` 保证有序且唯一）。`seq_cpl[s0][s1]`：当一个 token 同时归属于 s0、s1 时，标记 s1 耦合到 s0。只需要单向标记 s1→s0，因为后续检查只关心「反向是否一致」。耦合序列必须共享相同的 KV 缓存区间，否则后续 decode 会失败。
 
-### 15.7.1 `llama_batch_allocr::init()` 耦合分析与统计
+### 16.7.1 `llama_batch_allocr::init()` 耦合分析与统计
 
 ```mermaid
 graph LR
@@ -663,7 +663,7 @@ graph LR
 
 这段代码统计输出 token 数，遍历每个 token 的序列列表，记录每个序列出现的位置到 `seq_pos`，并为同一 token 下的多序列建立单向耦合关系 `seq_cpl[s1][s0]=true`，置位 `has_cpl` 全局标志。
 
-## 15.8 `llama_batch_allocr::init()` 序列集位图构建阶段
+## 16.8 `llama_batch_allocr::init()` 序列集位图构建阶段
 
 ```mermaid
 flowchart TD
@@ -681,7 +681,7 @@ flowchart TD
 
 **`seq_set` 与 `seq_set_map` 是按 token 维度组织的高效查找结构**。`seq_set[i]`：用 `std::bitset<LLAMA_MAX_SEQ>` 表示 token i 所属的序列集合。`seq_set_unq`：本批次中所有出现过的序列 ID 的并集。`seq_set_map[bitset]`：每个 bitset 对应的 token 索引列表（用 `unordered_map` 反向索引）。这一设计让 `split_equal` 能 O(1) 判断「两个 token 是否在序列层面有交集」。`seq_idx[s]`：把全局序列 ID 映射为 ubatch 内的紧凑索引，用于 sequence-pooled embeddings 提取。
 
-### 15.8.1 `llama_batch_allocr::init()` 序列集位图与反向索引
+### 16.8.1 `llama_batch_allocr::init()` 序列集位图与反向索引
 
 ```mermaid
 graph TB
@@ -725,7 +725,7 @@ graph TB
 
 这段代码构建序列集位图：为每个 token 生成 `seq_set_t` 位图标记其归属序列，用 `seq_set_map` 将相同序列集的 token 索引归类，最后遍历全局并集位图建立 `seq_idx` 映射，供后续 embeddings 提取使用。
 
-## 15.9 `llama_batch_allocr::init()` 位置连续性校验阶段
+## 16.9 `llama_batch_allocr::init()` 位置连续性校验阶段
 
 ```mermaid
 flowchart TD
@@ -750,7 +750,7 @@ flowchart TD
 
 **普通模型（n_pos_per_embd == 1）要求位置严格连续**。序列 s 在本批次的起始位置必须等于 KV 缓存中已有最大位置 + 1。序列 s 的位置集合大小必须等于 `pos_max - pos_min + 1`（无空洞）。不满足时输出详细错误日志，说明 KV 缓存中的 X 与批次中的 Y 应当满足 Y = X + 1。这一约束确保 decode 阶段不会出现「位置错位」的隐蔽 bug。**M-RoPE 模型（n_pos_per_embd > 1）放宽要求**。文本 token 允许位置「向前跳跃」（non-continuous positions allowed），因为图像 token 的位置会插入中间。embedding 输入允许位置重叠（<= 关系），因为图像 patch 可能共享某些位置。两种场景都会打印清晰的位置关系说明，方便用户理解 RoPE 语义。
 
-### 15.9.1 `llama_batch_allocr::init()` 位置连续性校验实现
+### 16.9.1 `llama_batch_allocr::init()` 位置连续性校验实现
 
 ```mermaid
 flowchart TD
@@ -841,7 +841,7 @@ flowchart TD
 
 这段代码实现了位置连续性校验：M-RoPE 模式下文本 token 要求 KV 缓存末位 X < 批次起始位 Y（允许跳跃），embedding 允许 X <= Y（允许重叠）；普通模式要求严格连续 Y = X + 1 且位置集合无空洞（大小 = max - min + 1），违规时打印详细错误上下文。
 
-## 15.10 `llama_batch_allocr::init()` 耦合与子集一致性校验阶段
+## 16.10 `llama_batch_allocr::init()` 耦合与子集一致性校验阶段
 
 ```mermaid
 flowchart TD
@@ -869,7 +869,7 @@ flowchart TD
 
 **耦合序列的 KV 缓存区间必须完全一致**。若 `seq_cpl[s0][s1]` 为真，则 `memory->seq_pos_min(s0)` 必须等于 `seq_pos_min(s1)`，`memory->seq_pos_max(s0)` 也必须等于 `seq_pos_max(s1)`。不一致时报告「序列 s0 与 s1 已分歧（have diverged）」。**禁止「序列子集分裂」的不一致用法**。通过 `cur_seq_set[seq_id] &= seq_set[i]` 追踪序列 s 在整个批次中的「序列集轨迹」。一旦某个序列的轨迹集变为空，说明它在某些 token 上使用了不一致的序列归属。**禁止序列位置回退**。通过 `cur_seq_pos[seq_id]` 记录序列 s 此前见过的最大位置。若 `batch.pos[i] < cur_seq_pos[seq_id]`，报告「位置递减」并拒绝该批次。
 
-### 15.10.1 `llama_batch_allocr::init()` 耦合与子集校验实现
+### 16.10.1 `llama_batch_allocr::init()` 耦合与子集校验实现
 
 ```mermaid
 graph LR
@@ -947,7 +947,7 @@ graph LR
 
 这段代码实现了三项深度一致性检查：耦合序列的 KV 缓存区间必须完全一致（同 min/max pos）；序列的「序列集轨迹」交集不能为空（禁止子集分裂）；序列位置必须单调非递减（禁止回退）。全部通过后调用 `split_reset()` 进入拆分阶段。
 
-## 15.11 `llama_batch_allocr::get_n_tokens/get_n_outputs/get_n_used/seq_pos_min/seq_pos_max/get_out_ids/split_reset`
+## 16.11 `llama_batch_allocr::get_n_tokens/get_n_outputs/get_n_used/seq_pos_min/seq_pos_max/get_out_ids/split_reset`
 
 ```mermaid
 flowchart TD
@@ -964,7 +964,7 @@ flowchart TD
 
 **`get_n_tokens()` / `get_n_outputs()` / `get_n_used()` 是分配器对外暴露的状态查询接口**。`get_n_tokens()` 返回 batch 中总 token 数（`batch.n_tokens`）。`get_n_outputs()` 返回本 batch 中需要输出的 token 数（`n_outputs`）。`get_n_used()` 返回已被消费（已拆分到某个 ubatch）的 token 计数（`n_used`）。**`get_batch()` 让外部直接访问原始 batch 引用（const），用于进一步检查或调试**。**`seq_pos_min(s)` / `seq_pos_max(s)` 返回序列 s 在本批次中的最小/最大位置**。若序列 s 不在本批次中，返回 -1 哨兵值。实现依赖 `seq_pos[s]` 是 `std::set`，`*begin()` 与 `*rbegin()` 即最小与最大元素。**`get_out_ids()` 返回需要采样输出的 token 在原 batch 中的索引列表（`out_ids`）**。外部按此索引在 logits 中取对应位置的采样结果。**`split_reset()` 是所有拆分方法的起点**。清空 `out_ids`（输出 token 索引列表），重置 `n_used = 0`，重建 `used[]` 数组（每个 token 是否已被消费）。
 
-### 15.11.1 查询接口与 split_reset 实现
+### 16.11.1 查询接口与 split_reset 实现
 
 ```mermaid
 flowchart LR
@@ -1022,7 +1022,7 @@ void llama_batch_allocr::split_reset() {
 
 这段代码实现了状态查询接口：`get_batch` 返回原始 batch 引用，`get_n_tokens/outputs/used` 返回对应计数，`seq_pos_min/max` 利用 `std::set` 有序特性 O(1) 取最值，`get_out_ids` 返回采样索引列表，`split_reset` 清空 out_ids、归零 n_used、重建 used 数组为全 false。
 
-## 15.12 `llama_batch_allocr::ubatch_reserve`
+## 16.12 `llama_batch_allocr::ubatch_reserve`
 
 ```mermaid
 flowchart TD
@@ -1037,7 +1037,7 @@ flowchart TD
 
 **`ubatch_reserve()` 用于在已知形状时直接构造一个空的 ubatch**。调用 `clear()` 与 `split_reset()` 重置所有内部状态。用 `std::make_shared<data_t>()` 创建独立的 data 容器。按 `n_seq_tokens * n_seqs` 计算总 token 数，按 `n_tokens * n_pos_per_embd` 计算位置总数。预填充 `seq_idx[s] = s` 与 `seq_id_unq.push_back(s)`，假设每行对应一条独立序列。返回的 `llama_ubatch` 中 `data` 字段持有 shared_ptr，调用方负责写入实际数据。这一接口是 `split_*` 之外的另一条 ubatch 创建路径，常用于「解码阶段预留空间」的场景。
 
-### 15.12.1 `llama_batch_allocr::ubatch_reserve` 实现
+### 16.12.1 `llama_batch_allocr::ubatch_reserve` 实现
 
 ```mermaid
 graph TB
@@ -1104,7 +1104,7 @@ llama_ubatch llama_batch_allocr::ubatch_reserve(uint32_t n_seq_tokens, uint32_t 
 
 这段代码实现了 `ubatch_reserve`：重置状态，创建 `shared_ptr<data_t>`，按 `n_seq_tokens * n_seqs` 预分配 token/pos/n_seq_id/seq_id/output 数组，预填充 `seq_idx` 与 `seq_id_unq` 假设每行一序列，返回带有数据所有权的 `llama_ubatch`。
 
-## 15.13 `llama_batch_allocr::split_simple`
+## 16.13 `llama_batch_allocr::split_simple`
 
 ```mermaid
 flowchart TD
@@ -1128,7 +1128,7 @@ flowchart TD
 
 **`split_simple()` 是最朴素的拆分策略**。从前往后扫描，跳过已被 `used[]` 标记的 token。找到第一个未使用 token 后开始收集，凑够 `n_ubatch` 个或到达末尾即停。收集过程中即时更新 `used[]` 与 `n_used`。通过 `ubatch_add(idxs, idxs.size(), false)` 生成 ubatch：`n_seqs` 等于 token 数（每个 token 独立成一个序列集），`equal_seqs = false`（序列长度不均）。这种策略不会试图优化序列集合并，适合「不关心 KV 复用、只关心尽快推进」的场景。在 `cur_idx >= used.size()` 时返回空 ubatch，作为「消费完毕」的终止信号。
 
-### 15.13.1 `llama_batch_allocr::split_simple` 实现
+### 16.13.1 `llama_batch_allocr::split_simple` 实现
 
 ```mermaid
 graph LR
@@ -1181,7 +1181,7 @@ llama_ubatch llama_batch_allocr::split_simple(uint32_t n_ubatch) {
 
 这段代码实现了 `split_simple`：跳过已用 token，顺序收集未用 token 直到凑够 `n_ubatch` 或耗尽，即时更新 `used[]` 与 `n_used`，调用 `ubatch_add` 生成 `equal_seqs=false` 的 ubatch（每 token 独立成序列集）。
 
-## 15.14 `llama_batch_allocr::split_equal`
+## 16.14 `llama_batch_allocr::split_equal`
 
 ```mermaid
 flowchart TD
@@ -1222,7 +1222,7 @@ flowchart TD
 
 **`split_equal()` 是 prompt processing 阶段的核心策略**。第一遍扫描：按 token 顺序挑出「序列集互不重叠」的前 n_ubatch 个 token。`sequential=true` 时还要求 seq_id 严格递增，禁用耦合序列（打印 -kvu 提示）。第二遍：以每个序列集为单位，并行推进游标 `cur_idx[s]`。每轮把每个序列集的下一个 token 加入 `idxs_per_seq[s]`，直到任何一个集合耗尽。终止条件：`can_expand = false` 或 `(idxs_per_seq[0].size()+1)*n_seqs > n_ubatch`。把各序列集的索引拼接成单一 `idxs` 列表（保证 batch 内 token 顺序一致）。调用 `ubatch_add(idxs, n_seqs, true)`，`equal_seqs = true` 标记所有序列等长。这种「方阵」布局让 MHA 的 batched matmul 达到最优 GEMM 效率。
 
-### 15.14.1 `llama_batch_allocr::split_equal` 实现
+### 16.14.1 `llama_batch_allocr::split_equal` 实现
 
 ```mermaid
 graph TB
@@ -1319,7 +1319,7 @@ llama_ubatch llama_batch_allocr::split_equal(uint32_t n_ubatch, bool sequential)
 
 这段代码实现了 `split_equal`：第一遍用位图 `&` 操作 O(1) 检测序列集重叠，挑选无重叠序列集；`sequential=true` 额外要求 seq_id 递增并禁用耦合序列；第二遍并行推进各序列集游标，按轮取 token 组装方阵；终止条件为任一序列集耗尽或下一轮超 `n_ubatch`；最后拼接索引调用 `ubatch_add(n_seqs, true)` 生成等长 ubatch。
 
-## 15.15 `llama_batch_allocr::split_seq`
+## 16.15 `llama_batch_allocr::split_seq`
 
 ```mermaid
 flowchart TD
@@ -1350,7 +1350,7 @@ flowchart TD
 
 **`split_seq()` 专为 decode 阶段设计，每次只处理一个序列集**。起始：以第一个未使用 token 的序列集 `cur_seq_set` 为基准。只接受「序列集是 `cur_seq_set` 子集」的 token，避免跨集合串扰。每收满 `n_ubatch` 个 token 就停止，本轮结束。找不到满足子集关系的下一个 token 时也停止（`cur_idx == get_n_tokens()`）。调用 `ubatch_add(idxs, 1, true)`，固定 `n_seqs = 1`、`equal_seqs = true`。这种策略保证 decode 阶段每条序列的 KV 缓存写入互不干扰。是生成循环中「单步推进一条序列」的低开销分单方式。
 
-### 15.15.1 `llama_batch_allocr::split_seq` 实现
+### 16.15.1 `llama_batch_allocr::split_seq` 实现
 
 ```mermaid
 graph LR
@@ -1404,7 +1404,7 @@ llama_ubatch llama_batch_allocr::split_seq(uint32_t n_ubatch) {
 
 这段代码实现了 `split_seq`：以首个未用 token 的序列集为基准，只收集序列集为其子集的 token（位图 `&` 判断子集），凑够 `n_ubatch` 或找不到下一个即停止，返回 `n_seqs=1, equal_seqs=true` 的 ubatch，适合 decode 阶段逐序列推进。
 
-## 15.16 `llama_batch_allocr::ubatch_add`
+## 16.16 `llama_batch_allocr::ubatch_add`
 
 ```mermaid
 flowchart TD
@@ -1432,7 +1432,7 @@ flowchart TD
 
 **`ubatch_add()` 把选中的 token 索引列表转换为完整的 `llama_ubatch`**。申请独立的 `data_t` 容器，按 token 数预分配各字段 vector。token 路径：逐个拷贝 `batch.token[idxs[i]]` 到 `udata->token`。embedding 路径：用 `memcpy` 按 `n_embd` 粒度拷贝到 `udata->embd`。位置处理：M-RoPE 模式下文本 token 广播同一位置到所有 RoPE 段，embedding 则按段拷贝。sequence id 扁平化：所有 `seq_id_data` 连续存储，`seq_id[i]` 通过指针算术指向各段。输出索引：把 `output[i] != 0` 的 token 原始索引压入 `out_ids`，供后续采样阶段取 logits。`seq_id_unq` 仅包含本 ubatch 实际出现的序列 ID（用 `seq_set_unq` 去重）。最终的 `llama_ubatch` 持有 `shared_ptr<data_t>`，确保数据生命周期安全。
 
-### 15.16.1 `llama_batch_allocr::ubatch_add` 实现
+### 16.16.1 `llama_batch_allocr::ubatch_add` 实现
 
 ```mermaid
 graph TB
@@ -1549,7 +1549,7 @@ llama_ubatch llama_batch_allocr::ubatch_add(const std::vector<int32_t> & idxs, u
 
 这段代码实现了 `ubatch_add` 核心内存编排：创建 `shared_ptr<data_t>` 容器，预分配各字段；token 逐个拷贝，embedding 用 `memcpy` 按维度拷贝；位置处理中 M-RoPE 文本 token 广播同一位置到所有段（`src_off=0`），embedding 按段拷贝；序列 ID 扁平化存储到 `seq_id_data`，`seq_id[i]` 通过指针算术指向各段；收集 `output=true` 的 token 索引到 `out_ids`；构建 `seq_idx` 与 `seq_id_unq`；最终 move `udata` 到 `llama_ubatch` 确保所有权安全。
 
-## 15.17 `llama_batch_allocr::ubatch_print`
+## 16.17 `llama_batch_allocr::ubatch_print`
 
 ```mermaid
 flowchart TD
@@ -1568,7 +1568,7 @@ flowchart TD
 
 **`ubatch_print()` 提供两种粒度的可视化**。debug=1：打印 ubatch 的元数据（`equal_seqs`、`n_tokens`、`n_seqs`、`n_seqs_unq`）。格式化输出 `seq_id_unq`（实际序列列表）与 `seq_idx`（可视化槽位映射）。debug=2：额外逐 token 打印 id、文本片段（通过 `vocab.token_to_piece`）、位置、序列归属。用 `seq_id_max` 计算需要展示的列宽，构造序列归属的「位图字符串」（如 `[0.2.1]`）。这一调试通道是排查「为什么 ubatch 行为不符合预期」的关键工具。通过 `LLAMA_BATCH_DEBUG` 环境变量随时启用，无需重新编译。
 
-### 15.17.1 `llama_batch_allocr::ubatch_print` 实现
+### 16.17.1 `llama_batch_allocr::ubatch_print` 实现
 
 ```mermaid
 graph LR
@@ -1658,7 +1658,7 @@ void llama_batch_allocr::ubatch_print(const llama_ubatch & ubatch, int debug) {
 
 这段代码实现了分级调试打印：debug=1 输出元数据、序列列表、槽位映射、指针地址；debug=2 额外逐 token 打印 token ID、文本片段、位置、序列归属位图、输出标志，利用 `vocab->token_to_piece` 反查 token 文本，构造 `[0.2.1]` 形式的序列归属可视化字符串。
 
-## 15.18 `llama_batch_allocr::clear`
+## 16.18 `llama_batch_allocr::clear`
 
 ```mermaid
 flowchart TD
@@ -1674,7 +1674,7 @@ flowchart TD
 
 **`clear()` 在每次 `init()` 开头被调用，确保分配器状态是「纯净」的**。重置 `n_outputs = 0`。用空对象 `batch = {}` 替换原 batch，避免悬空引用。清空所有补全生成的 vector：`pos`、`n_seq_id`、`seq_id`、`seq_id_unq`、`output`。对 `seq_pos` 中的每个 `std::set` 调用 `clear()`（保留容量，避免后续重复分配）。对 `seq_cpl` 中的每行用 `std::fill` 重置为 false（保留二维结构）。清空 `seq_set` 与 `seq_set_map`，并把 `seq_idx` 全部填回 -1。这一方法保证了分配器可被多次复用，避免多次 init 间状态泄漏。
 
-### 15.18.1 `llama_batch_allocr::clear` 实现
+### 16.18.1 `llama_batch_allocr::clear` 实现
 
 ```mermaid
 graph TB
@@ -1726,7 +1726,7 @@ void llama_batch_allocr::clear() {
 
 这段代码实现了 `clear()`：归零计数器、置空 batch、清空补全生成的 vector、清空 `seq_pos` 集合（保留容量）、用 `std::fill` 重置 `seq_cpl` 矩阵（保留二维结构）、清空 `seq_set` 与 `seq_set_map`、将 `seq_idx` 全部填回 -1，确保分配器可复用且无状态泄漏。
 
-## 15.19 `llama_batch_get_one / llama_batch_init / llama_batch_free`
+## 16.19 `llama_batch_get_one / llama_batch_init / llama_batch_free`
 
 ```mermaid
 flowchart TD
@@ -1742,7 +1742,7 @@ flowchart TD
 
 **`llama_batch_get_one()` 用最小代码构造单序列批**。把 token 指针和数量包成 `llama_batch` 结构，其余字段全置 nullptr。`n_seq_id/seq_id/pos/logits` 都为 nullptr，触发分配器的自动补全逻辑。适合「我就一个 prompt，往里塞就行」的简单场景。**`llama_batch_init()` 是 C API 风格的批分配器**。根据 `embd != 0` 选择 token 或 embedding 分配方式。为 `pos/n_seq_id/logits` 各分配 `n_tokens_alloc` 长度。为 `seq_id` 分配「指针数组 + 每行 n_seq_max 个元素」。末尾 `seq_id[n_tokens_alloc] = nullptr` 作为释放时的终止哨兵。**`llama_batch_free()` 对称释放所有 malloc 出来的内存**。通过 `seq_id[i] != nullptr` 哨兵正确释放二维结构。释放顺序与 `init` 分配顺序对应，确保无内存泄漏。
 
-### 15.19.1 `llama_batch_get_one / llama_batch_init / llama_batch_free` 实现
+### 16.19.1 `llama_batch_get_one / llama_batch_init / llama_batch_free` 实现
 
 ```mermaid
 graph LR
@@ -1815,7 +1815,7 @@ void llama_batch_free(struct llama_batch batch) {
 
 这段代码实现了三个 C API：`llama_batch_get_one` 极简构造单序列 batch（其余字段 nullptr 触发自动补全）；`llama_batch_init` 分配 token/embd、pos、n_seq_id、二维 seq_id（含哨兵）、logits；`llama_batch_free` 对称释放，通过 `seq_id[i] != nullptr` 哨兵正确遍历释放二维数组。
 
-## 15.20 设计中的取舍
+## 16.20 设计中的取舍
 
 为什么不用 `std::vector<std::vector<llama_seq_id>>` 存储 `seq_id`？
 
@@ -1833,11 +1833,11 @@ void llama_batch_free(struct llama_batch batch) {
 
 `sequential` 要求序列 ID 严格递增（0,1,2...），但耦合序列在同一 token 上共享位置，天然违反「单 token 单序列」的递增假设。强制 sequential 会破坏耦合序列的 KV 共享语义。提示建议使用 `-kvu` 标志禁用 sequential 模式。
 
-## 15.21 动手练习
+## 16.21 动手练习
 
 为了便于查阅，本节将本章涉及的核心概念及其解释汇总如下表所示。
 
-### 练习 1：追踪一次完整 init 流程
+### 16.21.1 练习 1：追踪一次完整 init 流程
 
 阅读 `src/llama-batch.cpp` 中 `init()` 方法（约 27-431 行），回答以下问题：
 1. 当用户传入一个 `n_seq_id=nullptr` 的 `llama_batch` 时，分配器会如何补全这个字段？补全后的默认值对应什么语义？
@@ -1846,7 +1846,7 @@ void llama_batch_free(struct llama_batch batch) {
 4. 如果普通模型（n_pos_per_embd=1）要求位置连续，但用户传入的序列 0 在本批次包含位置 `{0, 2}`（缺少 1），会触发什么错误？错误信息提示用户违反了哪条规则？
 5. 在 M-RoPE 模型（n_pos_per_embd=3）下，对位置约束有什么放宽？请具体说明 token 路径与 embedding 路径的差异。
 
-### 练习 2：对比三种拆分策略
+### 16.21.2 练习 2：对比三种拆分策略
 
 阅读 `src/llama-batch.cpp` 中 `split_simple`、`split_equal`、`split_seq`（435-572 行），对比它们的拆分行为。假设用户传入以下 batch（n_tokens=6）：
 
@@ -1863,7 +1863,7 @@ pos:  0  1  0  1  0  1
 4. `sequential=true` 时为何会拒绝包含耦合序列的批次？尝试预测错误信息内容。
 5. 在 prompt processing 与 decode 阶段，分别应该优先选哪种拆分策略？为什么？
 
-### 练习 3：阅读 ubatch_add 的内存编排
+### 16.21.3 练习 3：阅读 ubatch_add 的内存编排
 
 阅读 `src/llama-batch.cpp` 中 `ubatch_add()`（623-712 行），重点关注数据拷贝与指针算术，回答：
 1. `udata->seq_id_data` 与 `udata->seq_id[i]` 的关系是什么？为何要使用「扁平化存储 + 指针算术」而不是 `vector<vector<llama_seq_id>>`？
@@ -1872,7 +1872,7 @@ pos:  0  1  0  1  0  1
 4. 为何 `llama_ubatch` 持有 `std::shared_ptr<data_t>`？如果改为裸指针会有什么问题？
 5. 假如 ubatch 中 token i 同时属于序列 {0,2}，则 `seq_id_data` 中依次追加哪两个值？`seq_id[i]` 指向 `seq_id_data` 中的哪个位置？
 
-### 练习 4：通过调试输出定位问题
+### 16.21.4 练习 4：通过调试输出定位问题
 
 使用 `LLAMA_BATCH_DEBUG=2` 环境变量运行一段 llama.cpp 推理代码，使其在 batch 分配器处打印详细日志。
 1. 在日志中找到 `ubatch_print` 输出的「逐 token 行」，尝试根据日志反推出原始 batch 的 `seq_id[i]` 数组结构。
@@ -1881,7 +1881,7 @@ pos:  0  1  0  1  0  1
 4. 故意构造一个「位置回退」的非法 batch（如同一序列 pos 从 5 退到 3），观察分配器拒绝的具体错误信息，并解释每条信息指代的约束。
 5. 修改 `LLAMA_BATCH_DEBUG=0`、`LLAMA_BATCH_DEBUG=1` 两个值，观察日志详细程度的变化，理解三档调试级别各自的诊断价值。
 
-### 练习 5：梳理类型别名与私有状态
+### 16.21.5 练习 5：梳理类型别名与私有状态
 
 阅读 `src/llama-batch.h` 顶部声明的类型别名（pos_set_t / seq_cpl_t / idx_vec_t / seq_set_t）以及 `llama_batch_allocr` 的私有字段，回答：
 1. 这四个类型别名分别解决了什么具体的设计需求？例如 `seq_set_t` 为何选 `std::bitset<LLAMA_MAX_SEQ>` 而非 `std::set<llama_seq_id>` 或 `std::vector<bool>`？
@@ -1890,7 +1890,7 @@ pos:  0  1  0  1  0  1
 4. `seq_cpl` 是 `LLAMA_MAX_SEQ × LLAMA_MAX_SEQ` 的二维结构，构造函数为何要对每一行 `resize` 而不是统一 `resize`？
 5. 假如 LLAMA_MAX_SEQ = 64，`seq_set_t` 占多少字节？这一选择对 `split_equal` 第一遍扫描的性能有什么影响？
 
-## 15.22 本章小结
+## 16.22 本章小结
 
 这一章中我们学习了 llama.cpp 批处理与微批次调度系统的核心实现。首先理解了 `llama_ubatch` 与 `llama_batch` 的语义区别：前者是计算图消费的最小推理单元，后者是用户提交的原始批数据。其次剖析了 `llama_batch_allocr` 作为调度中枢的完整流水线：构造函数预分配容器与读取调试开关，`init()` 经历硬性校验、自动补全、统计分析、一致性检查四大阶段，将不完整的用户输入转化为可消费的内部状态。接着详细对比了三种拆分策略：`split_simple` 贪心顺序取 token，`split_equal` 两遍扫描组装等长方阵（prompt processing 核心），`split_seq` 单序列集子集约束逐序列推进（decode 核心）。然后深入 `ubatch_add` 的内存编排机制：`shared_ptr<data_t>` 管理所有权，`seq_id_data` 扁平化存储配合指针算术实现零开销索引，M-RoPE 位置广播逻辑区分 token 与 embedding 路径。最后介绍了分级调试打印与 C API 便捷接口，以及 `clear()` 保证分配器可复用的状态重置机制。
 

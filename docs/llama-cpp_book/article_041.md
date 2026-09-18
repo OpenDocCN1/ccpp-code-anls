@@ -1,5 +1,5 @@
 
-# 42. 跨网络与专有硬件的「边界扩展」：RPC / VirtGPU / zDNN / ZenDNN —— 从远程快递到专用厨房的算力外包
+# 第41章 跨网络与专有硬件的「边界扩展」：RPC / VirtGPU / zDNN / ZenDNN —— 从远程快递到专用厨房的算力外包
 
 ## 学习目标
 
@@ -15,11 +15,11 @@
 - 理解 ZenDNN 上下文管理与行映射机制：ggml_backend_zendnn_context 的工作缓冲区生命周期与 mmid_row_mapping 的 MoE 行追踪
 - 能阅读并分析四种后端的设备注册、缓冲区类型定义、算子支持检查、图计算入口等关键接口
 
-## 42.1 生活类比
+## 41.1 生活类比
 
 想象 GGML 的四种「边界后端」是四家风格迥异的**跨国物流与加工服务**。RPC 后端 = 顺丰国际快递：把计算任务「打包快递」到远程仓库，对方签收后拆包执行，再把结果寄回来。`serialize_tensor()` 是打包员把货物装入标准集装箱，`set_tensor_hash()` 让之前寄过的大宗货物直接走「电子签收」，不用拆箱检查，`graph_cache` 是老客户复购清单，同样订单直接发货不用重新打包。VirtGPU = 虚拟办公室里的同层协作文档：即使你在子公司的虚拟办公室（Guest），也能通过共享白板（共享内存）直接在母公司（Host）的资源库上操作，就像在同一张桌子上工作。`apir_serialize_graph()` 把工作计划书整理成投屏格式，`virtgpu_shmem_create()` 申请一块共享白板区域，`backend_dispatch_initialize()` 接通母公司内部资源系统，`apir_encoder/apir_decoder` 是双向翻译官，确保 Guest 和 Host 说的「语言」完全一致，`RemotingCodebaseGenerator` 是行政秘书，定期按模板（YAML）自动生成最新通讯录（头文件），确保两个办公室的电话号码完全同步。zDNN 后端 = IBM 专属「矩阵快餐店」：只接受标准盒子（zTensor）装好的食材，只能做特定套餐（MUL_MAT），但出餐速度极快。`ggml_backend_zdnn_buffer_init_tensor()` 把散装食材装进标准盒，`zdnn_transform_ztensor()` 是后厨预处理（切割、腌制），`ggml_zdnn_mul_mat_f()` 按下「矩阵套餐」按钮，NNPA 加速器出餐。ZenDNN 后端 = AMD 厨房专用的「高效炉灶」：专为 AMD CPU 优化，擅长大锅菜（MUL_MAT）和分锅小炒（MUL_MAT_ID MoE）。`ggml_zendnn_matmul()` 调用 ZenDNN 炉灶的标准菜谱，`ggml_zendnn_compute_forward_mul_mat_id()` 把不同顾客的订单按口味分组，分别下锅再合并上菜，`ggml_backend_zendnn_context` 是厨师的工作台，放着随时取用的临时食材（工作缓冲区），`mmid_row_mapping` 是每道菜的分工单，记录这道菜原本属于哪桌客人（专家 ID、批次位置）。四者共同印证一个道理：**不是所有计算都要在本地完成，有时是网络传输更划算，有时是虚拟化穿透更高效，有时是专用硬件更省电，有时是 CPU 优化库更懂你的数据类型。**
 
-## 42.2 源码地图
+## 41.2 源码地图
 
 ```
 ggml/include/ggml-rpc.h
@@ -245,11 +245,11 @@ ggml/src/ggml-zendnn/
         └── ggml_backend_zendnn_reg()                  # 后端注册
 ```
 
-## 42.3 RPC 后端 —— 跨网络的「算力传送门」
+## 41.3 RPC 后端 —— 跨网络的「算力传送门」
 
 RPC 后端把 GGML 计算图通过网络分发到远程服务器执行，让单机算力不足时可以透明地使用远端 GPU 或更大内存的机器。它的核心设计是一个「命令字节 + 长度 + 数据」的统一序列化协议，覆盖缓冲区分配、张量读写、图执行、设备查询等 15 类操作，客户端和服务端通过 HELLO 握手校验协议版本，保证兼容性。
 
-### 42.3.1 `serialize_tensor()`：张量序列化与网络传输格式
+### 41.3.1 `serialize_tensor()`：张量序列化与网络传输格式
 
 源码路径：`ggml/src/ggml-rpc/ggml-rpc.cpp` - `serialize_tensor()`（597-629 行）
 
@@ -318,7 +318,7 @@ graph TD
     L --> M["服务端反序列化重建 ggml_tensor"]
 ```
 
-### 42.3.2 `ggml_backend_rpc_graph_compute()`：图缓存与快进模式
+### 41.3.2 `ggml_backend_rpc_graph_compute()`：图缓存与快进模式
 
 源码路径：`ggml/src/ggml-rpc/ggml-rpc.cpp` - `ggml_backend_rpc_graph_compute()`（880-900 行）
 
@@ -364,7 +364,7 @@ sequenceDiagram
     C->>C: 返回 GGML_STATUS_SUCCESS
 ```
 
-### 42.3.3 `rpc_server::graph_compute()`：服务端图执行与内存管理
+### 41.3.3 `rpc_server::graph_compute()`：服务端图执行与内存管理
 
 源码路径：`ggml/src/ggml-rpc/ggml-rpc.cpp` - `rpc_server::graph_compute()`（554-631 行）
 
@@ -470,11 +470,11 @@ flowchart TD
     L --> M["返回 true"]
 ```
 
-### 42.3.4 RPC Socket 工具函数族：连接、收发与握手
+### 41.3.4 RPC Socket 工具函数族：连接、收发与握手
 
 RPC 后端的稳定运行依赖一套完整的 Socket 工具层，这些函数封装了网络通信的细节，向上提供统一的命令收发接口。
 
-#### 42.3.4.1 `fnv_hash()`：FNV-1a 哈希计算
+#### 41.3.4.1 `fnv_hash()`：FNV-1a 哈希计算
 
 ```cpp
 static uint64_t fnv_hash(const uint8_t * data, size_t len) {
@@ -490,7 +490,7 @@ static uint64_t fnv_hash(const uint8_t * data, size_t len) {
 
 用于大张量（>10MB）的哈希缓存优化，客户端计算 FNV 哈希后发送 `SET_TENSOR_HASH` 查询服务端是否已持有相同数据。
 
-#### 42.3.4.2 `make_socket()` / `set_no_delay()` / `set_reuse_addr()`
+#### 41.3.4.2 `make_socket()` / `set_no_delay()` / `set_reuse_addr()`
 
 ```cpp
 static std::shared_ptr<socket_t> make_socket(sockfd_t fd) {
@@ -513,7 +513,7 @@ static bool set_reuse_addr(sockfd_t sockfd) {
 
 `make_socket` 将文件描述符包装为 `shared_ptr<socket_t>`，析构时自动关闭；`set_no_delay` 禁用 Nagle 算法以降低延迟；`set_reuse_addr` 允许地址重用，避免服务器重启时端口冲突。
 
-#### 42.3.4.3 `socket_connect()` / `socket_accept()` / `create_server_socket()`
+#### 41.3.4.3 `socket_connect()` / `socket_accept()` / `create_server_socket()`
 
 ```cpp
 static std::shared_ptr<socket_t> socket_connect(const char * host, int port) {
@@ -578,7 +578,7 @@ static std::shared_ptr<socket_t> create_server_socket(const char * host, int por
 
 `socket_connect` 创建客户端 TCP 连接，`socket_accept` 接受客户端连接，`create_server_socket` 创建并监听服务器 socket。
 
-#### 42.3.4.4 `send_data()` / `recv_data()`：分块收发（支持 >1GiB）
+#### 41.3.4.4 `send_data()` / `recv_data()`：分块收发（支持 >1GiB）
 
 ```cpp
 static bool send_data(sockfd_t sockfd, const void * data, size_t size) {
@@ -616,7 +616,7 @@ static bool recv_data(sockfd_t sockfd, void * data, size_t size) {
 
 `MAX_CHUNK_SIZE` 定义为 1 GiB，确保单次 `send`/`recv` 调用不会因为缓冲区限制而失败。
 
-#### 42.3.4.5 `send_msg()` / `recv_msg()`：消息封装
+#### 41.3.4.5 `send_msg()` / `recv_msg()`：消息封装
 
 ```cpp
 static bool send_msg(sockfd_t sockfd, const void * msg, size_t msg_size) {
@@ -646,7 +646,7 @@ static bool recv_msg(sockfd_t sockfd, std::vector<uint8_t> & input) {
 
 `send_msg` 先发送消息长度再发送消息体；`recv_msg` 有两个重载，分别用于固定大小消息和动态大小消息（存入 vector）。
 
-#### 42.3.4.6 `parse_endpoint()` / `send_rpc_cmd()` / `check_server_version()`
+#### 41.3.4.6 `parse_endpoint()` / `send_rpc_cmd()` / `check_server_version()`
 
 ```cpp
 static bool parse_endpoint(const std::string & endpoint, std::string & host, int & port) {
@@ -703,7 +703,7 @@ graph LR
     G --> H
 ```
 
-### 42.3.5 `get_socket()`：Socket 连接缓存与版本握手
+### 41.3.5 `get_socket()`：Socket 连接缓存与版本握手
 
 源码路径：`ggml/src/ggml-rpc/ggml-rpc.cpp` - `get_socket()`（538-567 行）
 
@@ -758,7 +758,7 @@ flowchart TD
     K --> L["返回 socket"]
 ```
 
-### 42.3.6 `ggml_backend_rpc_buffer_set_tensor()`：大权重哈希缓存优化
+### 41.3.6 `ggml_backend_rpc_buffer_set_tensor()`：大权重哈希缓存优化
 
 源码路径：`ggml/src/ggml-rpc/ggml-rpc.cpp` - `ggml_backend_rpc_buffer_set_tensor()`（645-669 行）
 
@@ -802,7 +802,7 @@ flowchart TD
     G --> H["完成"]
 ```
 
-### 42.3.7 `ggml_backend_rpc_buffer_type_alloc_buffer()`：远程缓冲区分配
+### 41.3.7 `ggml_backend_rpc_buffer_type_alloc_buffer()`：远程缓冲区分配
 
 源码路径：`ggml/src/ggml-rpc/ggml-rpc.cpp` - `ggml_backend_rpc_buffer_type_alloc_buffer()`（732-749 行）
 
@@ -837,7 +837,7 @@ sequenceDiagram
     C->>C: 创建 ggml_backend_buffer（上下文记录 remote_ptr）
 ```
 
-### 42.3.8 `rpc_serve_client()`：服务端请求循环
+### 41.3.8 `rpc_serve_client()`：服务端请求循环
 
 源码路径：`ggml/src/ggml-rpc/ggml-rpc.cpp` - `rpc_serve_client()`（666-818 行，节选关键分支）
 
@@ -920,7 +920,7 @@ sequenceDiagram
     end
 ```
 
-### 42.3.9 `rpc_server` 类核心成员函数全览
+### 41.3.9 `rpc_server` 类核心成员函数全览
 
 除了正文中已解析的 `graph_compute`、`create_node`、`deserialize_tensor` 外，`rpc_server` 还实现了以下关键成员函数，它们与客户端调用一一对应：
 
@@ -942,7 +942,7 @@ sequenceDiagram
 - **`rpc_server::get_device_memory()`**：通过 `ggml_backend_dev_memory()` 获取空闲和总内存。
 - **`rpc_server::~rpc_server()`**：析构时遍历 `buffers` 集合，逐个释放缓冲区。
 
-### 42.3.10 RPC 客户端-服务端交互时序
+### 41.3.10 RPC 客户端-服务端交互时序
 
 ```mermaid
 sequenceDiagram
@@ -961,7 +961,7 @@ sequenceDiagram
     C->>S: FREE_BUFFER (remote_ptr)
 ```
 
-### 42.3.11 `rpc_server::deserialize_tensor()` 与 `create_node()`：服务端张量重建
+### 41.3.11 `rpc_server::deserialize_tensor()` 与 `create_node()`：服务端张量重建
 
 服务端的张量反序列化与客户端序列化严格对称。`rpc_server::deserialize_tensor()`（234-276 行）从 `rpc_tensor` 结构重建 `ggml_tensor`，额外做了三项安全检查：校验 `type` 是否在 `GGML_TYPE_COUNT` 范围内、检查 `ggml_blck_size()` 是否为零（防止除零）、验证张量数据区域是否完全落在缓冲区边界内。`rpc_server::create_node()`（495-552 行）则递归重建计算图：先用 `tensor_map` 检查是否已创建过该 ID 的节点（避免重复创建），再按 ID 从 `tensor_ptrs` 映射中取出 `rpc_tensor`，反序列化后递归创建所有 `src[i]` 和 `view_src`，最终返回完整的节点指针。这种递归重建保证了计算图的拓扑结构在跨网络传输后完全一致。
 
@@ -977,7 +977,7 @@ flowchart TD
     H --> I["返回 result"]
 ```
 
-### 42.3.12 `ggml_backend_rpc_add_server()`：远程服务器注册
+### 41.3.12 `ggml_backend_rpc_add_server()`：远程服务器注册
 
 源码路径：`ggml/src/ggml-rpc/ggml-rpc.cpp` - `ggml_backend_rpc_add_server()`（1950-2100 行，节选核心逻辑）
 
@@ -1039,11 +1039,11 @@ flowchart TD
     J --> K["返回 reg"]
 ```
 
-## 42.4 VirtGPU API Remoting —— 虚拟化里的「隐形传送带」
+## 41.4 VirtGPU API Remoting —— 虚拟化里的「隐形传送带」
 
 VirtGPU 后端面向虚拟化环境，让 Guest 能够透明地使用 Host 上的真实 GPU 执行 GGML 计算。它通过 virtio-GPU 把后端 API 「远程化」，就像在本地调用一样。核心是前后端分离：前端（Guest）序列化张量和计算图，通过共享内存或临时缓冲区送往 Host，后端反序列化后在真实后端（如 CUDA、Metal）上执行，再把结果编码返回。
 
-### 42.4.1 `apir_serialize_tensor()`：前端张量序列化与句柄转换
+### 41.4.1 `apir_serialize_tensor()`：前端张量序列化与句柄转换
 
 源码路径：`ggml/src/ggml-virtgpu/apir_cs_ggml-rpc-front.cpp` - `apir_serialize_tensor()`（14-53 行）
 
@@ -1098,7 +1098,7 @@ graph LR
     F --> G[共享内存传输]
 ```
 
-### 42.4.2 `apir_deserialize_tensor()`：后端张量反序列化与安全校验
+### 41.4.2 `apir_deserialize_tensor()`：后端张量反序列化与安全校验
 
 源码路径：`ggml/src/ggml-virtgpu/backend/apir_cs_ggml-rpc-back.cpp` - `apir_deserialize_tensor()`（33-62 行）
 
@@ -1150,7 +1150,7 @@ flowchart TD
     J --> K["返回 result"]
 ```
 
-### 42.4.3 `apir_backend_graph_compute()`：共享内存图计算与远程调用
+### 41.4.3 `apir_backend_graph_compute()`：共享内存图计算与远程调用
 
 源码路径：`ggml/src/ggml-virtgpu/virtgpu-forward-backend.cpp` - `apir_backend_graph_compute()`（8-53 行）
 
@@ -1228,7 +1228,7 @@ flowchart TD
     N --> O
 ```
 
-### 42.4.4 VirtGPU 前后端分离架构图
+### 41.4.4 VirtGPU 前后端分离架构图
 
 ```mermaid
 graph LR
@@ -1249,7 +1249,7 @@ graph LR
     H --> D
 ```
 
-### 42.4.5 `RemotingCodebaseGenerator`：代码自动生成
+### 41.4.5 `RemotingCodebaseGenerator`：代码自动生成
 
 源码路径：`ggml/src/ggml-virtgpu/regenerate_remoting.py` - `RemotingCodebaseGenerator.__init__()`（29-45 行）
 
@@ -1290,7 +1290,7 @@ flowchart TD
     J --> K["三份头文件就绪"]
 ```
 
-### 42.4.6 `virtgpu_handshake()`：APIR 协议握手
+### 41.4.6 `virtgpu_handshake()`：APIR 协议握手
 
 源码路径：`ggml/src/ggml-virtgpu/virtgpu.cpp` - `virtgpu_handshake()`（29-82 行）
 
@@ -1354,7 +1354,7 @@ sequenceDiagram
     G->>G: remote_call_finish
 ```
 
-### 42.4.7 `apir_device_get_count()`：设备查询转发
+### 41.4.7 `apir_device_get_count()`：设备查询转发
 
 源码路径：`ggml/src/ggml-virtgpu/virtgpu-forward-device.cpp` - `apir_device_get_count()`（7-23 行）
 
@@ -1389,7 +1389,7 @@ flowchart TD
     G --> H["返回 dev_count"]
 ```
 
-### 42.4.8 `backend_device_get_name()`：后端设备名称获取
+### 41.4.8 `backend_device_get_name()`：后端设备名称获取
 
 源码路径：`ggml/src/ggml-virtgpu/backend/backend-dispatched-device.cpp` - `backend_device_get_name()`（32-43 行）
 
@@ -1421,7 +1421,7 @@ flowchart TD
     G --> H["设备名称字符串"]
 ```
 
-### 42.4.9 `virtgpu_shmem_create()`：共享内存创建
+### 41.4.9 `virtgpu_shmem_create()`：共享内存创建
 
 源码路径：`ggml/src/ggml-virtgpu/virtgpu-shm.cpp` - `virtgpu_shmem_create()`（81-103 行）
 
@@ -1466,7 +1466,7 @@ flowchart TD
     H --> I["返回 0"]
 ```
 
-### 42.4.10 VirtGPU 远程调用的三次握手与命令分发
+### 41.4.10 VirtGPU 远程调用的三次握手与命令分发
 
 VirtGPU 后端的初始化涉及多次跨进程通信：
 
@@ -1492,7 +1492,7 @@ sequenceDiagram
     end
 ```
 
-### 42.4.11 VirtGPU 缓冲区跟踪与安全校验族
+### 41.4.11 VirtGPU 缓冲区跟踪与安全校验族
 
 VirtGPU 后端维护一个全局的 `backend_buffers` 集合，用于跟踪 Host 侧分配的所有缓冲区，防止 Guest 传入伪造指针。这一机制由三个函数协同完成。
 
@@ -1514,7 +1514,7 @@ flowchart TD
     F --> G["Host 正常使用"]
 ```
 
-### 42.4.12 `apir_create_node()` 与 `apir_deserialize_graph()`：图重建的递归引擎
+### 41.4.12 `apir_create_node()` 与 `apir_deserialize_graph()`：图重建的递归引擎
 
 `apir_create_node()`（`apir_cs_ggml-rpc-back.cpp` 64-88 行）是 VirtGPU 后端重建计算图的核心递归函数。它接收一个张量 ID、ggml 上下文、张量指针映射表和已创建张量映射表四个参数，按以下流程工作：首先检查 `tensor_map` 中是否已存在该 ID 的张量（避免重复创建），然后从 `tensor_ptrs` 映射中取出对应的 `apir_rpc_tensor` 并调用 `apir_deserialize_tensor()` 重建张量本体，接着递归创建所有 `src[i]` 和 `view_src`，最终返回完整的张量指针。这种递归策略保证了计算图的有向无环图（DAG）拓扑在反序列化后完全一致。
 
@@ -1537,7 +1537,7 @@ flowchart TD
     M --> N["graph->nodes[i] = node"]
 ```
 
-### 42.4.13 `apir_backend_initialize()` / `apir_backend_dispatcher()` / `apir_backend_deinit()`：后端生命周期
+### 41.4.13 `apir_backend_initialize()` / `apir_backend_dispatcher()` / `apir_backend_deinit()`：后端生命周期
 
 这三个函数构成了 VirtGPU 后端的完整生命周期。`apir_backend_initialize()`（`backend.cpp` 63-112 行）是初始化入口：首先根据环境变量 `APIR_LLAMA_CPP_LOG_TO_FILE` 决定是否开启文件日志，然后从 VirGL 回调接口中获取后端库路径和注册符号名，通过 `dlopen()` 动态加载真实后端库（如 CUDA、Metal 后端），用 `dlsym()` 查找 `ggml_backend_init` 或用户指定的注册函数，最后调用 `backend_dispatch_initialize()` 完成后端注册、设备获取和后端实例创建。若任一环节失败，返回对应的 `ApirLoadLibraryReturnCode` 错误码。
 
@@ -1569,7 +1569,7 @@ flowchart TD
     T --> U["关闭日志文件"]
 ```
 
-### 42.4.14 `backend_dispatch_initialize()`：后端加载初始化
+### 41.4.14 `backend_dispatch_initialize()`：后端加载初始化
 
 源码路径：`ggml/src/ggml-virtgpu/backend/backend-dispatched.cpp` - `backend_dispatch_initialize()`（18-56 行）
 
@@ -1631,7 +1631,7 @@ flowchart TD
     M -- 否 --> O["返回 SUCCESS"]
 ```
 
-### 42.4.15 VirtGPU 编码器/解码器的内存安全机制
+### 41.4.15 VirtGPU 编码器/解码器的内存安全机制
 
 VirtGPU 的 `apir_encoder` 和 `apir_decoder` 提供了内存安全的序列化接口。`apir_encoder` 维护 `cur`、`start`、`end` 三个指针和一个 `fatal` 标志，`apir_encoder_write()` 在写入前会断言剩余空间足够，`apir_encoder_set_fatal()` 用于标记错误状态。`apir_decoder` 同样维护 `cur`、`end` 和 `fatal` 标志，`apir_decoder_peek_internal()` 在读取前检查 `size > (dec->end - dec->cur)`，若越界则设置 `fatal` 标志、清零输出缓冲区并返回 `false`；`apir_decoder_use_inplace()` 用于原地访问，同样会检查越界并返回 `NULL`。`apir_decoder_set_fatal()` 在检测到越界读取或不一致状态时被调用，确保恶意 Guest 构造的畸形数据不会导致 Host 崩溃，而是被安全地拒绝。
 
@@ -1651,11 +1651,11 @@ flowchart TD
     H -- fatal=false --> J["正常执行"]
 ```
 
-## 42.5 zDNN 后端 —— IBM Z 的「矩阵加速器」
+## 41.5 zDNN 后端 —— IBM Z 的「矩阵加速器」
 
 zDNN 后端面向 IBM Z 系列 NNPA 加速器，只接受特定布局的张量，支持 F32/F16/BF16 的矩阵乘法。它不支持的算子会被拒绝，由其他后端处理。其核心是把 ggml 张量转换为 zDNN 的 zTensor 描述符，然后调用 NNPA 硬件的 `zdnn_matmul_transpose_op()` 完成计算。
 
-### 42.5.1 `ggml_zdnn_compute_forward_mul_mat()`：矩阵乘前向计算
+### 41.5.1 `ggml_zdnn_compute_forward_mul_mat()`：矩阵乘前向计算
 
 源码路径：`ggml/src/ggml-zdnn/ggml-zdnn.cpp` - `ggml_zdnn_compute_forward_mul_mat()`（17-29 行）
 
@@ -1685,7 +1685,7 @@ graph TD
     E --> F["结果写入 dst"]
 ```
 
-### 42.5.2 `ggml_backend_zdnn_buffer_init_tensor()`：张量描述符初始化
+### 41.5.2 `ggml_backend_zdnn_buffer_init_tensor()`：张量描述符初始化
 
 源码路径：`ggml/src/ggml-zdnn/ggml-zdnn.cpp` - `ggml_backend_zdnn_buffer_init_tensor()`（232-277 行）
 
@@ -1762,7 +1762,7 @@ graph TD
     N --> O["返回 SUCCESS"]
 ```
 
-### 42.5.3 zDNN 张量转换链路
+### 41.5.3 zDNN 张量转换链路
 
 ```mermaid
 graph TD
@@ -1777,7 +1777,7 @@ graph TD
     F --> G[zdnn_matmul_transpose_op<br/>NNPA 硬件执行]
 ```
 
-### 42.5.4 `ggml_zdnn_supports_op()`：算子支持检查
+### 41.5.4 `ggml_zdnn_supports_op()`：算子支持检查
 
 源码路径：`ggml/src/ggml-zdnn/ggml-zdnn.cpp` - `ggml_zdnn_supports_op()`（81-116 行）
 
@@ -1842,7 +1842,7 @@ flowchart TD
     J -- 否 --> L["返回 false"]
 ```
 
-### 42.5.5 `ggml_zdnn_type_mapping()`：类型映射
+### 41.5.5 `ggml_zdnn_type_mapping()`：类型映射
 
 源码路径：`ggml/src/ggml-zdnn/utils.cpp` - `ggml_zdnn_type_mapping()`（5-18 行）
 
@@ -1881,7 +1881,7 @@ graph LR
     K["其他类型"] --> L["GGML_ABORT"]
 ```
 
-### 42.5.6 `ggml_zdnn_mul_mat_f()`：NNPA 矩阵乘实现
+### 41.5.6 `ggml_zdnn_mul_mat_f()`：NNPA 矩阵乘实现
 
 源码路径：`ggml/src/ggml-zdnn/mmf.cpp` - `ggml_zdnn_mul_mat_f()`（1-65 行）
 
@@ -1961,7 +1961,7 @@ flowchart TD
     F --> G["结果写入 output->data"]
 ```
 
-### 42.5.7 `ggml_zdnn_compute_forward()` 与 `ggml_zdnn_graph_compute()`：算子分发与图遍历
+### 41.5.7 `ggml_zdnn_compute_forward()` 与 `ggml_zdnn_graph_compute()`：算子分发与图遍历
 
 `ggml_zdnn_compute_forward()`（31-48 行）是 zDNN 后端的算子分发入口。它接收后端上下文和目标张量 `dst`，根据 `dst->op` 的值分发到对应的前向计算函数。当前只处理 `GGML_OP_MUL_MAT`，调用 `ggml_zdnn_compute_forward_mul_mat()`；遇到其他操作类型则返回 `false`，由上层调度器转发到其他后端。
 
@@ -1985,7 +1985,7 @@ flowchart TD
     K --> M["返回 SUCCESS"]
 ```
 
-### 42.5.8 zDNN 设备引用计数与注册
+### 41.5.8 zDNN 设备引用计数与注册
 
 zDNN 后端的设备管理采用引用计数机制，与 ZenDNN 的单例初始化形成对比。`ggml_backend_zdnn_device_acq()`（132-146 行）是设备获取函数：首次调用时将 `zdnn_device` 设为 1，通过 `zdnn_is_nnpa_parmblk_fmt_installed()` 检测 NNPA 参数块格式支持情况，调用 `zdnn_get_nnpa_max_dim_idx_size()` 获取最大批次尺寸，然后递增 `zdnn_device_ref_count` 引用计数。`ggml_backend_zdnn_device_rel()`（148-157 行）是设备释放函数：递减引用计数，当计数归零时将 `zdnn_device` 重置为 0，释放 NNPA 设备资源。这种引用计数机制是因为 IBM Z NNPA 加速器是物理硬件，多个上下文可能共享同一设备，需要确保设备在所有使用者释放后才关闭。
 
@@ -2009,11 +2009,11 @@ flowchart TD
     K -- 否 --> M["返回 0"]
 ```
 
-## 42.6 ZenDNN 后端 —— AMD CPU 的「矩阵发动机」
+## 41.6 ZenDNN 后端 —— AMD CPU 的「矩阵发动机」
 
 ZenDNN 后端专为 AMD CPU 优化，主要聚焦 `MUL_MAT` 与 `MUL_MAT_ID`（MoE）两大算子。它通过 ZenDNN 库的 `matmul_direct` 接口直接调用底层优化 kernel，支持 F32 与 BF16 的组合。对于 MoE 场景，它采用「先按专家分组，再按行收集，最后结果散回」的三段式策略，高效处理专家路由计算。
 
-### 42.6.1 `ggml_zendnn_compute_forward_mul_mat_id()`：MoE 分组矩阵乘
+### 41.6.1 `ggml_zendnn_compute_forward_mul_mat_id()`：MoE 分组矩阵乘
 
 源码路径：`ggml/src/ggml-zendnn/ggml-zendnn.cpp` - `ggml_zendnn_compute_forward_mul_mat_id()`（267-379 行）
 
@@ -2106,7 +2106,7 @@ graph TD
     E --> F["输出张量"]
 ```
 
-### 42.6.2 `ggml_backend_zendnn_context`：工作缓冲区管理
+### 41.6.2 `ggml_backend_zendnn_context`：工作缓冲区管理
 
 源码路径：`ggml/src/ggml-zendnn/ggml-zendnn.cpp` - `ggml_backend_zendnn_context`（15-19 行）
 
@@ -2129,7 +2129,7 @@ flowchart TD
     D --> E["work_data 用于类型转换/分组/结果"]
 ```
 
-### 42.6.3 `mmid_row_mapping`：MoE 行映射
+### 41.6.3 `mmid_row_mapping`：MoE 行映射
 
 源码路径：`ggml/src/ggml-zendnn/ggml-zendnn.cpp` - `mmid_row_mapping`（262-265 行）
 
@@ -2152,7 +2152,7 @@ graph LR
     E --> F["scatter 阶段：按映射写回"]
 ```
 
-### 42.6.4 ZenDNN MoE 分组数据流
+### 41.6.4 ZenDNN MoE 分组数据流
 
 ```mermaid
 graph TD
@@ -2163,7 +2163,7 @@ graph TD
     E --> F[输出张量]
 ```
 
-### 42.6.5 `ggml_zendnn_matmul()`：模板化矩阵乘
+### 41.6.5 `ggml_zendnn_matmul()`：模板化矩阵乘
 
 源码路径：`ggml/src/ggml-zendnn/ggml-zendnn.cpp` - `ggml_zendnn_matmul()`（37-66 行）
 
@@ -2213,7 +2213,7 @@ flowchart TD
     G --> H["返回 false"]
 ```
 
-### 42.6.6 `ggml_zendnn_sgemm()`：类型分发
+### 41.6.6 `ggml_zendnn_sgemm()`：类型分发
 
 源码路径：`ggml/src/ggml-zendnn/ggml-zendnn.cpp` - `ggml_zendnn_sgemm()`（68-97 行）
 
@@ -2277,7 +2277,7 @@ flowchart TD
     F -- 否 --> L["返回 false"]
 ```
 
-### 42.6.7 `ggml_backend_zendnn_device_supports_op()`：算子支持检查
+### 41.6.7 `ggml_backend_zendnn_device_supports_op()`：算子支持检查
 
 源码路径：`ggml/src/ggml-zendnn/ggml-zendnn.cpp` - `ggml_backend_zendnn_device_supports_op()`（537-585 行）
 
@@ -2343,7 +2343,7 @@ flowchart TD
     I -- 否 --> E
 ```
 
-### 42.6.8 `ggml_zendnn_compute_forward_mul_mat()`：标准矩阵乘前向
+### 41.6.8 `ggml_zendnn_compute_forward_mul_mat()`：标准矩阵乘前向
 
 `ggml_zendnn_compute_forward_mul_mat()`（100-181 行）是标准 MUL_MAT 算子的前向计算入口。它从目标张量中取出权重和输入，处理输入数据的类型转换（若输入为 FP32 但权重为 BF16，则将输入从 FP32 转换为 BF16 存入工作缓冲区），然后按批次维度循环调用 `ggml_zendnn_sgemm()` 执行矩阵乘法。类型转换使用 `ggml_get_type_traits(vec_dot_type)->from_float_ref()` 获取的向量化转换函数，并通过 OpenMP 并行循环加速。
 
@@ -2361,7 +2361,7 @@ flowchart TD
     I --> J["结果写入 dst"]
 ```
 
-### 42.6.9 ZenDNN 后端生命周期与设备注册
+### 41.6.9 ZenDNN 后端生命周期与设备注册
 
 `ggml_backend_zendnn_init()`（442-451 行）是后端初始化入口。它创建 `ggml_backend_zendnn_context`（含默认线程数和空工作缓冲区），通过 `ggml_backend_zendnn_reg()` 获取注册表并取得第一个设备，构造 `ggml_backend` 对象返回。`ggml_backend_zendnn_free()`（389-393 行）释放后端上下文和后端对象。`ggml_backend_zendnn_graph_compute()`（395-424 行）是图计算入口，遍历所有节点，对 `MUL_MAT` 和 `MUL_MAT_ID` 分别调用对应的前向计算函数，遇到其他操作类型则触发 `GGML_ABORT` 中止程序。
 
@@ -2389,7 +2389,7 @@ flowchart TD
     M --> O
 ```
 
-## 42.7 设计中的取舍
+## 41.7 设计中的取舍
 
 **为什么 RPC 使用 FNV 哈希缓存大权重，而不是每次都完整传输？**
 
@@ -2407,7 +2407,7 @@ zDNN 面向 IBM Z NNPA 加速器，硬件只对矩阵乘法有专用电路。如
 
 在虚拟化环境中，Guest 和 Host 有独立的地址空间，直接传递指针毫无意义。对称的编码器/解码器设计将张量元数据和缓冲区句柄序列化为字节流，通过共享内存传输，Host 侧再重建为本地 gg 对象。这样做的好处是：第一，Guest 无需感知 Host 的内存布局；第二，`apir_decode_ggml_buffer()` 中的句柄校验机制可以防止恶意 Guest 传入伪造指针导致 Host 崩溃；第三，代码生成器维护的协议头文件保证了前端和后端的字段布局始终一致，降低了手工维护成本。
 
-## 42.8 动手练习
+## 41.8 动手练习
 
 - **追踪一次完整的 RPC 图执行**：假设你有一个包含 3 个节点的计算图（MUL → ADD → SILU），需要发送到远程 RPC 后端执行。
   1. 阅读 `ggml_backend_rpc_graph_compute()` 函数（880-900 行），画出客户端的执行流程图，标注 `graph_cache.is_cached()` 的判断分支
@@ -2464,7 +2464,7 @@ zDNN 面向 IBM Z NNPA 加速器，硬件只对矩阵乘法有专用电路。如
   3. 对比 zDNN 的「引用计数设备管理」（`acq/rel`）与 ZenDNN 的「单例初始化」：为什么 IBM NNPA 需要引用计数，而 AMD CPU 优化库不需要？
   4. 思考题：如果让你为某种新的「远程 TPU」设计后端，你会选择 RPC 的「显式服务器」模式，还是 VirtGPU 的「共享内存+前端转发」模式？各有什么权衡？
 
-## 42.9 本章小结
+## 41.9 本章小结
 
 这一章中我们深入剖析了 GGML 四种「边界后端」的设计与实现。首先，RPC 后端通过统一的序列化协议和 graph_cache 快进模式，将计算图透明地分发到远程服务器执行，适合跨主机算力调度。其次，VirtGPU 后端利用 API Remoting 协议和共享内存，在虚拟化环境中实现 Guest → Host 的透明远程调用，通过前后端对称的编码器/解码器设计和代码自动生成机制，保证了协议的安全性和可维护性。接着，zDNN 后端展示了专用硬件加速器的接入方式，通过 zTensor 描述符和 NNPA 硬件接口，为 IBM Z 平台提供极致的矩阵乘性能。最后，ZenDNN 后端针对 AMD CPU 优化，通过模板化矩阵乘和 MoE 三段式分组策略，在 CPU 上实现了高效的专家路由计算。
 

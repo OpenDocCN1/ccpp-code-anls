@@ -1,5 +1,5 @@
 
-# JSON 与 Grammar 转换 —— 驯服模型输出的语法驯兽师
+# 第53章 JSON 与 Grammar 转换 —— 驯服模型输出的语法驯兽师
 
 ## 学习目标
 
@@ -10,7 +10,7 @@
 - 掌握启发式 JSON 修复策略（Healing Marker）的设计思路与边界处理
 - 理解 Schema 信息探测与类型推断的实现机制，包括循环引用安全处理与移动语义设计
 
-## 源码地图
+## 53.1 源码地图
 
 下图是本章涉及的源码文件及其核心组件的地图：
 
@@ -65,7 +65,7 @@ graph TD
     AP --> AZ[llama_sampler_init_llg()]
 ```
 
-## 部分 JSON 解析与修复 —— 残缺输入的"智能创可贴"
+## 53.2 部分 JSON 解析与修复 —— 残缺输入的"智能创可贴"
 
 想象一位智能编辑面对一份被撕掉一半的旅游攻略（部分 JSON）：`json_error_locator` 就像编辑拿着荧光笔一边读一边做笔记（SAX 回调），读到撕破的地方（`parse_error`）就记下位置和最后看到的词；`close_value()` 则像每读完一个完整的句子（值），编辑就把对应的段落标签（键名）从书签堆里拿出来，保持书签堆（栈）永远准确；而 Healing Marker 就像编辑在补写完结尾后，贴上一张便利贴标记“此处之后是推测补全的”，方便读者区分原文与修复内容。
 
@@ -79,9 +79,9 @@ graph TD
 
 修复策略的具体实现包括：尝试补全缺失的闭合括号 `}` 和 `]`；处理键名截断的情况，补全引号和冒号，并使用空字符串作为值；对于数组截断，根据上下文推断是否需要补全数组元素或闭合数组。这些策略共同构成了一个健壮的部分 JSON 修复方案，能够在不丢弃已解析内容的前提下，最大限度地恢复有效的 JSON 数据。
 
-### json_error_locator：SAX 错误定位器
+### 53.2.1 json_error_locator：SAX 错误定位器
 
-### json_error_locator::parse_error()：错误记录与栈标记
+### 53.2.2 json_error_locator::parse_error()：错误记录与栈标记
 
 源码路径：`common/json-partial.cpp` - `json_error_locator.parse_error()`（57-63 行）
 
@@ -98,7 +98,7 @@ bool parse_error(std::size_t position, const std::string & last_token, const jso
 
 这段代码定义了 `parse_error` 方法，它在遇到语法错误时被调用。它记录错误位置（转换为 0-based）、标记错误已发生、保存最后 token 和异常信息，并返回 false 以停止进一步解析。这种设计使得解析器能够在第一个错误处立即停止，避免了后续无效解析的开销。
 
-### json_error_locator::close_value()：栈状态维护
+### 53.2.3 json_error_locator::close_value()：栈状态维护
 
 源码路径：`common/json-partial.cpp` - `json_error_locator.close_value()`（64-68 行）
 
@@ -113,7 +113,7 @@ void close_value() {
 
 这段代码定义了 `close_value` 方法，它负责在值解析完成后弹出栈顶的键元素，确保栈结构的准确性。因为每个键必须有一个值，值解析完成后该键就不再需要保留在栈中。这种栈管理方式为后续的错误恢复提供了关键的上下文信息。
 
-### json_error_locator::null()：null 值回调
+### 53.2.4 json_error_locator::null()：null 值回调
 
 源码路径：`common/json-partial.cpp` - `json_error_locator.null()`（69-73 行）
 
@@ -127,7 +127,7 @@ bool null() override {
 
 这段代码定义了 `null` 回调，处理 JSON null 值，调用 `close_value` 后返回 true 表示继续解析。
 
-### json_error_locator::boolean()：布尔值回调
+### 53.2.5 json_error_locator::boolean()：布尔值回调
 
 源码路径：`common/json-partial.cpp` - `json_error_locator.boolean()`（74-78 行）
 
@@ -141,7 +141,7 @@ bool boolean(bool) override {
 
 这段代码定义了 `boolean` 回调，处理 JSON 布尔值，同样调用 `close_value` 维护栈状态。
 
-### json_error_locator::number_integer()：整数回调
+### 53.2.6 json_error_locator::number_integer()：整数回调
 
 源码路径：`common/json-partial.cpp` - `json_error_locator.number_integer()`（79-83 行）
 
@@ -155,7 +155,7 @@ bool number_integer(number_integer_t) override {
 
 这段代码定义了 `number_integer` 回调，处理有符号整数。
 
-### json_error_locator::number_unsigned()：无符号整数回调
+### 53.2.7 json_error_locator::number_unsigned()：无符号整数回调
 
 源码路径：`common/json-partial.cpp` - `json_error_locator.number_unsigned()`（84-88 行）
 
@@ -169,7 +169,7 @@ bool number_unsigned(number_unsigned_t) override {
 
 这段代码定义了 `number_unsigned` 回调，处理无符号整数。
 
-### json_error_locator::number_float()：浮点数回调
+### 53.2.8 json_error_locator::number_float()：浮点数回调
 
 源码路径：`common/json-partial.cpp` - `json_error_locator.number_float()`（89-93 行）
 
@@ -183,7 +183,7 @@ bool number_float(number_float_t, const string_t &) override {
 
 这段代码定义了 `number_float` 回调，处理浮点数。
 
-### json_error_locator::string()：字符串回调
+### 53.2.9 json_error_locator::string()：字符串回调
 
 源码路径：`common/json-partial.cpp` - `json_error_locator.string()`（94-98 行）
 
@@ -197,7 +197,7 @@ bool string(string_t &) override {
 
 这段代码定义了 `string` 回调，处理字符串值。
 
-### json_error_locator::binary()：二进制回调
+### 53.2.10 json_error_locator::binary()：二进制回调
 
 源码路径：`common/json-partial.cpp` - `json_error_locator.binary()`（99-103 行）
 
@@ -211,7 +211,7 @@ bool binary(binary_t &) override {
 
 这段代码定义了 `binary` 回调，处理二进制值。
 
-### json_error_locator::start_object() 与 end_object()：对象边界
+### 53.2.11 json_error_locator::start_object() 与 end_object()：对象边界
 
 源码路径：`common/json-partial.cpp` - `json_error_locator.start_object()`（104-109 行）、`json_error_locator.end_object()`（110-116 行）
 
@@ -233,7 +233,7 @@ bool end_object() override {
 
 这段代码定义了 `start_object` 和 `end_object` 方法，用于跟踪对象的嵌套。`start_object` 压入一个对象类型元素，`end_object` 弹出对象元素并调用 `close_value`。这种对称的压栈/出栈操作保证了即使在错误发生时，栈状态也能准确反映当前的嵌套层次。
 
-### json_error_locator::key()：键入栈
+### 53.2.12 json_error_locator::key()：键入栈
 
 源码路径：`common/json-partial.cpp` - `json_error_locator.key()`（117-121 行）
 
@@ -247,7 +247,7 @@ bool key(string_t & key) override {
 
 这段代码定义了 `key` 回调，当遇到对象键时，将键类型及其名称压入栈中。键名的保存为后续的修复提供了重要的上下文信息。
 
-### json_error_locator::start_array() 与 end_array()：数组边界
+### 53.2.13 json_error_locator::start_array() 与 end_array()：数组边界
 
 源码路径：`common/json-partial.cpp` - `json_error_locator.start_array()`（122-127 行）、`json_error_locator.end_array()`（128-134 行）
 
@@ -269,9 +269,9 @@ bool end_array() override {
 
 这段代码定义了 `start_array` 和 `end_array` 方法，用于跟踪数组的嵌套。
 
-### common_json_parse：启发式 JSON 修复入口
+### 53.2.14 common_json_parse：启发式 JSON 修复入口
 
-### common_json_parse() [字符串版本]：便捷入口
+### 53.2.15 common_json_parse() [字符串版本]：便捷入口
 
 源码路径：`common/json-partial.cpp` - `common_json_parse()` 字符串版本（24-31 行）
 
@@ -290,7 +290,7 @@ bool common_json_parse(
 
 这段代码定义了字符串版本的 `common_json_parse`，它将输入字符串转换为迭代器范围，并调用核心的迭代器版本，简化了调用过程。
 
-### common_json_parse() [迭代器版本]：核心解析与修复逻辑
+### 53.2.16 common_json_parse() [迭代器版本]：核心解析与修复逻辑
 
 源码路径：`common/json-partial.cpp` - `common_json_parse()` 迭代器版本（33-244 行）
 
@@ -367,7 +367,7 @@ bool common_json_parse(
 
 这段代码定义了迭代器版本的 `common_json_parse`，它是整个修复逻辑的核心。它首先使用 SAX 解析器解析输入，如果遇到错误，则根据栈状态推断缺失的结构：依次补全 `]`、`}`，并在键截断时补全 `: null` 和 `}`。最后插入 `healing_marker` 以便区分原始内容与修复内容，重新解析修复后的字符串。逐行注释帮助读者理解每个步骤的意图，例如在第 4.3 步中，针对键截断的特殊情况进行了特殊处理，确保修复后的 JSON 尽可能接近原始意图。
 
-### JSON 修复流程图
+### 53.2.17 JSON 修复流程图
 
 ```mermaid
 graph TD
@@ -383,7 +383,7 @@ graph TD
     J --> K[输出 common_json]
 ```
 
-## JSON Schema 转 GBNF —— 结构化输出的"语法翻译官"
+## 53.3 JSON Schema 转 GBNF —— 结构化输出的"语法翻译官"
 
 接着，想象把一份菜谱（JSON Schema）翻译成烹饪机器人的指令语言（GBNF）：`common_schema_converter` 就是翻译官，把“需要 3-5 克盐”（整数范围）转换成机器人能懂的语法规则（`build_min_max_int`）；`_resolve_ref()` 处理“参考前文第 3 章的做法”（`$ref` 引用），确保不会陷入无限循环引用；`_build_object_rule()` 把“必须有盐和糖，可选有醋”（required/optional）编排成严格的语法产生式；`_not_strings()` 生成一个“除了这些违禁词之外都可以”的排除规则，像海关的违禁品清单。
 
@@ -399,7 +399,7 @@ graph TD
 
 对外接口方面，`json_schema_to_grammar()` 是核心入口，根据编译选项决定输出 GBNF 或 LLGuidance JSON；`build_grammar()` 采用构建器模式，允许调用方通过回调自定义规则添加逻辑；`common_schema_info` 类提供 Schema 引用解析与类型推断能力。
 
-### common_schema_converter::_add_rule()：规则注册与去重
+### 53.3.1 common_schema_converter::_add_rule()：规则注册与去重
 
 源码路径：`common/json-schema-to-grammar.cpp` - `common_schema_converter::_add_rule()`（294-304 行）
 
@@ -426,7 +426,7 @@ std::string _add_rule(const std::string & name, const std::string & rule) {
 
 这段代码定义了 `_add_rule` 方法，它负责将规则注册到内部映射表中。首先，它会清理规则名中的非法字符，然后检查是否已存在相同规则。如果存在冲突，它会添加数字后缀以确保唯一性。这种设计避免了因命名冲突导致的规则覆盖，保证了 GBNF 语法的完整性。
 
-### common_schema_converter::_generate_union_rule()：联合规则生成
+### 53.3.2 common_schema_converter::_generate_union_rule()：联合规则生成
 
 源码路径：`common/json-schema-to-grammar.cpp` - `common_schema_converter::_generate_union_rule()`（306-312 行）
 
@@ -444,7 +444,7 @@ std::string _generate_union_rule(const std::string & name, const std::vector<jso
 
 这段代码定义了 `_generate_union_rule` 方法，它处理 `oneOf`/`anyOf`，将多个候选 schema 转换为用 `|` 连接的规则，每个候选 schema 通过 `visit` 方法生成对应的规则名。这种转换利用了 GBNF 的选择语法，使得模型在生成时可以在多个候选类型中自由选择。
 
-### common_schema_converter::_visit_pattern()：正则转 GBNF
+### 53.3.3 common_schema_converter::_visit_pattern()：正则转 GBNF
 
 源码路径：`common/json-schema-to-grammar.cpp` - `common_schema_converter::_visit_pattern()`（314-428 行）
 
@@ -465,7 +465,7 @@ std::string _visit_pattern(const std::string & pattern, const std::string & name
 
 这段代码定义了 `_visit_pattern` 方法，它将正则表达式转换为 GBNF 语法。虽然完整实现较为复杂，但其核心思路是递归解析正则表达式的各个元素，并转换为对应的 GBNF 产生式。例如，正则表达式 `[a-z]+` 会被转换为 GBNF 规则 `[a-z]+`，而 `(abc){2,4}` 会被转换为 `(abc){2,4}`。这种转换保留了正则表达式的语义，使得模型能够生成符合模式的字符串。
 
-### common_schema_converter::_not_strings()：排除字符串规则
+### 53.3.4 common_schema_converter::_not_strings()：排除字符串规则
 
 源码路径：`common/json-schema-to-grammar.cpp` - `common_schema_converter::_not_strings()`（430-488 行）
 
@@ -484,7 +484,7 @@ std::string _not_strings(const std::vector<std::string> & strings) {
 
 这段代码定义了 `_not_strings` 方法，它生成一个排除特定字符串的规则，通常用于处理 `enum`/`const` 的否定形式。内部使用 Trie 数据结构优化匹配效率，生成的规则可以高效地排除已知的违禁字符串。
 
-### common_schema_converter::_resolve_ref()：$ref 引用解析
+### 53.3.5 common_schema_converter::_resolve_ref()：$ref 引用解析
 
 源码路径：`common/json-schema-to-grammar.cpp` - `common_schema_converter::_resolve_ref()`（490-502 行）
 
@@ -510,7 +510,7 @@ std::string _resolve_ref(const std::string & ref) {
 
 这段代码定义了 `_resolve_ref` 方法，它处理 JSON Schema 中的 `$ref` 引用。通过 `_refs_being_resolved` 集合来检测循环引用，确保安全解析。例如，当 Schema A 引用 Schema B，而 Schema B 又引用 Schema A 时，第二次遇到 A 时会检测到它已在 `_refs_being_resolved` 中，从而避免无限递归。
 
-### common_schema_converter::_build_object_rule()：对象属性规则构建
+### 53.3.6 common_schema_converter::_build_object_rule()：对象属性规则构建
 
 源码路径：`common/json-schema-to-grammar.cpp` - `common_schema_converter::_build_object_rule()`（504-591 行）
 
@@ -552,7 +552,7 @@ std::string _build_object_rule(
 
 这段代码定义了 `_build_object_rule` 方法，它负责对象属性的编排，区分必填与可选，并处理 `additionalProperties`。通过遍历属性列表，为每个属性生成键值对规则，并用 `?` 表示可选属性。对于 `additionalProperties`，生成一个可以匹配任意额外属性的通配符规则，确保对象的灵活性。
 
-### common_schema_converter::_add_primitive()：基础类型规则注册
+### 53.3.7 common_schema_converter::_add_primitive()：基础类型规则注册
 
 源码路径：`common/json-schema-to-grammar.cpp` - `common_schema_converter::_add_primitive()`（593-607 行）
 
@@ -580,7 +580,7 @@ std::string _add_primitive(const std::string & name, const BuiltinRule & rule) {
 
 这段代码定义了 `_add_primitive` 方法，它注册基础类型规则（如 string、number、integer），并递归处理其依赖的规则，确保所有依赖都被注册。例如，`string` 类型可能依赖于 `string` 基础规则和 `string-format` 规则，该方法会递归地将这些依赖规则一并注册。
 
-### common_schema_converter::_generate_constant_rule()：常量规则生成
+### 53.3.8 common_schema_converter::_generate_constant_rule()：常量规则生成
 
 源码路径：`common/json-schema-to-grammar.cpp` - `common_schema_converter::_generate_constant_rule()`（693-695 行）
 
@@ -593,7 +593,7 @@ static std::string _generate_constant_rule(const json & value) {
 
 这段代码定义了 `_generate_constant_rule` 方法，它将常量值转换为 GBNF 字面量规则，便于精确匹配。例如，常量 `"hello"` 会被转换为 `"hello"` 的字面量规则。
 
-### common_schema_converter::visit()：递归访问入口
+### 53.3.9 common_schema_converter::visit()：递归访问入口
 
 源码路径：`common/json-schema-to-grammar.cpp` - `common_schema_converter::visit()`（697-1006 行）
 
@@ -705,7 +705,7 @@ std::string visit(const json & schema, const std::string & name) {
 
 这段代码展示了 `visit` 方法如何根据 Schema 的类型和约束分发到不同的处理逻辑。例如，对于对象类型，它收集必填属性和属性列表，然后调用 `_build_object_rule` 生成规则；对于数组类型，它处理元组和单一元素模式，并应用重复次数规则。逐行注释帮助读者理解每个分支的决策过程。
 
-### build_min_max_int()：整数范围匹配
+### 53.3.10 build_min_max_int()：整数范围匹配
 
 源码路径：`common/json-schema-to-grammar.cpp` - `build_min_max_int()`（49-167 行）
 
@@ -739,7 +739,7 @@ static void build_min_max_int(int64_t min_value, int64_t max_value, std::strings
 
 这段代码定义了 `build_min_max_int` 函数，用于生成匹配指定范围内整数的 GBNF 规则。它处理正负数、不同位数等情况，确保生成的规则精确匹配范围。例如，对于范围 3-5，会生成规则 `3 | 4 | 5`；对于范围 10-99，会生成 `[1-9][0-9]` 的数字序列规则。
 
-### common_schema_converter::resolve_refs()：递归引用解析
+### 53.3.11 common_schema_converter::resolve_refs()：递归引用解析
 
 源码路径：`common/json-schema-to-grammar.cpp` - `common_schema_converter::resolve_refs()`（617-691 行）
 
@@ -782,7 +782,7 @@ void resolve_refs(json & schema, const std::string & url) {
 
 这段代码定义了 `resolve_refs` 方法，它递归遍历整个 Schema，解析所有 `$ref` 引用。通过 `_refs` 映射存储已注册的引用，并在遇到引用时替换为对应的 Schema，确保引用被正确展开。递归处理保证了嵌套引用的解析。
 
-### common_schema_converter::check_errors()：错误检查
+### 53.3.12 common_schema_converter::check_errors()：错误检查
 
 源码路径：`common/json-schema-to-grammar.cpp` - `common_schema_converter::check_errors()`（1008-1015 行）
 
@@ -800,7 +800,7 @@ void check_errors() {
 
 这段代码定义了 `check_errors` 方法，它检查转换过程中收集的错误和警告，如果有错误则抛出异常，有警告则输出到标准错误。这种机制确保了转换结果的有效性。
 
-### common_schema_converter::format_grammar()：格式化输出
+### 53.3.13 common_schema_converter::format_grammar()：格式化输出
 
 源码路径：`common/json-schema-to-grammar.cpp` - `common_schema_converter::format_grammar()`（1017-1024 行）
 
@@ -817,7 +817,7 @@ std::string format_grammar() {
 
 这段代码定义了 `format_grammar` 方法，它将内部规则表格式化为标准的 GBNF 语法文本，每行一个规则定义。
 
-### build_repetition()：重复规则构建
+### 53.3.14 build_repetition()：重复规则构建
 
 源码路径：`common/json-schema-to-grammar.cpp` - `build_repetition()`（21-46 行）
 
@@ -860,7 +860,7 @@ static std::string build_repetition(const std::string & item_rule, int min_items
 
 这段代码定义了 `build_repetition` 函数，用于构建重复次数规则，支持 `minItems`/`maxItems` 和分隔符。根据不同的重复范围，生成相应的 GBNF 重复语法，如 `item*`、`item?`、`item{2,4}` 等。
 
-### replacePattern()：正则替换工具
+### 53.3.15 replacePattern()：正则替换工具
 
 源码路径：`common/json-schema-to-grammar.cpp` - `replacePattern()`（273-285 行）
 
@@ -889,7 +889,7 @@ static std::string replacePattern(const std::string & input, const std::regex & 
 
 这段代码定义了 `replacePattern` 函数，它使用正则表达式替换字符串，常用于格式化字面量。通过遍历所有匹配项，调用自定义的替换函数，实现了灵活的字符串替换。
 
-### format_literal() / gbnf_format_literal()：字面量格式化
+### 53.3.16 format_literal() / gbnf_format_literal()：字面量格式化
 
 源码路径：`common/json-schema-to-grammar.cpp` - `format_literal()`（287-292 行）、`gbnf_format_literal()`（294 行）
 
@@ -914,7 +914,7 @@ std::string gbnf_format_literal(const std::string & literal) {
 
 这段代码定义了 `format_literal` 和 `gbnf_format_literal`，用于将字符串字面量格式化为 GBNF 兼容格式，转义特殊字符。例如，输入 `hello"world` 会被转换为 `"hello\"world"`，确保在 GBNF 规则中正确表示。
 
-### json_schema_to_grammar()：主入口
+### 53.3.17 json_schema_to_grammar()：主入口
 
 源码路径：`common/json-schema-to-grammar.cpp` - `json_schema_to_grammar()`（1133-1147 行）
 
@@ -938,7 +938,7 @@ std::string json_schema_to_grammar(const json & schema, bool force_gbnf) {
 
 这段代码定义了 `json_schema_to_grammar` 函数，它是转换的主入口，根据编译选项决定输出 GBNF 或 LLGuidance JSON。
 
-### build_grammar()：构建器模式接口
+### 53.3.18 build_grammar()：构建器模式接口
 
 源码路径：`common/json-schema-to-grammar.cpp` - `build_grammar()`（1149-1168 行）
 
@@ -965,7 +965,7 @@ std::string build_grammar(const std::function<void(const common_grammar_builder 
 
 这段代码定义了 `build_grammar` 函数，它采用构建器模式，允许调用方通过回调自定义规则添加逻辑，然后返回格式化后的语法。
 
-### __main__：全局辅助代码
+### 53.3.19 __main__：全局辅助代码
 
 源码路径：`common/json-schema-to-grammar.cpp` - `__main__`（1028-1168 行）
 
@@ -975,7 +975,7 @@ std::string build_grammar(const std::function<void(const common_grammar_builder 
 // 具体代码见上文各函数实现
 ```
 
-### Schema 转换流程图
+### 53.3.20 Schema 转换流程图
 
 ```mermaid
 graph TD
@@ -1005,7 +1005,7 @@ graph TD
     R --> S[GBNF 语法]
 ```
 
-## Schema 信息探测与公共接口 —— 类型推断的"侦探工具"
+## 53.4 Schema 信息探测与公共接口 —— 类型推断的"侦探工具"
 
 最后， imagine 一位图书分类员（`common_schema_info`）快速判断一本书的类型：`resolves_to_string()` 就像翻阅书籍的简介（Schema），判断它是否属于“小说类”（字符串类型），即使书皮上写着“可能是小说也可能是诗集”（oneOf）；`resolve_refs()` 遇到“参见附录 A”时，安全地翻到对应章节，同时用书签记录已翻过的页码防止反复打转。
 
@@ -1013,7 +1013,7 @@ graph TD
 
 在头文件接口设计方面，`common_schema_info` 声明了完整的公共接口，包括构造函数、析构函数、移动语义操作，以及两个核心方法：`resolve_refs` 和 `resolves_to_string`。
 
-### common_schema_info 类声明
+### 53.4.1 common_schema_info 类声明
 
 源码路径：`common/json-schema-to-grammar.h` - `common_schema_info` 类声明（18-27 行）
 
@@ -1035,7 +1035,7 @@ public:
 
 这段代码定义了 `common_schema_info` 类的接口，通过禁用拷贝和提供移动语义，确保资源管理的唯一性和安全性。
 
-### common_schema_info::common_schema_info()：构造函数
+### 53.4.2 common_schema_info::common_schema_info()：构造函数
 
 源码路径：`common/json-schema-to-grammar.cpp` - `common_schema_info::common_schema_info()`（1028-1032 行）
 
@@ -1049,7 +1049,7 @@ common_schema_info::common_schema_info()
 
 这段代码定义了构造函数，它创建一个内部 `common_schema_converter` 实例，用于后续的 Schema 分析。
 
-### common_schema_info::~common_schema_info()：析构函数
+### 53.4.3 common_schema_info::~common_schema_info()：析构函数
 
 源码路径：`common/json-schema-to-grammar.cpp` - `common_schema_info::~common_schema_info()`（1034-1034 行）
 
@@ -1060,7 +1060,7 @@ common_schema_info::~common_schema_info() = default;
 
 这段代码定义了析构函数，使用默认实现来释放内部资源。
 
-### common_schema_info::common_schema_info()：移动构造
+### 53.4.4 common_schema_info::common_schema_info()：移动构造
 
 源码路径：`common/json-schema-to-grammar.cpp` - `common_schema_info::common_schema_info()`（1036-1036 行）
 
@@ -1071,7 +1071,7 @@ common_schema_info::common_schema_info(common_schema_info &&) noexcept = default
 
 这段代码定义了移动构造函数，使用默认实现来转移资源所有权。
 
-### common_schema_info::operator=()：移动赋值
+### 53.4.5 common_schema_info::operator=()：移动赋值
 
 源码路径：`common/json-schema-to-grammar.cpp` - `common_schema_info::operator=`（1037-1037 行）
 
@@ -1082,7 +1082,7 @@ common_schema_info & common_schema_info::operator=(common_schema_info &&) noexce
 
 这段代码定义了移动赋值运算符，使用默认实现来转移资源所有权。
 
-### common_schema_info::resolve_refs()：引用解析
+### 53.4.6 common_schema_info::resolve_refs()：引用解析
 
 源码路径：`common/json-schema-to-grammar.cpp` - `common_schema_info::resolve_refs()`（1039-1041 行）
 
@@ -1095,7 +1095,7 @@ void common_schema_info::resolve_refs(nlohmann::ordered_json & schema) {
 
 这段代码定义了 `resolve_refs` 方法，它调用内部转换器的引用解析功能，展开 Schema 中的所有 `$ref`。
 
-### common_schema_info::resolves_to_string()：字符串类型推断
+### 53.4.7 common_schema_info::resolves_to_string()：字符串类型推断
 
 源码路径：`common/json-schema-to-grammar.cpp` - `common_schema_info::resolves_to_string()`（1043-1131 行）
 
@@ -1187,7 +1187,7 @@ bool common_schema_info::resolves_to_string(const nlohmann::ordered_json & schem
 
 这段代码定义了 `resolves_to_string` 方法，它通过递归检查 Schema 的各种可能形式来判断是否最终解析为字符串类型。它使用 `visited_refs` 集合来避免循环引用导致的无限递归。逐行注释解释了每个分支的判断逻辑，例如在处理 `oneOf`/`anyOf` 时，只要有一个分支是字符串就返回 true；而在处理 `allOf` 时，则要求所有分支都是字符串。
 
-### resolves_to_string 递归推断流程图
+### 53.4.8 resolves_to_string 递归推断流程图
 
 ```mermaid
 graph TD
@@ -1221,7 +1221,7 @@ graph TD
     R -- 否 --> F
 ```
 
-## llguidance 语法约束集成 —— 采样时的"语法警察"
+## 53.5 llguidance 语法约束集成 —— 采样时的"语法警察"
 
 再想象一位严格的交通警察（LLGuidance）站在生成引擎旁边：`llama_sampler_llg_apply()` 就是每当时刻 t 准备生成下一个 token（车辆）时，警察举起牌子（掩码 mask）示意：“只有这些车道（合法 token）可以通行”；`llama_sampler_llg_new_tokenizer()` 则像事先为整个城市的道路（词汇表）绘制详细地图，建立缓存，避免每次重复测量；位掩码技术用 32 位整数的一个 bit 表示一个 token 是否合法，实现 O(1) 复杂度的快速查询。
 
@@ -1237,7 +1237,7 @@ Tokenizer 构建与缓存策略方面，`llama_sampler_llg_new_tokenizer()` 将 
 
 初始化入口 `llama_sampler_init_llg()` 创建采样器实例，并注册到 llama_sampler 接口。它验证词表大小与掩码字节大小的一致性（32 位对齐检查），确保位掩码的正确性。
 
-### llama_sampler_llg 结构
+### 53.5.1 llama_sampler_llg 结构
 
 源码路径：`common/llguidance.cpp` - `llama_sampler_llg` 结构定义
 
@@ -1254,7 +1254,7 @@ struct llama_sampler_llg {
 
 这段代码定义了 llama_sampler_llg 结构，用于存储采样器所需的各种资源。
 
-### llama_sampler_llg_new()：Matcher 创建
+### 53.5.2 llama_sampler_llg_new()：Matcher 创建
 
 源码路径：`common/llguidance.cpp` - `llama_sampler_llg_new()`（17-35 行）
 
@@ -1280,7 +1280,7 @@ static LlgMatcher * llama_sampler_llg_new(LlgTokenizer * tokenizer, const char *
 
 这段代码定义了 `llama_sampler_llg_new` 函数，它创建 matcher，根据环境变量设置日志级别，并在出错时释放资源并返回空指针。
 
-### llama_sampler_llg_name()：名称查询
+### 53.5.3 llama_sampler_llg_name()：名称查询
 
 源码路径：`common/llguidance.cpp` - `llama_sampler_llg_name()`（37-39 行）
 
@@ -1293,7 +1293,7 @@ static const char * llama_sampler_llg_name(const llama_sampler * /*smpl*/) {
 
 这段代码定义了 `llama_sampler_llg_name` 函数，返回采样器名称。
 
-### llama_sampler_llg_accept_impl()：Token 接受
+### 53.5.4 llama_sampler_llg_accept_impl()：Token 接受
 
 源码路径：`common/llguidance.cpp` - `llama_sampler_llg_accept_impl()`（41-47 行）
 
@@ -1309,7 +1309,7 @@ static void llama_sampler_llg_accept_impl(llama_sampler * smpl, llama_token toke
 
 这段代码定义了 `llama_sampler_llg_accept_impl` 函数，当 token 被采样后，调用此函数通知 matcher 消费 token，以推进语法状态。
 
-### llama_sampler_llg_apply()：掩码应用与 logit 修正
+### 53.5.5 llama_sampler_llg_apply()：掩码应用与 logit 修正
 
 源码路径：`common/llguidance.cpp` - `llama_sampler_llg_apply()`（49-73 行）
 
@@ -1341,7 +1341,7 @@ static void llama_sampler_llg_apply(llama_sampler * smpl, llama_token_data_array
 
 这段代码定义了 `llama_sampler_llg_apply` 函数，它是语法约束的核心。它通过位掩码快速判断每个候选 token 是否合法，并将非法 token 的logit 设为负无穷，从而在采样时将其排除。
 
-### llama_sampler_llg_reset()：状态重置
+### 53.5.6 llama_sampler_llg_reset()：状态重置
 
 源码路径：`common/llguidance.cpp` - `llama_sampler_llg_reset()`（75-81 行）
 
@@ -1357,7 +1357,7 @@ static void llama_sampler_llg_reset(llama_sampler * smpl) {
 
 这段代码定义了 `llama_sampler_llg_reset` 函数，用于重置 matcher 状态，通常在新生成会话开始时调用。
 
-### llama_sampler_llg_clone()：深拷贝
+### 53.5.7 llama_sampler_llg_clone()：深拷贝
 
 源码路径：`common/llguidance.cpp` - `llama_sampler_llg_clone()`（83-101 行）
 
@@ -1381,7 +1381,7 @@ static llama_sampler * llama_sampler_llg_clone(const llama_sampler * smpl) {
 
 这段代码定义了 `llama_sampler_llg_clone` 函数，它深拷贝采样器状态，包括 grammar 和 tokenizer，以便在多线程采样时保持状态独立。
 
-### llama_sampler_llg_free()：资源释放
+### 53.5.8 llama_sampler_llg_free()：资源释放
 
 源码路径：`common/llguidance.cpp` - `llama_sampler_llg_free()`（103-113 行）
 
@@ -1399,7 +1399,7 @@ static void llama_sampler_llg_free(llama_sampler * smpl) {
 
 这段代码定义了 `llama_sampler_llg_free` 函数，释放采样器占用的所有资源。
 
-### llama_sampler_llg_tokenize_fn()：Tokenizer 回调
+### 53.5.9 llama_sampler_llg_tokenize_fn()：Tokenizer 回调
 
 源码路径：`common/llguidance.cpp` - `llama_sampler_llg_tokenize_fn()`（128-145 行）
 
@@ -1423,7 +1423,7 @@ static size_t llama_sampler_llg_tokenize_fn(const void * user_data, const uint8_
 
 这段代码定义了 `llama_sampler_llg_tokenize_fn` 函数，它是 tokenizer 的回调，负责将字节序列转换为 token 序列。
 
-### llama_sampler_llg_new_tokenizer()：Tokenizer 构建与缓存
+### 53.5.10 llama_sampler_llg_new_tokenizer()：Tokenizer 构建与缓存
 
 源码路径：`common/llguidance.cpp` - `llama_sampler_llg_new_tokenizer()`（147-220 行）
 
@@ -1504,7 +1504,7 @@ static LlgTokenizer * llama_sampler_llg_new_tokenizer(const llama_vocab * vocab)
 
 这段代码定义了 `llama_sampler_llg_new_tokenizer` 函数，它负责将 llama.cpp 的词表转换为 LLGuidance 可用的 tokenizer。通过预计算所有 token 的字节表示，它避免了运行时重复转换，并使用静态缓存机制，当同一个词表再次使用时直接复用，显著提升了性能。逐行注释解释了缓存策略、内存管理和错误处理等关键步骤。
 
-### llama_sampler_init_llg()：初始化入口
+### 53.5.11 llama_sampler_init_llg()：初始化入口
 
 源码路径：`common/llguidance.cpp` - `llama_sampler_init_llg()`（222-257 行）
 
@@ -1546,7 +1546,7 @@ llama_sampler * llama_sampler_init_llg(const llama_vocab * vocab, const char * g
 
 这段代码定义了 `llama_sampler_init_llg` 初始化函数，它创建 `llama_sampler_llg` 上下文，并根据是否提供语法参数来创建 tokenizer 和 matcher。最后，它验证词表大小与掩码字节大小的一致性，确保位掩码的正确对齐。
 
-### llama_sampler_init_llg()（降级实现）
+### 53.5.12 llama_sampler_init_llg()（降级实现）
 
 源码路径：`common/llguidance.cpp` - `llama_sampler_init_llg()` 降级实现（261-264 行）
 
@@ -1560,7 +1560,7 @@ llama_sampler * llama_sampler_init_llg(const llama_vocab *, const char *, const 
 
 这段代码定义了未启用 LLGuidance 时的降级实现，仅输出警告并返回空指针。
 
-### LLGuidance tokenizer 构建/缓存流程图
+### 53.5.13 LLGuidance tokenizer 构建/缓存流程图
 
 ```mermaid
 graph TD
@@ -1575,7 +1575,7 @@ graph TD
     I --> J[返回克隆的 tokenizer]
 ```
 
-### 采样器 apply 掩码时序图
+### 53.5.14 采样器 apply 掩码时序图
 
 ```mermaid
 sequenceDiagram
@@ -1596,7 +1596,7 @@ sequenceDiagram
     L-->>S: 返回，采样器继续
 ```
 
-## 设计中的取舍
+## 53.6 设计中的取舍
 
 为什么使用 SAX 解析器而不是 DOM 解析器进行 JSON 修复？SAX 解析器采用事件驱动的方式，可以在解析过程中实时检测错误并维护栈状态，非常适合流式场景下的部分 JSON 修复。相比之下，DOM 解析器需要构建完整的内存树，对于截断的 JSON 无法直接处理，且内存开销较大。因此，使用 SAX 解析器可以在遇到第一个错误时立即停止，并利用栈状态推断缺失结构，实现轻量级的修复。
 
@@ -1606,7 +1606,7 @@ sequenceDiagram
 
 为什么采用 Pimpl 模式封装 common_schema_info？Pimpl 模式将实现细节隐藏在指针后面，从而将编译依赖从头文件转移到实现文件。这样可以在不改变头文件的情况下修改实现，提高 ABI 的兼容性，减少不必要的重新编译。此外，它还可以延迟初始化资源，提高启动性能。
 
-## 动手练习
+## 53.7 动手练习
 
 - 实现 JSON 修复的边界条件测试
   - 基于 json-partial.cpp 中的 common_json_parse 实现，设计测试用例覆盖以下场景：
@@ -1662,7 +1662,7 @@ sequenceDiagram
     - 如何避免钩子函数导致的性能下降？
     - 是否可以在不修改 common_schema_converter 源码的情况下通过继承或组合实现该功能？
 
-## 本章小结
+## 53.8 本章小结
 
 本章中，我们深入探讨了 llama.cpp 中 JSON 处理与语法约束的相关机制。首先，我们学习了部分 JSON 的解析与修复，通过 json_error_locator 和 common_json_parse 实现了对截断 JSON 的智能补全。其次，我们掌握了 JSON Schema 到 GBNF 的转换原理，包括 common_schema_converter 的核心方法和各种复杂特性的处理。接着，我们了解了 Schema 信息探测与类型推断的 common_schema_info 类，以及它如何安全地解析引用和推断类型。最后，我们研究了 LLGuidance 语法约束引擎的集成方式，重点分析了掩码计算、tokenizer 构建和采样器生命周期管理。通过本章的学习，你将能够在 llama.cpp 中实现结构化的可控文本生成，并处理流式场景下的 JSON 修复问题。
 

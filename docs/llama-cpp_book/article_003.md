@@ -1,6 +1,6 @@
 
 
-# 第4章 智能工厂的八条专用产线：主流模型家族转换逻辑深度解析
+# 第3章 智能工厂的八条专用产线：主流模型家族转换逻辑深度解析
 
 ## 学习目标
 
@@ -12,13 +12,13 @@
 - 理解 **BERT / DistilBert** 编码器模型的池化头处理、位置嵌入截断与分类头丢弃策略
 - 熟悉 **ModelBase / TextModel** 基础设施的 NVFP4 量化流式生成、张量命名规范化、词表加载兜底链路
 
-## 4.1 生活类比：智能工厂的「八条专用产线」
+## 3.1 生活类比：智能工厂的「八条专用产线」
 
 把 `convert_hf_to_gguf.py` 想象成一座**智能转换工厂**，原始 HF 权重是「杂乱无章的原材料堆」，GGUF 文件是「标准化集装箱」。工厂里有 **八条专用产线**，每条产线对应一个模型家族。原材料（HF 权重）先经过**中央调度中心（ModelBase/TextModel）**，完成去前缀、层索引标准化、归一化层统一、注意力投影命名统一、FFN 命名统一这五道「预处理工序」，随后根据模型架构标签被分发到对应产线。1 号产线（LLaMA/LlamaMoE）专注 RoPE 缩放因子写入、专家权重合并与 SPM/BPE 双轨词表；2 号产线分两条分流：GPT-NeoX 走「拼合后再 permute」，Falcon 走「拆分后各自 permute」；3 号产线（MPT/Orion/StableLM）处理 ALiBi 无位置嵌入、attn_qkv 融合与词表 fallback；4 号产线（Falcon/StarCoder/Baichuan/Xverse）判断 multi_query/grouped_query、显式写入 head_dim、处理无偏置线性层；5 号产线（Qwen2/Qwen2MoE）合并 qkv_bias、重组 MoE 专家权重、直写 TikToken 词表；6 号产线（Deepseek V2）攻克 MLA 核心：将 W_DKV 拆解为 k_proj/v_proj/kv_a_proj_with_mqa，处理 rope_scaling 三段式；7 号产线（Mamba/Mamba2）重组 SSM 参数：dt_proj 仿射变换、A_log 指数化、D 广播、conv1d 权重翻转；8 号产线（BERT/DistilBert）丢弃 pooler/classifier、截断 position_embeddings、单独导出 [CLS] 池化头。**调度中心（ModelBase/TextModel）** 统一负责 NVFP4 超级块流式生成（`dequant_model` 分派）、张量命名规范化（`_regex_*` 替换链）、量化类型决策（`ftype` 映射）、词表加载兜底链（SPM → tokenizer.json → HuggingFace tokenizer）。
 
 ---
 
-## 4.2 源码地图（第 2409-4964 行）
+## 3.2 源码地图（第 2409-4964 行）
 
 ```
 convert_hf_to_gguf.py (L2409-L4964)
@@ -82,9 +82,9 @@ convert_hf_to_gguf.py (L2409-L4964)
 
 ---
 
-## 4.3 中央调度中心：ModelBase / TextModel 基础设施
+## 3.3 中央调度中心：ModelBase / TextModel 基础设施
 
-### 4.3.1 ModelBase.__init__：量化配置与 NVFP4 分派准备 —— 工厂「底盘搭建仪式」
+### 3.3.1 ModelBase.__init__：量化配置与 NVFP4 分派准备 —— 工厂「底盘搭建仪式」
 
 **源码路径**：`convert_hf_to_gguf.py` - `ModelBase.__init__`（第 2409-2460 行）
 
@@ -124,7 +124,7 @@ flowchart TD
     C1 & C2 & C3 & C4 & C5 & C6 --> D[产线就绪]
 ```
 
-### 4.3.2 ModelBase.dequant_model：预量化模型分派入口 —— 「净化车间」分拣台
+### 3.3.2 ModelBase.dequant_model：预量化模型分派入口 —— 「净化车间」分拣台
 
 **源码路径**：`convert_hf_to_gguf.py` - `ModelBase.dequant_model`（第 2462-2520 行）
 
@@ -164,7 +164,7 @@ flowchart TD
     C & D & E & F --> G[fp16/bf16 统一张量字典]
 ```
 
-### 4.3.3 ModelBase._regex_*：张量名规范化流水线 —— 「重命名五道关卡」
+### 3.3.3 ModelBase._regex_*：张量名规范化流水线 —— 「重命名五道关卡」
 
 **源码路径**：`convert_hf_to_gguf.py` - `ModelBase._regex_*`（第 2522-2580 行）
 
@@ -233,7 +233,7 @@ flowchart LR
     J --> K[最终 GGUF 名称\nblk.0.attn_q.weight]
 ```
 
-### 4.3.4 TextModel.set_vocab：词表加载「三级跳」兜底链 —— 「兼容性急救包」
+### 3.3.4 TextModel.set_vocab：词表加载「三级跳」兜底链 —— 「兼容性急救包」
 
 **源码路径**：`convert_hf_to_gguf.py` - `TextModel.set_vocab`（第 2750-2880 行）
 
@@ -299,9 +299,9 @@ sequenceDiagram
 
 ---
 
-## 4.4 1 号产线：LlamaModel —— RoPE 缩放与 MoE 专家合并
+## 3.4 1 号产线：LlamaModel —— RoPE 缩放与 MoE 专家合并
 
-### 4.4.1 LlamaModel.set_gguf_parameters：RoPE 缩放因子写入与专家数注册 —— 「元数据护照办理处」
+### 3.4.1 LlamaModel.set_gguf_parameters：RoPE 缩放因子写入与专家数注册 —— 「元数据护照办理处」
 
 **源码路径**：`convert_hf_to_gguf.py` - `LlamaModel.set_gguf_parameters`（第 2950-3060 行）
 
@@ -353,7 +353,7 @@ flowchart TD
     C & G & H & J & K --> L[完成]
 ```
 
-### 4.4.2 LlamaModel.modify_tensors：MoE 专家权重收集与缓存 —— 「散装零件归类入仓」
+### 3.4.2 LlamaModel.modify_tensors：MoE 专家权重收集与缓存 —— 「散装零件归类入仓」
 
 **源码路径**：`convert_hf_to_gguf.py` - `LlamaModel.modify_tensors`（第 3062-3160 行）
 
@@ -391,7 +391,7 @@ flowchart TD
     D --> E[writer.add_tensor\nblk.L.ffn_gate_exps.weight\nblk.L.ffn_up_exps.weight\nblk.L.ffn_down_exps.weight]
 ```
 
-### 4.4.3 LlamaModel.prepare_tensors：专家张量合并落盘与校验 —— 「装箱封箱质检员」
+### 3.4.3 LlamaModel.prepare_tensors：专家张量合并落盘与校验 —— 「装箱封箱质检员」
 
 **源码路径**：`convert_hf_to_gguf.py` - `LlamaModel.prepare_tensors`（第 3162-3220 行）
 
@@ -426,9 +426,9 @@ flowchart TD
 
 ---
 
-## 4.5 2 号产线：GPTNeoXModel / FalconModel —— QKV 重排两大流派
+## 3.5 2 号产线：GPTNeoXModel / FalconModel —— QKV 重排两大流派
 
-### 4.5.1 GPTNeoXModel.set_gguf_parameters：MHA 头数注册 —— 「标准身份证登记」
+### 3.5.1 GPTNeoXModel.set_gguf_parameters：MHA 头数注册 —— 「标准身份证登记」
 
 **源码路径**：`convert_hf_to_gguf.py` - `GPTNeoXModel.set_gguf_parameters`（第 3230-3260 行）
 
@@ -442,7 +442,7 @@ class GPTNeoXModel(TextModel):
 
 **代码解释**：GPT-NeoX 采用标准多头注意力（MHA），键值头数 `n_head_kv` 等于查询头数 `n_head`，直接写入 GGUF 键 `n_head_kv`。
 
-### 4.5.2 GPTNeoXModel.modify_tensors：QKV 拼合→Permute→分头（MHA 流派） —— 「先揉成团再切块」
+### 3.5.2 GPTNeoXModel.modify_tensors：QKV 拼合→Permute→分头（MHA 流派） —— 「先揉成团再切块」
 
 **源码路径**：`convert_hf_to_gguf.py` - `GPTNeoXModel.modify_tensors`（第 3260-3330 行）
 
@@ -495,7 +495,7 @@ flowchart TD
     E --> F[yield attn_q/attn_k/attn_v]
 ```
 
-### 4.5.3 FalconModel.set_gguf_parameters：MQA/GQA 关键参数注册 —— 「非标规格申报台」
+### 3.5.3 FalconModel.set_gguf_parameters：MQA/GQA 关键参数注册 —— 「非标规格申报台」
 
 **源码路径**：`convert_hf_to_gguf.py` - `FalconModel.set_gguf_parameters`（第 3380-3420 行）
 
@@ -515,7 +515,7 @@ class FalconModel(TextModel):
 
 **代码解释**：Falcon 支持 MQA（`n_head_kv=1`）与 GQA（`n_head_kv < n_head`），且 `head_dim` 可独立配置，三大关键参数均显式写入 GGUF，供运行时正确分配 KV Cache。
 
-### 4.5.4 FalconModel.modify_tensors：QKV 拆分→各自 Permute（MQA/GQA 流派） —— 「先切块再分别整形」
+### 3.5.4 FalconModel.modify_tensors：QKV 拆分→各自 Permute（MQA/GQA 流派） —— 「先切块再分别整形」
 
 **源码路径**：`convert_hf_to_gguf.py` - `FalconModel.modify_tensors`（第 3420-3490 行）
 
@@ -574,9 +574,9 @@ class FalconModel(TextModel):
 
 ---
 
-## 4.6 3/4 号产线：MPTModel / BaichuanModel —— ALiBi 与无偏置、词表 Fallback
+## 3.6 3/4 号产线：MPTModel / BaichuanModel —— ALiBi 与无偏置、词表 Fallback
 
-### 4.6.1 MPTModel.set_gguf_parameters：ALiBi 无 RoPE、写入 `alibi_bias_max` —— 「无位置编码的相对偏置单」
+### 3.6.1 MPTModel.set_gguf_parameters：ALiBi 无 RoPE、写入 `alibi_bias_max` —— 「无位置编码的相对偏置单」
 
 **源码路径**：`convert_hf_to_gguf.py` - `MPTModel.set_gguf_parameters`（第 3530-3580 行）
 
@@ -594,7 +594,7 @@ class MPTModel(TextModel):
 
 **代码解释**：MPT 架构摒弃 RoPE，改用 ALiBi 相对位置偏置。仅需写入 `alibi_bias_max`（最大斜率）与 `no_pos_emb=True` 标记，运行时据此生成偏置矩阵。注意力投影在 HF 中融合为 `Wqkv`，经 `_regex_3_attn` 统一重命名为 `attn_qkv`。
 
-### 4.6.2 MPTModel.set_vocab：词表 Fallback 实战（SPM → JSON → HF） —— 「被迫走兜底的兼容者」
+### 3.6.2 MPTModel.set_vocab：词表 Fallback 实战（SPM → JSON → HF） —— 「被迫走兜底的兼容者」
 
 **源码路径**：`convert_hf_to_gguf.py` - `MPTModel.set_vocab`（第 3582-3620 行）
 
@@ -616,7 +616,7 @@ class MPTModel(TextModel):
 
 **代码解释**：MPT 通常不提供 `tokenizer.model`，直接跳过 SPM 尝试，优先解析 `tokenizer.json`，最终兜底到 HF `AutoTokenizer`（GPT-2 兼容模式）。体现了「三级跳」兜底链的灵活性。
 
-### 4.6.3 BaichuanModel.set_gguf_parameters：显式头维度与无 Bias 标记 —— 「无偏置线性层的标尺」
+### 3.6.3 BaichuanModel.set_gguf_parameters：显式头维度与无 Bias 标记 —— 「无偏置线性层的标尺」
 
 **源码路径**：`convert_hf_to_gguf.py` - `BaichuanModel.set_gguf_parameters`（第 3650-3680 行）
 
@@ -633,7 +633,7 @@ class BaichuanModel(TextModel):
 
 **代码解释**：Baichuan 1/2 使用 `W_pack` 融合 QKV，且所有 Linear 层无 bias。显式写入 `head_dim` 与 `no_bias=True`，供运行时正确解析。
 
-### 4.6.4 BaichuanModel.modify_tensors：W_pack 拆分与无 Bias 处理 —— 「融合权重拆解器」
+### 3.6.4 BaichuanModel.modify_tensors：W_pack 拆分与无 Bias 处理 —— 「融合权重拆解器」
 
 **源码路径**：`convert_hf_to_gguf.py` - `BaichuanModel.modify_tensors`（第 3680-3720 行）
 
@@ -662,9 +662,9 @@ class BaichuanModel(TextModel):
 
 ---
 
-## 4.7 5 号产线：Qwen2Model —— QKV Bias 合并与 MoE 专家重组
+## 3.7 5 号产线：Qwen2Model —— QKV Bias 合并与 MoE 专家重组
 
-### 4.7.1 Qwen2Model.set_gguf_parameters：QKV Bias 标记与 MoE 专家数 —— 「带偏置的专家团」
+### 3.7.1 Qwen2Model.set_gguf_parameters：QKV Bias 标记与 MoE 专家数 —— 「带偏置的专家团」
 
 **源码路径**：`convert_hf_to_gguf.py` - `Qwen2Model.set_gguf_parameters`（第 3750-3800 行）
 
@@ -690,7 +690,7 @@ class Qwen2Model(TextModel):
 
 **代码解释**：Qwen2 引入 `qkv_bias`，写入 `HAS_QKV_BIAS=True`。MoE 变体写入专家总数与每 token 激活专家数。RoPE 缩放支持 Yarn/LongRoPE 三段式。
 
-### 4.7.2 Qwen2Model.modify_tensors：QKV Bias 合并与 MoE 专家收集 —— 「三把钥匙合一把」
+### 3.7.2 Qwen2Model.modify_tensors：QKV Bias 合并与 MoE 专家收集 —— 「三把钥匙合一把」
 
 **源码路径**：`convert_hf_to_gguf.py` - `Qwen2Model.modify_tensors`（第 3802-3870 行）
 
@@ -720,7 +720,7 @@ class Qwen2Model(TextModel):
 
 **代码解释**：Qwen2 的 Q/K/V bias 分散在三个投影层，需在转换期合并为单一 `attn_qkv.bias`。利用 `_qkv_bias_cache` 字典按层暂存，集齐三者后 `torch.cat` 合并。MoE 专家权重收集逻辑与 LLaMA 同构，延迟到 `prepare_tensors` 合并。
 
-### 4.7.3 Qwen2Model.set_vocab：TikToken 词表直写 merges —— 「BPE 合并表直通车」
+### 3.7.3 Qwen2Model.set_vocab：TikToken 词表直写 merges —— 「BPE 合并表直通车」
 
 **源码路径**：`convert_hf_to_gguf.py` - `Qwen2Model.set_vocab`（第 3850-3880 行）
 
@@ -743,9 +743,9 @@ class Qwen2Model(TextModel):
 
 ---
 
-## 4.8 6 号产线：DeepseekV2Model —— MLA 多头潜在注意力核心拆解
+## 3.8 6 号产线：DeepseekV2Model —— MLA 多头潜在注意力核心拆解
 
-### 4.8.1 DeepseekV2Model.__init__：解析 MLA 专用超参 —— 「低秩投影蓝图解读」
+### 3.8.1 DeepseekV2Model.__init__：解析 MLA 专用超参 —— 「低秩投影蓝图解读」
 
 **源码路径**：`convert_hf_to_gguf.py` - `DeepseekV2Model.__init__`（第 3900-3950 行）
 
@@ -766,7 +766,7 @@ class DeepseekV2Model(TextModel):
 
 **代码解释**：初始化时解析 MLA 独有的 5 个核心维度参数：`q_lora_rank`（Q 低秩投影维度）、`kv_lora_rank`（KV 共享低秩维度）、`v_head_dim`（V 头维度）、`qk_rope_head_dim`（QK RoPE 部分维度）、`qk_nope_head_dim`（QK 无 RoPE 部分维度）。总头维度 `head_dim = rope_dim + nope_dim`。
 
-### 4.8.2 DeepseekV2Model.set_gguf_parameters：MLA 专用键与 RoPE 三段式 —— 「MLA 身份证全家福」
+### 3.8.2 DeepseekV2Model.set_gguf_parameters：MLA 专用键与 RoPE 三段式 —— 「MLA 身份证全家福」
 
 **源码路径**：`convert_hf_to_gguf.py` - `DeepseekV2Model.set_gguf_parameters`（第 3952-4020 行）
 
@@ -792,7 +792,7 @@ class DeepseekV2Model(TextModel):
 
 **代码解释**：将 MLA 5 大核心维度完整写入 GGUF，运行时据此重组 Q/K/V 投影。RoPE 缩放采用 Yarn/LongRoPE 三段式（`factor`/`beta_fast`/`beta_slow`/`original_max_position_embeddings`）。
 
-### 4.8.3 DeepseekV2Model.modify_tensors：W_DKV 拆解与 kv_a_proj_with_mqa 组装 —— 「一矩阵拆五投影」
+### 3.8.3 DeepseekV2Model.modify_tensors：W_DKV 拆解与 kv_a_proj_with_mqa 组装 —— 「一矩阵拆五投影」
 
 **源码路径**：`convert_hf_to_gguf.py` - `DeepseekV2Model.modify_tensors`（第 4022-4120 行）
 
@@ -846,7 +846,7 @@ flowchart TD
     C1 & C2 & F1 & F2 & H --> I[GGUF: MLA 5 核心投影张量]
 ```
 
-### 4.8.4 DeepseekV2Model.prepare_tensors：MLA 张量完整性校验 —— 「五件套清点员」
+### 3.8.4 DeepseekV2Model.prepare_tensors：MLA 张量完整性校验 —— 「五件套清点员」
 
 **源码路径**：`convert_hf_to_gguf.py` - `DeepseekV2Model.prepare_tensors`（第 4100-4120 行）
 
@@ -872,9 +872,9 @@ flowchart TD
 
 ---
 
-## 4.9 7 号产线：MambaModel / Mamba2Model —— SSM 参数重组与 Conv1D 翻转
+## 3.9 7 号产线：MambaModel / Mamba2Model —— SSM 参数重组与 Conv1D 翻转
 
-### 4.9.1 MambaModel.set_gguf_parameters：SSM 核心维度写入 —— 「状态空间身份证」
+### 3.9.1 MambaModel.set_gguf_parameters：SSM 核心维度写入 —— 「状态空间身份证」
 
 **源码路径**：`convert_hf_to_gguf.py` - `MambaModel.set_gguf_parameters`（第 4160-4200 行）
 
@@ -893,7 +893,7 @@ class MambaModel(TextModel):
 
 **代码解释**：写入 SSM 核心维度 `d_inner`（扩展维度）、`d_state`（状态维度）、`d_conv`（卷积核宽度）及激活函数类型，供运行时分配状态缓冲区。
 
-### 4.9.2 MambaModel.modify_tensors：dt_proj 仿射合并、A_log 指数化、conv1d 翻转 —— 「SSM 参数魔法重组术」
+### 3.9.2 MambaModel.modify_tensors：dt_proj 仿射合并、A_log 指数化、conv1d 翻转 —— 「SSM 参数魔法重组术」
 
 **源码路径**：`convert_hf_to_gguf.py` - `MambaModel.modify_tensors`（第 4202-4290 行）
 
@@ -948,7 +948,7 @@ flowchart TD
     G[HF: conv1d.weight [d_inner, 1, d_conv]] --> H[squeeze(1) -> transpose -> flip(0)\n-> ssm_conv1d.weight [d_conv, d_inner]]
 ```
 
-### 4.9.3 MambaModel.prepare_tensors：SSM 参数形状校验 —— 「形状质检员」
+### 3.9.3 MambaModel.prepare_tensors：SSM 参数形状校验 —— 「形状质检员」
 
 **源码路径**：`convert_hf_to_gguf.py` - `MambaModel.prepare_tensors`（第 4280-4300 行）
 
@@ -971,9 +971,9 @@ flowchart TD
 
 ---
 
-## 4.10 8 号产线：BertModel / DistilBertModel —— 编码器模型裁剪与池化头导出
+## 3.10 8 号产线：BertModel / DistilBertModel —— 编码器模型裁剪与池化头导出
 
-### 4.10.1 BertModel.set_gguf_parameters：池化类型与最大位置 —— 「编码器护照」
+### 3.10.1 BertModel.set_gguf_parameters：池化类型与最大位置 —— 「编码器护照」
 
 **源码路径**：`convert_hf_to_gguf.py` - `BertModel.set_gguf_parameters`（第 4340-4380 行）
 
@@ -995,7 +995,7 @@ class BertModel(TextModel):
 
 **代码解释**：标记架构为 `bert`，写入池化类型（`cls`/`mean`/`max`）、最大位置嵌入长度（用于截断）、词表类型 `wordpiece`。
 
-### 4.10.2 BertModel.modify_tensors：丢弃分类头、截断位置嵌入、提取池化头 —— 「裁剪枝叶留干」
+### 3.10.2 BertModel.modify_tensors：丢弃分类头、截断位置嵌入、提取池化头 —— 「裁剪枝叶留干」
 
 **源码路径**：`convert_hf_to_gguf.py` - `BertModel.modify_tensors`（第 4382-4440 行）
 
@@ -1024,7 +1024,7 @@ class BertModel(TextModel):
 
 **代码解释**：BERT 类模型主要用于 Embedding/重排序，**丢弃所有下游任务头**（`classifier`、`qa_outputs`、`lm_head` 等）。`position_embeddings` 按 `max_position_embeddings` 截断。`pooler.dense` 单独缓存，不走常规编码器层命名，后续单独导出。
 
-### 4.10.3 BertModel.prepare_tensors：导出 pooler_dense 供嵌入任务 —— 「单独打包池化头」
+### 3.10.3 BertModel.prepare_tensors：导出 pooler_dense 供嵌入任务 —— 「单独打包池化头」
 
 **源码路径**：`convert_hf_to_gguf.py` - `BertModel.prepare_tensors`（第 4442-4480 行）
 
@@ -1042,9 +1042,9 @@ class BertModel(TextModel):
 
 ---
 
-## 4.11 派生变体类：复用与微调的「变体生产线」
+## 3.11 派生变体类：复用与微调的「变体生产线」
 
-### 4.11.1 LlamaMoEModel / Qwen2MoeModel：MoE 专家逻辑复用
+### 3.11.1 LlamaMoEModel / Qwen2MoeModel：MoE 专家逻辑复用
 
 **源码路径**：`convert_hf_to_gguf.py` - `LlamaMoEModel` / `Qwen2MoeModel`（第 4450-4550 行）
 
@@ -1064,7 +1064,7 @@ class Qwen2MoeModel(Qwen2Model):
 
 **代码解释**：通过继承复用父类完整的 MoE 专家收集与合并逻辑，仅修改 `arch` 属性以写入正确的架构标识，体现「组合优于继承」的工程实践。
 
-### 4.11.2 BloomModel：GPTNeoX + ALiBi 混合
+### 3.11.2 BloomModel：GPTNeoX + ALiBi 混合
 
 **源码路径**：`convert_hf_to_gguf.py` - `BloomModel`（第 4550-4600 行）
 
@@ -1079,7 +1079,7 @@ class BloomModel(GPTNeoXModel):
 
 **代码解释**：BLOOM 继承 GPT-NeoX 的 QKV 处理流派（MHA + permute），但将位置编码切换为 ALiBi，额外写入 `alibi_bias_max` 与 `no_rope` 标记。
 
-### 4.11.3 StarCoderModel / XverseModel：Falcon/Baichuan 变体微调
+### 3.11.3 StarCoderModel / XverseModel：Falcon/Baichuan 变体微调
 
 **源码路径**：`convert_hf_to_gguf.py` - `StarCoderModel` / `XverseModel`（第 4600-4700 行）
 
@@ -1101,7 +1101,7 @@ class XverseModel(BaichuanModel):
 
 **代码解释**：`StarCoderModel` 固定 `multi_query=True`；`XverseModel` 复用 `W_pack` 拆分逻辑，但引入 RoPE permute，展示了如何通过继承组合不同产线能力。
 
-### 4.11.4 Mamba2Model：Chunked SSM 支持
+### 3.11.4 Mamba2Model：Chunked SSM 支持
 
 **源码路径**：`convert_hf_to_gguf.py` - `Mamba2Model`（第 4700-4800 行）
 
@@ -1122,7 +1122,7 @@ class Mamba2Model(MambaModel):
 
 **代码解释**：`Mamba2Model` 在父类 SSM 参数重组基础上，新增 `chunk_size`、`n_groups`、`headdim` 三大 Chunked SSM 参数，复用 `dt_proj`/`A_log`/`D`/`conv1d` 核心变换管线。
 
-### 4.11.5 DistilBertModel：精简版 BERT
+### 3.11.5 DistilBertModel：精简版 BERT
 
 **源码路径**：`convert_hf_to_gguf.py` - `DistilBertModel`（第 4800-4850 行）
 
@@ -1145,35 +1145,35 @@ class DistilBertModel(BertModel):
 
 ---
 
-## 4.12 设计中的取舍
+## 3.12 设计中的取舍
 
-### 为什么 QKV 重排要有「NeoX 流派」与「Falcon 流派」两套 Permute？
+### 3.12.1 为什么 QKV 重排要有「NeoX 流派」与「Falcon 流派」两套 Permute？
 
 根本原因在于**融合 QKV 的存储布局差异**与**RoPE 作用维度的分组策略不同**。GPT-NeoX 早期采用标准 MHA，将 Q/K/V 在输出通道维简单拼合为 `[3 * n_head * head_dim, hidden]`，RoPE 作用于每个头的**半维度成对交织**（即 `rotate_half` 操作），因此 `permute` 需做 `reshape(..., 2).transpose` 实现成对交换。Falcon 引入 MQA/GQA 后，融合张量形状变为 `[(n_head + 2*n_head_kv) * head_dim, hidden]`，且 `head_dim` 可配置，RoPE 作用于**连续维度分组**（按 2 分组而非成对），导致 `permute` 逻辑变为 `reshape(n_head, 2, head_dim//2).transpose(1,2)`。统一接口 `ModelBase.permute(tensor, n_head, head_dim)` 由子类重写，`modify_tensors` 统一调用，屏蔽差异。
 
-### 为什么 MoE 专家权重要在 `prepare_tensors` 合并，而不是 `modify_tensors` 直接 yield？
+### 3.12.2 为什么 MoE 专家权重要在 `prepare_tensors` 合并，而不是 `modify_tensors` 直接 yield？
 
 因为 **HF `state_dict()` 遍历顺序不保证 `expert_0` 先于 `expert_1`**，而 **GGUF 要求 `ffn_gate_exps.weight[expert_idx]` 必须与路由索引一一对应**。解法是：`modify_tensors` 按正则解析出 `expert_idx` 入字典缓存（`_moe_w1[layer][expert] = tensor`）→ `prepare_tensors` 按 `range(n_experts)` 有序 `torch.stack` 合并。代价是需额外显存缓存所有专家权重（约 `3 * n_layers * n_experts * hidden * ffn_dim * 2 bytes`）。
 
-### NVFP4 超级块流式生成为何在 `ModelBase.dequant_model` 之后？
+### 3.12.3 NVFP4 超级块流式生成为何在 `ModelBase.dequant_model` 之后？
 
 流程顺序为：预量化反量化 (`dequant_model`) → 张量名规范化 (`normalize_tensor_name`) → 量化/打包 (`prepare_tensors` 内 `quantize_tensor`) → NVFP4 超级块组装 (`_finalize_nvfp4_blocks`)。关键点在于 NVFP4 超级块包含**多张量共享 scale/offset**，必须在**所有张量量化完成后**才能计算块级统计量，故放在 `prepare_tensors` 末尾 `flush`。
 
-### 为什么 TextModel 采用三级词表兜底链而非单一入口？
+### 3.12.4 为什么 TextModel 采用三级词表兜底链而非单一入口？
 
 不同模型家族发布格式不一：LLaMA/Baichuan 附带 `tokenizer.model`（SPM），Qwen2/Falcon/MPT 提供 `tokenizer.json`，部分旧模型仅有 HF tokenizer 文件。三级跳策略**优先用原生轻量格式（SPM/JSON），仅在必要时调用重型 transformers 库**，兼顾兼容性与转换速度。
 
-### LazyTorchTensor 惰性加载机制的设计取舍是什么？
+### 3.12.5 LazyTorchTensor 惰性加载机制的设计取舍是什么？
 
 `LazyTorchTensor` 仅在 `tensor.numpy()` 或 `quantize_tensor()` 时才真正从磁盘 `mmap` 读取数据到内存。这使得转换超大模型（如 70B/400B）时**峰值内存仅为单张量大小而非全模型**，但会增加磁盘 I/O 次数。权衡点在于：内存受限环境下必须惰性加载；内存充裕时可预加载加速。
 
-### MmprojModel 多模态分发机制如何工作？
+### 3.12.6 MmprojModel 多模态分发机制如何工作？
 
 `MmprojModel` 继承 `ModelBase`，在 `set_gguf_parameters` 中写入 `clip.vision.*` 等视觉编码器参数，`modify_tensors` 仅处理视觉塔权重（`visual.*`），忽略语言模型部分。转换时通过 `--mmproj` 指定视觉投影文件，主模型与视觉投影分离打包，运行时动态加载组合。
 
 ---
 
-## 4.13 动手练习
+## 3.13 动手练习
 
 1. **LLaMA MoE 专家合并**  
    阅读第 3062-3220 行 `LlamaModel.modify_tensors` 与 `prepare_tensors`。假设 `num_local_experts=8`、`hidden=4096`、`ffn_dim=14336`，合并后 `ffn_gate_exps.weight` 的 shape 为 `[8, 4096, 14336]`。若 HF 权重中 `expert_3` 缺失，`prepare_tensors` 的列表推导式 `[cache[layer_idx][e] for e in range(n_experts)]` 会抛出 `KeyError`，触发完整性校验报错 `Missing MoE tensor`。
@@ -1201,7 +1201,7 @@ class DistilBertModel(BertModel):
 
 ---
 
-## 4.14 本章小结
+## 3.14 本章小结
 
 本章系统剖析了 `convert_hf_to_gguf.py` 第 2409-4964 行覆盖的 **8 大模型家族转换产线**，以及统一的 **调度中心 (ModelBase/TextModel)** 基础设施。首先，调度中心通过五级正则流水线统一张量命名、分派预量化反量化、提供三级词表兜底链，为下游产线铺平道路。其次，1 号产线（LLaMA）完整支持 RoPE 缩放三段式与 MoE 专家延迟合并；2 号产线揭示 QKV 重排两大流派：NeoX「拼合→Permute→分头」vs Falcon「拆分→各自 Permute」；3/4 号产线处理 ALiBi 无 RoPE、无 Bias 线性层与词表 Fallback；5 号产线（Qwen2）合并 QKV Bias 并直写 TikToken 词表；6 号产线（Deepseek V2）攻克 MLA 核心：将融合矩阵 `W_DKV/W_DQ/W_UV` 拆解为 5 个独立投影，实现 KV Cache 低秩共享；7 号产线（Mamba）重组 SSM 参数：`dt_proj` 仿射合并、`A_log` 负指数化、`D` 列向量化、`conv1d` 因果翻转；8 号产线（BERT）裁剪下游头、截断位置嵌入、单独导出池化头。接着，派生变体类复用基类逻辑覆盖 MoE、ALiBi、Chunked SSM 等变体。最后，设计取舍分析揭示了延迟合并保序、转换期反量化、惰性加载省内存、多模态分离打包等核心工程权衡。
 
@@ -1252,7 +1252,7 @@ class DistilBertModel(BertModel):
 
 ---
 
-## 下一章预告
+## 3.15 下一章预告
 
 **第 5 章：高级量化与 NVFP4 超级块流式生成** —— 深入 `ModelBase.prepare_tensors` 量化主循环，解析 `k_quant` 类型决策树、`ggml_quantize_chunk` 分块并行、NVFP4 `superblock` 组装与 `scale/offset` 共享机制，实战 `llama-quantize` 离线量化与在线量化对比。
 

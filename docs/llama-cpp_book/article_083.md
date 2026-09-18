@@ -1,6 +1,6 @@
 
 
-# 任务调度与队列系统 —— 并发推理的「空中流量管制塔台」
+# 第83章 任务调度与队列系统 —— 并发推理的「空中流量管制塔台」
 
 ## 学习目标
 
@@ -12,13 +12,13 @@
 - 掌握任务取消的级联清理机制与异常路径安全保障
 - 能独立实现基于条件变量的多线程任务调度器
 
-## 84.1 生活类比
+## 83.1 生活类比
 
 想象 llama-server 的并发系统是一座**现代化智能机场**。**server_queue** 就是机场塔台调度系统——管理所有待起飞（待推理）的航班（任务）。它采用**双端队列**设计——紧急航班（如取消请求）可以从 front 插队优先起飞，普通航班则按序在 back 排队。当跑道（KV 缓存槽位）被占用时，航班会被暂时调度到停机坪等待区（延迟队列），而 `pop_deferred_task` 则像塔台调度员，当指定跑道空闲时会优先安排此前等待该跑道的航班起飞。
 
 **server_response** 对应机场的行李分拣中心，确保每位乘客（任务）拿到自己的行李（结果）。它维护一份已登记等待行李的乘客名单（`waiting_task_ids`），行李传送带（`queue_results`）按航班号匹配分拣；当乘客离开时，系统会同时清理其遗留行李，防止传送带堵塞。**server_response_reader** 则是自助行李提取终端——乘客（客户端）通过它一件件取行李（流式响应），直到取完为止；若乘客紧急取消行程，`stop()` 会立即清理其所有行李并通知地勤。整个系统遵循 RAII 析构原则，乘客离开机场时自动注销登机牌，防止资源泄漏。就像塔台需要精确协调跑道、处理紧急插队和夜间节能模式一样，server_queue 同样需要管理任务优先级、槽位竞争和服务器空闲功耗——三者共同构成了并发推理系统高效运转的基石。
 
-## 84.2 源码地图
+## 83.2 源码地图
 
 ```text
 tools/server/server-queue.h                          # 类声明与内联实现（20-127行）
@@ -58,11 +58,11 @@ tools/server/server-queue.h                          # 类声明与内联实现�
     └── void stop() [428-445]                                          # 取消并清理任务
 ```
 
-## 84.3 server_queue 任务队列基础设施 —— 服务端推理的「飞行计划受理中心」
+## 83.3 server_queue 任务队列基础设施 —— 服务端推理的「飞行计划受理中心」
 
 server_queue 是 llama-server 的并发核心。它像一座机场塔台的飞行计划受理中心，负责接收 HTTP 请求转化的推理任务，并按优先级调度给后端处理线程。不同于简单的 FIFO 队列，它采用**双端队列（deque）**设计，支持从 front 插入实现紧急任务插队（如取消请求），同时引入**延迟队列（deferred queue）**机制处理暂时无法执行的任务（如等待 KV 缓存槽位释放）。线程安全由 `std::mutex` 保护，`std::condition_variable` 实现生产者-消费者模式。
 
-### 84.3.1 server_queue::post()：单任务与批量任务的入队策略
+### 83.3.1 server_queue::post()：单任务与批量任务的入队策略
 
 源码路径：`tools/server/server-queue.cpp` - `server_queue::post()`（25-69行）；`tools/server/server-queue.h` - `server_queue::post()`（48-51行）
 
@@ -113,7 +113,7 @@ int server_queue::post(std::vector<server_task> && tasks, bool front) {
 
 这段代码实现了任务入队的核心逻辑。关键设计是：**front 参数控制插入位置**——如同机场紧急航班（如医疗救援、取消请求）可以从起飞队列最前方优先获批起飞，普通任务则通过 `push_back` 按序排队等待。取消任务会在入队前触发 `cleanup_pending_task()` 级联清理，确保被取消的任务立即从队列中移除，就像塔台在取消航班时同步释放其占用的跑道资源。每次入队都会更新 `time_last_task` 时间戳，向主循环传达「仍有航班活动」的信号，防止其因空闲超时而进入睡眠模式。
 
-### 84.3.2 server_queue::defer()/pop_deferred_task()：延迟队列的槽位亲和性
+### 83.3.2 server_queue::defer()/pop_deferred_task()：延迟队列的槽位亲和性
 
 源码路径：`tools/server/server-queue.cpp` - `server_queue::defer()`/`pop_deferred_task()`（71-110行）；`tools/server/server-queue.h` - `server_queue::defer()`/`pop_deferred_task()`（54, 62行）
 
@@ -159,7 +159,7 @@ void server_queue::pop_deferred_task(int id_slot) {
 
 这段代码实现了延迟队列的两级调度。`defer()` 将暂时无法执行的任务暂存到延迟队列——如同航班因跑道被占用而进入停机坪等待区；`pop_deferred_task(id_slot)` 在槽位释放时被调用，**优先唤醒使用该槽位的延迟任务**（槽位亲和性），确保 KV Cache 的局部性最大化——就像塔台调度员看到指定跑道清空后，优先安排此前等待该跑道的航班起飞，而不是机械地按到达顺序放行。如果找不到匹配槽位的任务，则回退到 FIFO 策略弹出最早的延迟任务。这种设计避免了任务反复入队导致的活锁问题。
 
-### 84.3.3 server_queue::is_sleeping()/queue_tasks_deferred_size()/回调注册：运行时状态查询与监听回调
+### 83.3.3 server_queue::is_sleeping()/queue_tasks_deferred_size()/回调注册：运行时状态查询与监听回调
 
 源码路径：`tools/server/server-queue.h` - `server_queue::is_sleeping()`（70-73行）、`queue_tasks_deferred_size()`（94-97行）、`on_new_task()`（102-104行）、`on_update_slots()`（107-109行）、`on_sleeping_state()`（114-123行）
 
@@ -210,7 +210,7 @@ void on_sleeping_state(std::function<void(bool)> callback) {
 
 这段代码提供了运行时状态查询和回调注册功能。`is_sleeping()` 和 `queue_tasks_deferred_size()` 供外部模块（如 server_metrics）查询队列状态——如同机场管理层随时查看塔台是否进入夜间节能模式、停机坪有多少等待航班；`on_new_task()`、`on_update_slots()` 分离任务接收与槽位计算，实现**关注点分离**；`on_sleeping_state()` 支持多回调链式注册，允许多个模块（如监控系统和功耗管理器）同时监听睡眠状态切换。
 
-### 84.3.4 server_queue::get_new_id()/cleanup_pending_task()：ID 分配与任务清理
+### 83.3.4 server_queue::get_new_id()/cleanup_pending_task()：ID 分配与任务清理
 
 源码路径：`tools/server/server-queue.cpp` - `get_new_id()`/`cleanup_pending_task()`（79-83, 214-225行）；`tools/server/server-queue.h` - `get_new_id()`（57行）、`cleanup_pending_task()`（126行）
 
@@ -242,7 +242,7 @@ void server_queue::cleanup_pending_task(int id_target) {
 
 这段代码实现 ID 分配和级联清理。`get_new_id()` 在锁保护下通过自增计数器保证 ID 唯一性，如同一座机场的航班编号系统确保每架航班有唯一标识。`cleanup_pending_task()` 采用**remove-erase 惯用法**同时清理主队列和延迟队列中所有匹配目标任务，它是取消任务的核心清理逻辑，被 `post()` 中的取消分支调用——就像塔台收到取消某航班的指令后，同时从起飞队列和停机坪等待区移除该航班的一切调度安排。
 
-### 84.3.5 server_queue 任务队列基础设施 —— 塔台全景架构图
+### 83.3.5 server_queue 任务队列基础设施 —— 塔台全景架构图
 
 ```mermaid
 flowchart TD
@@ -271,11 +271,11 @@ flowchart TD
 
 如上图所示，整个任务队列系统呈现清晰的层级结构：HTTP 请求通过 `post()` 进入双端任务队列，一部分任务因等待槽位进入延迟队列（停机坪），主循环 `start_loop` 则作为塔台值班员驱动任务流转，最终结果通过 `server_response` 这个行李分拣中心分发至乘客（客户端）的提取终端。
 
-## 84.4 server_queue 主循环调度机制 —— 永不停歇的「塔台值班员」
+## 83.4 server_queue 主循环调度机制 —— 永不停歇的「塔台值班员」
 
 start_loop 是整个任务调度系统的核心驱动，采用三阶段工作模型：处理新任务 → 更新槽位 → 等待新任务。它像一个不知疲倦的塔台值班员，持续接收、调度和执行推理任务，并在空闲时进入节能睡眠模式。
 
-### 84.4.1 server_queue::start_loop()：三阶段主循环与睡眠管理
+### 83.4.1 server_queue::start_loop()：三阶段主循环与睡眠管理
 
 源码路径：`tools/server/server-queue.cpp` - `server_queue::start_loop()`（137-212行）；`tools/server/server-queue.h` - `start_loop()`（88行）
 
@@ -365,7 +365,7 @@ void server_queue::start_loop(int64_t idle_sleep_ms) {
 
 这段代码是整个任务调度系统的核心——如同塔台值班员的三班倒循环。**三阶段模型**清晰分离了任务接收和推理计算：阶段一处理新任务（接听航班申请）、阶段二执行推理（指挥航班起飞）、阶段三等待（瞭望天空等待新航班）。关键设计包括：**缩小临界区**（解锁后再调用回调，避免长时间持有锁，如同塔台人员不会握着通话器完成整套调度流程）、**空闲睡眠**（超过 `idle_sleep_ms` 未收到任务时进入睡眠，零 CPU 占用的待机，如同机场夜间关闭不必要跑道的节能措施）、**限时轮询**（最多等待 1 秒后重新检查睡眠条件，如同值班员每隔数分钟扫视一次雷达屏幕），以及**二次检查终止状态**（避免虚假唤醒导致的问题）。
 
-### 84.4.2 server_queue::terminate()/wait_until_no_sleep()：优雅停止与唤醒协调
+### 83.4.2 server_queue::terminate()/wait_until_no_sleep()：优雅停止与唤醒协调
 
 源码路径：`tools/server/server-queue.cpp` - `terminate()`/`wait_until_no_sleep()`（112-135行）；`tools/server/server-queue.h` - `wait_until_no_sleep()`（68行）、`terminate()`（76行）
 
@@ -398,7 +398,7 @@ void server_queue::terminate() {
 
 这段代码实现了睡眠唤醒协调和优雅终止。`wait_until_no_sleep()` 供外部线程调用，若主循环正在睡眠则请求唤醒并阻塞等待——如同有紧急航班夜间抵达时，值班人员按下唤醒铃并等待塔台恢复值守；`terminate()` 通过清除 `running` 标志并广播条件变量，确保所有等待线程（包括正在睡眠的主循环）都能安全退出——如同机场正式关闭时，塔台广播通知所有岗位下班。
 
-### 84.4.3 server_queue 主循环三阶段时序图
+### 83.4.3 server_queue 主循环三阶段时序图
 
 源码路径：`tools/server/server-queue.cpp` - `server_queue::start_loop()`（137-212行），`server_queue::terminate()`（130-135行），`server_queue::wait_until_no_sleep()`（112-128行）
 
@@ -431,11 +431,11 @@ sequenceDiagram
     end
 ```
 
-## 84.5 server_response 响应分发与等待集合 —— 推理结果的「行李分拣中心」
+## 83.5 server_response 响应分发与等待集合 —— 推理结果的「行李分拣中心」
 
 server_response 是服务端的响应分发中心，维护**等待任务集合**和**结果队列**。它确保只有已注册任务的结果才会被接收，避免脏数据污染。
 
-### 84.5.1 server_response::add_waiting_task_id(s)/remove_waiting_task_id(s)：等待集合的注册与注销
+### 83.5.1 server_response::add_waiting_task_id(s)/remove_waiting_task_id(s)：等待集合的注册与注销
 
 源码路径：`tools/server/server-queue.cpp` - `add_waiting_task_id(s)`/`remove_waiting_task_id(s)`（229-270行）；`tools/server/server-queue.h` - `add_waiting_task_id(s)`（139, 141行）、`remove_waiting_task_id(s)`（144, 147行）
 
@@ -485,7 +485,7 @@ void server_response::remove_waiting_task_ids(
 
 这段代码实现了等待集合的增删管理。特别值得注意 `remove_waiting_task_id()` 的**双重清理**：除了从等待集合移除标记，还会通过 remove-erase 惯用法清理该任务的待处理结果——如同乘客离开机场时，系统同时注销其登机牌并从传送带上移走其遗留行李，防止已取消任务的结果泄漏到无关请求，造成资源浪费。
 
-### 84.5.2 server_response::recv()/recv_with_timeout()：阻塞与超时接收
+### 83.5.2 server_response::recv()/recv_with_timeout()：阻塞与超时接收
 
 源码路径：`tools/server/server-queue.cpp` - `recv()`/`recv_with_timeout()`（272-325行）；`tools/server/server-queue.h` - `recv()`（150, 157行）、`recv_with_timeout()`（154行）
 
@@ -553,7 +553,7 @@ server_task_result_ptr server_response::recv(int id_task) {
 
 这段代码实现了结果的接收机制。**`std::terminate()` 策略**值得关注——当系统终止时无法优雅返回（因为调用方是 HTTP 线程），只能强制终止进程保证服务端一致性，如同机场因紧急情况永久关闭时，所有仍在等待行李的乘客必须立刻离开航站楼。`recv()` 支持多任务集合匹配，返回**第一个**到达的匹配结果；`recv_with_timeout()` 先扫描已有结果再等待，避免超时后仍有可用结果的情况。
 
-### 84.5.3 server_response::send()/terminate()：结果匹配与终止
+### 83.5.3 server_response::send()/terminate()：结果匹配与终止
 
 源码路径：`tools/server/server-queue.cpp` - `send()`/`terminate()`（327-346行）；`tools/server/server-queue.h` - `send()`（160行）、`terminate()`（163行）
 
@@ -582,7 +582,7 @@ void server_response::terminate() {
 
 这段代码实现了结果的分发。`send()` 的关键是**结果-等待集合匹配**：只有任务 ID 在等待集合中的结果才会被入队，否则直接丢弃。这防止了已取消任务的结果进入队列——如同行李分拣中心只将行李放入仍在等候的乘客名下，无人认领的行李会被直接弃置。`terminate()` 通过设置 `running=false` 并广播，使得所有正在 `recv()` 中阻塞的线程因 `std::terminate()` 而退出。
 
-### 84.5.4 server_response 响应分发数据流图
+### 83.5.4 server_response 响应分发数据流图
 
 源码路径：`tools/server/server-queue.cpp` - `server_response::send()`（327-340行），`remove_waiting_task_id()`（247-260行），`recv_with_timeout()`（295-319行）
 
@@ -602,11 +602,11 @@ flowchart LR
 
 如上图所示，推理引擎产生的结果首先经过等待集合的过滤，只有与活跃任务匹配的结果才能进入结果队列以供客户端消费，未注册的结果则被直接丢弃，从源头上防止了脏数据的传播——就像行李分拣中心的传送带只将行李送入对应航班号的分拣口。
 
-## 84.6 server_response_reader 响应读取器 —— 面向客户端的「自助行李提取终端」
+## 83.6 server_response_reader 响应读取器 —— 面向客户端的「自助行李提取终端」
 
 server_response_reader 为上层 HTTP 处理层提供简洁的迭代器风格 API，屏蔽底层队列交互细节。它像自助行李提取终端，客户端通过它逐件提取结果。
 
-### 84.6.1 server_response_reader::post_task()/post_tasks()：任务提交与状态初始化
+### 83.6.1 server_response_reader::post_task()/post_tasks()：任务提交与状态初始化
 
 源码路径：`tools/server/server-queue.cpp` - `post_task()`/`post_tasks()`（348-375行）；`tools/server/server-queue.h` - `post_task()`（196行）、`post_tasks()`（197行）
 
@@ -649,7 +649,7 @@ void server_response_reader::post_tasks(
 
 这段代码实现了任务提交——如同乘客在自助行李提取终端刷登机牌后，系统会登记该乘客的所有托运行李单据，并为每件行李建立一个独立的追踪记录。`post_task()` 用于单个任务，`post_tasks()` 支持批量任务及其子任务——每个子任务都有独立的索引和状态跟踪，对应每件行李的独立传输记录。`create_state()` 为任务关联 `task_result_state`，用于跟踪生成过程中的增量状态（如聊天上下文）。
 
-### 84.6.2 server_response_reader::has_next()/next()：流式生成器
+### 83.6.2 server_response_reader::has_next()/next()：流式生成器
 
 源码路径：`tools/server/server-queue.cpp` - `has_next()`/`next()`（377-408行）；`tools/server/server-queue.h` - `has_next()`（198行）、`next()`（201行）
 
@@ -695,7 +695,7 @@ server_task_result_ptr server_response_reader::next(
 
 这段代码实现了流式生成器。`next()` 使用 `recv_with_timeout()` 实现**轮询式等待**——超时后检查 `should_stop()` 条件，支持 HTTP 连接断开检测，如同行李提取终端每隔几秒检查传送带同时留意乘客是否已按下「放弃等待」按钮。收到错误结果时自动调用 `stop()` 取消剩余任务；`result->update(states[idx])` 实现增量状态聚合，为聊天上下文等场景提供累积更新。
 
-### 84.6.3 server_response_reader::wait_for_all()：批量结果聚合
+### 83.6.3 server_response_reader::wait_for_all()：批量结果聚合
 
 源码路径：`tools/server/server-queue.cpp` - `wait_for_all()`（410-426行）；`tools/server/server-queue.h` - `wait_for_all()`（213行）
 
@@ -730,7 +730,7 @@ server_response_reader::wait_for_all(
 
 这段代码实现了批量结果的聚合——如同乘客一次性领取所有托运行李，终端将每件行李按登机牌顺序放入对应取件口。`wait_for_all()` 将结果按索引归档到预分配的数组，支持错误提前终止和部分结果返回。**移动语义**（`std::move(res)`）避免了复制开销，同时通过断言检测重复结果（同一索引被赋值两次，如同同一件行李出现在两个取件口）。
 
-### 84.6.4 server_response_reader::stop() 与 server_queue::cleanup_pending_task()：级联取消与清理
+### 83.6.4 server_response_reader::stop() 与 server_queue::cleanup_pending_task()：级联取消与清理
 
 源码路径：`tools/server/server-queue.cpp` - `server_response_reader::stop()`（428-445行）、`server_queue::cleanup_pending_task()`（214-225行）；`tools/server/server-queue.h` - `stop()`（215行）、`cleanup_pending_task()`（126行）
 
@@ -776,7 +776,7 @@ void server_queue::cleanup_pending_task(int id_target) {
 
 这段代码实现了级联取消与清理。关键设计是**`front=true` 插队**——取消任务必须以最高优先级执行，如同乘客紧急取消行程时，系统以最高的优先级处理其行李撤回请求，避免被正常排队阻塞。`cleanup_pending_task()` 随后会清除主队列和延迟队列中的目标任务，实现两级清理——如同同时从起飞等待区和停机坪移除该乘客的所有相关航班安排。`cancelled` 标志记录取消状态，避免重复取消。
 
-### 84.6.5 server_response_reader::stop() 取消流程时序图
+### 83.6.5 server_response_reader::stop() 取消流程时序图
 
 源码路径：`tools/server/server-queue.cpp` - `server_response_reader::stop()`（428-445行），`server_queue::cleanup_pending_task()`（214-225行）
 
@@ -807,25 +807,25 @@ sequenceDiagram
     Note over READER: 析构函数自动调用 stop()
 ```
 
-## 84.7 设计中的取舍
+## 83.7 设计中的取舍
 
 本章涉及的三个核心组件——server_queue、server_response 和 server_response_reader——在设计与实现中面临了多组冲突目标（如响应性、正确性、可靠性）之间的权衡。以下逐一剖析这些关键取舍背后的考量。
 
-### 84.7.1 响应性：为什么使用轮询扫描加超时等待，而不是简单的阻塞等待？
+### 83.7.1 响应性：为什么使用轮询扫描加超时等待，而不是简单的阻塞等待？
 
 流式响应场景要求 `next()` 能够响应客户端断开连接（`should_stop()` 回调）。如果使用无限阻塞等待，HTTP 线程将无法感知连接断开，导致资源无法及时释放。通过 `recv_with_timeout()` 实现轮询式等待，在超时后检查 `should_stop()` 条件，实现了响应性与资源管理的平衡。代价是可能引入最多 1 秒（polling_interval_seconds）的额外延迟，但相比推理本身毫秒级到秒级的耗时，这个延迟可以接受。
 
-### 84.7.2 正确性：为什么不用 `notify_all` 替代逐任务匹配？
+### 83.7.2 正确性：为什么不用 `notify_all` 替代逐任务匹配？
 
 `send()` 使用遍历等待集合的方式进行结果匹配，而不是简单 `notify_all`。这是因为结果必须与任务准确对应，确保只有已注册任务的结果被接收。遍历等待集合虽然复杂度为 O(n)，但保证了结果正确性——未注册的任务结果会被丢弃。如果改用广播方式，虽然减少了遍历开销，但需要额外的过滤机制，反而增加了复杂度。
 
-### 84.7.3 可靠性：为什么 `recv()` 终止时使用 `std::terminate()` 而不是优雅返回？
+### 83.7.3 可靠性：为什么 `recv()` 终止时使用 `std::terminate()` 而不是优雅返回？
 
 `recv()` 的调用方是 HTTP 处理线程。如果返回 `nullptr` 或错误，HTTP 层需要额外分支处理异常返回。更关键的是，此时服务端已处于终止状态，优雅返回难以保障一致性。`std::terminate()` 强制终止进程，避免进一步的不确定行为。虽然这看起来粗暴，但在服务端关闭的场景下，这是最简单可靠的策略。
 
-## 84.8 动手练习
+## 83.8 动手练习
 
-### 练习1：分析任务队列的线程安全机制
+### 83.8.1 练习1：分析任务队列的线程安全机制
 
 阅读 `tools/server/server-queue.cpp` 中 `server_queue::post()`（25-69行）和 `server_queue::start_loop()`（137-212行）。分析 `mutex_tasks` 和 `condition_tasks` 如何配合实现生产者-消费者模式；解释为什么 `start_loop` 中使用两次 `lock.unlock()` 和 `lock.lock()` 来缩小临界区；思考如果 `callback_update_slots()` 执行时间较长，如何避免新任务饥饿。
 
@@ -833,7 +833,7 @@ sequenceDiagram
 **步骤2**：分析阶段一中每次取出任务前的短暂加锁-解锁周期。
 **步骤3**：讨论 `callback_update_slots()` 耗时场景下，新任务如何在阶段三的 `wait_for` 循环中被及时感知。
 
-### 练习2：实现延迟队列的槽位亲和性测试
+### 83.8.2 练习2：实现延迟队列的槽位亲和性测试
 
 基于 `server_queue::defer()`（71-77行）和 `pop_deferred_task()`（85-110行）的实现。编写单元测试：提交三个任务（id=1,2,3），其中任务2指定 id_slot=5，其余默认；先 defer 所有任务，然后调用 `pop_deferred_task(5)`，验证是否只有任务2被激活；再调用一次 `pop_deferred_task(999)`，观察是否按 FIFO 顺序弹出剩余任务；思考这种设计如何优化 KV Cache 的局部性。
 
@@ -842,7 +842,7 @@ sequenceDiagram
 **步骤3**：调用 `pop_deferred_task(5)` 后检查主队列中激活的任务 ID。
 **步骤4**：调用 `pop_deferred_task(999)` 后检查 FIFO 弹出顺序。
 
-### 练习3：理解 server_response 的结果匹配与清理
+### 83.8.3 练习3：理解 server_response 的结果匹配与清理
 
 以 `server_response::send()`（327-340行）和 `remove_waiting_task_id()`（247-260行）为对象。绘制 `waiting_task_ids` 与 `queue_results` 的数据流图，说明结果如何被筛选；分析 `remove_waiting_task_id` 中 `std::remove_if` 的遍历效率与一致性保证；当服务器收到客户端断开连接时，如何通过此方法防止已删除任务的结果泄漏到无关请求。
 
@@ -850,7 +850,7 @@ sequenceDiagram
 **步骤2**：分析 `remove_waiting_task_id` 对 `queue_results` 的并发安全影响。
 **步骤3**：追踪断连场景下 `remove_waiting_task_id` 与 `send()` 的时序竞争可能性。
 
-### 练习4：对比流式与批量响应的内存管理
+### 83.8.4 练习4：对比流式与批量响应的内存管理
 
 对比 `server_response_reader::next()`（381-408行）与 `wait_for_all()`（410-426行）的实现差异。解释 `next()` 中 `result->update(states[idx])` 如何实现增量状态聚合（如聊天上下文）；`wait_for_all()` 中 `batch_res.results[idx] = std::move(res)` 为何使用移动语义；思考在流式场景下，如果客户端提前断开，`stop()` 如何保证服务端推理立即停止并释放 KV Cache。
 
@@ -858,7 +858,7 @@ sequenceDiagram
 **步骤2**：对比 `std::move` 与拷贝在长文本结果上的内存开销差异。
 **步骤3**：追踪 `stop()` 中 `front=true` 的取消任务如何使正在执行的推理迅速终止。
 
-### 练习5：设计取消任务的级联传播实验
+### 83.8.5 练习5：设计取消任务的级联传播实验
 
 研究 `server_response_reader::stop()`（428-445行）与 `server_queue::cleanup_pending_task()`（214-225行）的协作。说明为什么取消任务要设置 `front=true` 插入队列头部；追踪 `SERVER_TASK_TYPE_CANCEL` 从 `post()` 到 `cleanup_pending_task()` 的完整路径；设计实验：同时提交 A、B、C 三个任务，在 B 执行途中调用 `reader.stop()`，验证 C 是否被阻止执行，以及是否避免了已分配资源的泄漏。
 
@@ -866,7 +866,7 @@ sequenceDiagram
 **步骤2**：验证 `cleanup_pending_task()` 对主队列和延迟队列的双重清理。
 **步骤3**：设计多任务实验并验证取消后结果队列无残留。
 
-## 84.9 本章小结
+## 83.9 本章小结
 
 本章我们深入探讨了 llama-server 的任务调度与队列系统，它就像并发推理的「空中流量管制塔台」。首先我们认识了 `server_queue` 的核心架构——双端队列设计支持紧急任务插队，延迟队列处理槽位竞争，`std::mutex` 与 `std::condition_variable` 协作实现线程安全的生产者-消费者模式。其次我们剖析了 `start_loop` 的三阶段工作模型：处理新任务、更新槽位、等待睡眠，理解了空闲睡眠节能机制和优雅终止策略。接着我们学习了 `server_response` 的等待集合机制，掌握了任务注册与注销、结果匹配与清理的核心逻辑。最后我们探索了 `server_response_reader` 的生成器模式封装，理解了流式与批量响应的双重支持、级联取消和 RAII 资源管理。
 

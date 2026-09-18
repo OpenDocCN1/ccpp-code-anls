@@ -1,7 +1,7 @@
 
 
 
-# 第14章 模型加载与持久化 —— GGUF 文件的"解读与重写"
+# 第13章 模型加载与持久化 —— GGUF 文件的"解读与重写"
 
 ## 学习目标
 
@@ -18,11 +18,11 @@
 - 掌握 llama_model_loader 的权重索引、张量元信息查询、形状校验与创建全链路
 - 理解 llama.cpp 中模型加载入口、后端初始化、能力查询与系统信息打印的顶层流程
 
-## 14.1 生活类比
+## 13.1 生活类比
 
 想象 GGUF 文件是一座**巨型立体仓库**，而 llama.cpp 的模型加载/保存模块就是这座仓库的**门卫 + 装卸队 + 自动分拣机器人**。GGUF 文件相当于一座多楼层仓库：KV 元数据在门口，张量在货架上。llama_file 是仓库的**卷帘门**，既能推开（新文件）也能接管已有的卷帘门（FILE*）。Direct I/O (O_DIRECT) 给卷帘门加了**直通快车道**，绕过前台缓存直达货架。read_aligned_chunk 是叉车按**托盘尺寸**搬货，块没对齐就重新码齐。llama_mmap 给仓库装了一扇**全景观光窗**（MAP_SHARED），不用开门就能看货架。posix_madvise(WILLNEED) 提前跟仓库说「明天这批货要发，请先摆好」。posix_madvise(RANDOM) 在 NUMA 模式下「别让货乱窜到隔壁仓库」。unmap_fragment 把**暂时用不到的货架**用幕布拉上，腾出虚拟地址空间。llama_mlock 把最常用的货架**焊死**在仓库地板上，不准被踢到回收站。VirtualLock + WorkingSet 是 Windows 上的「把货架钉在承重墙」。GGUFMeta::GKV<T> 是仓库门口的**翻译官**：把仓库里「五花八门的标签」翻译成统一的 C++ 类型。try_override 是翻译官手里的**优先通行证**，可绕过文件直接用对讲机告诉装卸队。llama_model_loader 是**拆箱流水线**：核对门牌（arch）→ 登记货架（权重表）→ 决定装卸策略（mmap/Direct I/O）。llama_get_list_splits 看到一节车厢的车号，自动派出剩下 N 节。ctx_map 给每种搬运设备（CPU/GPU/host）分配**独立的临时库房**。select_weight_buft 给每个货架试一下「这台叉车能不能搬」（supports_op 探测）。create_tensor_as_view 给某个货架贴个**副标签**，零成本引用同一堆货。staged upload（4 buffer 轮转）是**4 个传送带接力赛**：每个传送带搬运时其他传送带还在跑。alignment padding + ptr_data 是给货品包上一层**泡沫塑料**保证叉车不伤货，搬到目标后再撕掉。llama_model_saver 是装卸队的**回程班列**：把内存里的仓库按原样重新装车。add_tensor 去重（rope_freqs）装车时发现「这箱货和前面那箱一样」，直接跳过。per_layer 优化装车时发现「全车层都一样」，压缩成一箱。llama_params_fit 是仓库**自动算账员**：先把全部货架摆进去看会不会挤爆，再一排一排往后挪。false position（试位法）算账员拿尺子量「再挪一格就刚好塞下」。MoE 升级（dense-only → full）先把所有**专家箱**搬到 CPU 仓库，腾出 GPU 空间，最后再把专家一件件搬回来。LAYER_FRACTION_UP/GATE/ATTN 是三档精度的**专家搬家工具**：UP 只推上半身，GATE 推上下半身，ATTN 全推走。就像一位优秀的仓库经理既要让大卡车（GPU）跑得快，又要让货架（模型权重）摆得下，llama.cpp 的加载与保存模块就是用 Direct I/O、mmap、mlock、staged upload 等工程技巧在「I/O 速度」、「内存占用」、「跨平台兼容」三者之间精妙平衡。
 
-## 14.2 源码地图
+## 13.2 源码地图
 
 src/llama-mmap.h
 ├── struct llama_file              # 文件抽象（Pimpl 模式）
@@ -184,15 +184,15 @@ src/llama-ext.h
 ├── llama_quant_tensor_allows_quantization / llama_quant_compute_types
 └── llama_load_model_from_file（顶层入口）
 
-## 14.3 底层文件与内存映射 —— 跨平台的"读写管道工"
+## 13.3 底层文件与内存映射 —— 跨平台的"读写管道工"
 
 llama.cpp 为了在 Windows、Linux、macOS 等平台上实现高性能、零拷贝的模型加载，自研了一套底层 I/O 抽象：`llama_file`（文件句柄统一封装）、`llama_mmap`（内存映射）、`llama_mlock`（物理内存锁定）。这三个类采用 Pimpl（Pointer to Implementation）模式，将平台相关的实现细节隐藏在 `impl` 结构体中，对外暴露统一的 C++ 接口。这种设计让上层代码（如 `llama_model_loader`）无需关心是 `CreateFileMapping` 还是 `mmap`，是 `ReadFile` 还是 `pread`，只需调用 `read_raw`、`addr()`、`grow_to()` 即可。
 
-### 14.3.1 `llama_file`：统一文件句柄与 Direct I/O
+### 13.3.1 `llama_file`：统一文件句柄与 Direct I/O
 
 `llama_file` 是所有文件操作的入口。它支持两种构造方式：从路径打开（`llama_file(const char*, const char*, bool use_direct_io)`）或接管已有的 `FILE*`（`llama_file(FILE*)`）。核心成员是 `std::unique_ptr<impl> pimpl`，实际干活的是内部的 `impl` 类。
 
-#### POSIX 实现：O_DIRECT 与对齐读取
+#### 13.3.1.1 POSIX 实现：O_DIRECT 与对齐读取
 
 在 POSIX 平台（Linux/macOS）上，`impl` 尝试以 `O_RDONLY | O_DIRECT` 打开文件，绕过页缓存实现 DMA 直传。如果内核不支持（如某些网络文件系统），会自动回退到普通 `fopen`。
 
@@ -251,7 +251,7 @@ void llama_file::impl::read_aligned_chunk(void * dest, size_t len) {
 
 这段代码实现了 **Direct I/O 的核心难点**：块设备要求读取偏移、长度、缓冲区地址均对齐到块大小（通常 4KB）。`read_aligned_chunk` 通过 `posix_memalign` 分配对齐内存，`pread` 读取整个对齐块，再用 `memcpy` 把有效数据拷贝到用户缓冲区，最后释放临时缓冲区。这种“读大块、取小块”的策略绕过了页缓存，减少了内核拷贝，特别适合 NVMe SSD 等高吞吐存储设备。
 
-#### Windows 实现：无 O_DIRECT，但支持对齐读取
+#### 13.3.1.2 Windows 实现：无 O_DIRECT，但支持对齐读取
 
 Windows 没有 `O_DIRECT` 标志，但 `ReadFile` 与 `WriteFile` 支持 `FILE_FLAG_NO_BUFFERING`（需对齐）。llama.cpp 在 Windows 上简化处理：`has_direct_io()` 恒返回 `true`，读写直接调用 `ReadFile`/`WriteFile`，不做额外对齐。
 
@@ -269,7 +269,7 @@ bool llama_file::impl::has_direct_io() const {
 }
 ```
 
-#### 回退机制：`read_raw_unsafe` 与 `EFAULT/EINVAL` 处理
+#### 13.3.1.3 回退机制：`read_raw_unsafe` 与 `EFAULT/EINVAL` 处理
 
 当 Direct I/O 读取因对齐问题失败（返回 `EFAULT` 或 `EINVAL`），`read_raw_unsafe` 会捕获错误并回退到 buffered I/O 路径。
 
@@ -305,7 +305,7 @@ void llama_file::impl::read_raw_unsafe(void * ptr, size_t len) {
 
 ---
 
-### 14.3.2 `llama_mmap`：内存映射与 NUMA 优化
+### 13.3.2 `llama_mmap`：内存映射与 NUMA 优化
 
 `llama_mmap` 将文件映射到进程虚拟地址空间，实现“零拷贝”访问。POSIX 使用 `mmap(MAP_SHARED)`，Windows 使用 `CreateFileMappingA` + `MapViewOfFile`。
 
@@ -366,7 +366,7 @@ void llama_mmap::impl::unmap_fragment(size_t first, size_t last) {
 
 ---
 
-### 14.3.3 `llama_mlock`：把模型锁进物理内存
+### 13.3.3 `llama_mlock`：把模型锁进物理内存
 
 `llama_mlock` 防止模型权重被换出到 swap，保证推理延迟稳定。它按页粒度逐步扩大锁定范围（`grow_to`），避免一次性锁定过大导致 `ENOMEM`。
 
@@ -414,7 +414,7 @@ void llama_mlock::impl::raw_lock(void * ptr, size_t size) {
 
 ---
 
-### 14.3.4 模块依赖图
+### 13.3.4 模块依赖图
 
 ```mermaid
 graph TD
@@ -436,11 +436,11 @@ graph TD
 
 ---
 
-## 14.4 GGUF 元数据访问器 —— 类型安全的"键值翻译官"
+## 13.4 GGUF 元数据访问器 —— 类型安全的"键值翻译官"
 
 GGUF 文件的元数据（Key-Value 对）包含多种类型：`uint32`、`int32`、`float32`、`bool`、`string`、`array`。直接用 `gguf_get_val_u32` 等 C 接口既繁琐又不安全。`GGUFMeta` 命名空间通过 **模板特化 + SFINAE** 构建了一套类型安全的访问层，核心是 `GKV_Base`、`GKV<T>`、`ArrayInfo`。
 
-### 14.4.1 `GKV_Base_Type` 与 `GKV_Base`：类型→GGUF类型→Getter 的三位一体
+### 13.4.1 `GKV_Base_Type` 与 `GKV_Base`：类型→GGUF类型→Getter 的三位一体
 
 **源码路径：`src/llama-model-loader.cpp` - `GGUFMeta::GKV_Base_Type`（第128-142行）**
 
@@ -471,7 +471,7 @@ template<> struct GKV_Base<std::string> {
 
 这段代码定义了 **“类型即图纸”**：每个 C++ 类型 `T` 知道自己对应的 `gguf_type` 常量和取值函数。业务代码只需写 `GKV<T>::get_kv(ctx, k)`，编译器自动展开为正确的 `gguf_get_val_xxx` 调用。
 
-### 14.4.2 `ArrayInfo`：数组元数据的“打包票”
+### 13.4.2 `ArrayInfo`：数组元数据的“打包票”
 
 GGUF 数组比较特殊：需要先查类型、长度，再取数据指针。`ArrayInfo` 一次性把这些打包。
 
@@ -497,7 +497,7 @@ template<> struct GKV_Base<ArrayInfo> {
 
 ---
 
-### 14.4.3 `GKV<T>::get_kv`：统一类型校验 + 取值
+### 13.4.3 `GKV<T>::get_kv`：统一类型校验 + 取值
 
 **源码路径：`src/llama-model-loader.cpp` - `GGUFMeta::GKV<T>::get_kv()`（第187-195行）**
 
@@ -520,7 +520,7 @@ struct GKV : GKV_Base<T> {
 
 ---
 
-### 14.4.4 KV 覆盖机制：`try_override` + `validate_override` + SFINAE 分发
+### 13.4.4 KV 覆盖机制：`try_override` + `validate_override` + SFINAE 分发
 
 用户可以通过命令行 `--override` 覆盖模型元数据（如修改 `n_ctx`、更换 tokenizer）。`try_override` 通过 **SFINAE（Substitution Failure Is Not An Error）** 为四类类型生成不同的重载。
 
@@ -594,7 +594,7 @@ static bool validate_override(const llama_model_kv_override_type expected_type,
 
 ---
 
-### 14.4.5 统一入口：`get_key` / `get_arr` / `get_key_or_arr`
+### 13.4.5 统一入口：`get_key` / `get_arr` / `get_key_or_arr`
 
 `llama_model_loader` 提供三组模板方法，供上层按需调用：
 
@@ -632,11 +632,11 @@ bool llama_model_loader::get_key_or_arr(const std::string & key, std::array<T, N
 
 ---
 
-## 14.5 模型加载器 llama_model_loader —— GGUF 的"拆箱流水线"
+## 13.5 模型加载器 llama_model_loader —— GGUF 的"拆箱流水线"
 
 `llama_model_loader` 是整个加载流程的**总指挥**。它的构造函数完成：打开主文件、自动发现 split 文件、收集所有张量元数据、推断 ftype、建立 `weights_map`。后续的 `create_tensor`、`load_all_data` 则负责内存分配与数据搬运。
 
-### 14.5.1 构造函数：从文件名到 `weights_map`
+### 13.5.1 构造函数：从文件名到 `weights_map`
 
 **源码路径：`src/llama-model-loader.cpp` - `llama_model_loader::llama_model_loader()`（第490-630行）**
 
@@ -780,7 +780,7 @@ flowchart TD
 
 ---
 
-### 14.5.2 Split 文件自动发现：`llama_get_list_splits` + `llama_split_prefix`
+### 13.5.2 Split 文件自动发现：`llama_get_list_splits` + `llama_split_prefix`
 
 **源码路径：`src/llama-model-loader.cpp` - `llama_get_list_splits()`（第85-107行）**
 
@@ -827,7 +827,7 @@ int32_t llama_split_prefix(char * split_prefix, size_t maxlen,
 
 ---
 
-### 14.5.3 FTYPE 推断：统计 + 覆盖
+### 13.5.3 FTYPE 推断：统计 + 覆盖
 
 ```mermaid
 flowchart LR
@@ -844,11 +844,11 @@ flowchart LR
 
 ---
 
-## 14.6 张量创建与多缓冲区分配 —— "按层分配内存"的调度员
+## 13.6 张量创建与多缓冲区分配 —— "按层分配内存"的调度员
 
 `create_tensor` 是加载器最复杂的方法：它根据张量名称、层索引、模型架构，决定把张量放在 **哪个后端的哪种 Buffer Type** 上。核心逻辑分两步：`ctx_for_buft`（获取/创建 ggml_context）和 `buft_for_tensor`（选择 buffer type）。
 
-### 14.6.1 `ctx_for_buft`：每种 Buffer Type 共享一个 Context
+### 13.6.1 `ctx_for_buft`：每种 Buffer Type 共享一个 Context
 
 **源码路径：`src/llama-model-loader.cpp` - `llama_model_loader::create_tensor()`（第890-1010行，节选）**
 
@@ -882,7 +882,7 @@ struct ggml_tensor * llama_model_loader::create_tensor(
 
 ---
 
-### 14.6.2 `buft_for_tensor`：能力探测 + 覆盖规则 + 重复张量处理
+### 13.6.2 `buft_for_tensor`：能力探测 + 覆盖规则 + 重复张量处理
 
 **源码路径：`src/llama-model-loader.cpp` - `llama_model_loader::create_tensor()` 续（`buft_for_tensor` lambda）**
 
@@ -973,7 +973,7 @@ static bool weight_buft_supported(const llama_hparams & hparams, ggml_tensor * w
 
 ---
 
-### 14.6.3 `TENSOR_DUPLICATED`：Token Embedding 与 Output 共享权重
+### 13.6.3 `TENSOR_DUPLICATED`：Token Embedding 与 Output 共享权重
 
 许多模型（如 LLaMA）的 `token_embd.weight` 与 `output.weight` 是同一块内存。加载器通过 `TENSOR_DUPLICATED` 标志处理：
 
@@ -982,7 +982,7 @@ static bool weight_buft_supported(const llama_hparams & hparams, ggml_tensor * w
 
 ---
 
-### 14.6.4 `create_tensor_as_view`：零拷贝视图
+### 13.6.4 `create_tensor_as_view`：零拷贝视图
 
 **源码路径：`src/llama-model-loader.cpp` - `llama_model_loader::create_tensor_as_view()`（第1015-1037行）**
 
@@ -1007,7 +1007,7 @@ struct ggml_tensor * llama_model_loader::create_tensor_as_view(
 
 ---
 
-## 14.7 异步加载与数据上传 —— "并行搬运"的工程艺术
+## 13.7 异步加载与数据上传 —— "并行搬运"的工程艺术
 
 `load_all_data` 是数据搬运的主战场。它根据 `use_mmap`、后端能力、设备类型，自动选择 **三条加载路径**：
 
@@ -1017,7 +1017,7 @@ struct ggml_tensor * llama_model_loader::create_tensor_as_view(
 | **Host Buffer 同步读** | 无 mmap、或需校验 | `file->read_raw(host_buf, size)` → `ggml_backend_tensor_set` |
 | **Staged Async Upload** | GPU 推理、大模型 | 4 个 pinned buffer 轮转 + `ggml_backend_tensor_set_async` + event 同步 |
 
-### 14.7.1 Staged Upload：4 缓冲区轮转
+### 13.7.1 Staged Upload：4 缓冲区轮转
 
 **源码路径：`src/llama-model-loader.cpp` - `llama_model_loader::load_all_data()`（第1110-1330行，节选）**
 
@@ -1127,7 +1127,7 @@ bool llama_model_loader::load_all_data(ggml_context * ctx, llama_buf_map & bufs,
 
 ---
 
-### 14.7.2 模块依赖图：加载流水线
+### 13.7.2 模块依赖图：加载流水线
 
 ```mermaid
 flowchart TD
@@ -1153,11 +1153,11 @@ flowchart TD
 
 ---
 
-## 14.8 模型保存器 llama_model_saver —— GGUF 的"重写打包机"
+## 13.8 模型保存器 llama_model_saver —— GGUF 的"重写打包机"
 
 `llama_model_saver` 是加载器的**镜像操作**：把内存中的 `llama_model` 序列化回 GGUF 文件。它复用 `llm_kv` 命名空间，确保键名与加载器完全一致。
 
-### 14.8.1 架构白名单：`llama_model_saver_supports_arch`
+### 13.8.1 架构白名单：`llama_model_saver_supports_arch`
 
 **源码路径：`src/llama-model-saver.cpp` - `llama_model_saver_supports_arch()`（第7-24行）**
 
@@ -1190,7 +1190,7 @@ bool llama_model_saver_supports_arch(llm_arch arch) {
 
 ---
 
-### 14.8.2 `add_kv` 模板分发与 `per_layer` 优化
+### 13.8.2 `add_kv` 模板分发与 `per_layer` 优化
 
 **源码路径：`src/llama-model-saver.cpp` - `llama_model_saver::add_kv<Container>()`（第66-108行）**
 
@@ -1237,7 +1237,7 @@ void llama_model_saver::add_kv(const enum llm_kv key, const Container & value, c
 
 ---
 
-### 14.8.3 `add_tensor` 去重：`rope_freqs` 只写一次
+### 13.8.3 `add_tensor` 去重：`rope_freqs` 只写一次
 
 **源码路径：`src/llama-model-saver.cpp` - `llama_model_saver::add_tensor()`（第119-130行）**
 
@@ -1261,17 +1261,17 @@ void llama_model_saver::add_tensor(const struct ggml_tensor * tensor) {
 
 ---
 
-### 14.8.4 `add_kv_from_model`：全量写入 hparams + vocab
+### 13.8.4 `add_kv_from_model`：全量写入 hparams + vocab
 
 此函数把 `llama_hparams` 的所有字段、词汇表的所有 token/text/score/attr、tokenizer 配置（merges、special ids、chat template 等）逐个调用 `add_kv` 写入。**字段列表与 `llama-quantize` 的写入逻辑严格对齐**，保证量化后的模型可被标准加载器识别。
 
 ---
 
-## 14.9 设备内存自适应 llama_params_fit —— "自动算账"的预算管家
+## 13.9 设备内存自适应 llama_params_fit —— "自动算账"的预算管家
 
 用户常给出“全量 GPU 卸载 + 最大上下文”的激进配置，导致 OOM。`llama_params_fit` 通过 **四步预算算法** 自动收缩参数，让模型刚好塞进显存。
 
-### 14.9.1 整体流程
+### 13.9.1 整体流程
 
 ```mermaid
 flowchart TD
@@ -1289,7 +1289,7 @@ flowchart TD
 
 ---
 
-### 14.9.2 Step 1：基线测量 `llama_get_device_memory_data`
+### 13.9.2 Step 1：基线测量 `llama_get_device_memory_data`
 
 **源码路径：`src/llama.cpp` - `llama_get_device_memory_data()`（第33-105行）**
 
@@ -1334,7 +1334,7 @@ static std::vector<llama_device_memory_data> llama_get_device_memory_data(...) {
 
 ---
 
-### 14.9.3 Step 2：收缩上下文 `n_ctx`
+### 13.9.3 Step 2：收缩上下文 `n_ctx`
 
 ```cpp
 if (cparams->n_ctx == 0) { // 自动模式
@@ -1361,7 +1361,7 @@ if (cparams->n_ctx == 0) { // 自动模式
 
 ---
 
-### 14.9.4 Step 3：Dense 层 Back-to-Front 填充（试位法 False Position）
+### 13.9.4 Step 3：Dense 层 Back-to-Front 填充（试位法 False Position）
 
 从最后一层（最靠近输出）开始，尽量把层塞进显存。
 
@@ -1414,7 +1414,7 @@ for (int id = nd - 1; id >= 0; --id) {
 
 ---
 
-### 14.9.5 Step 4：MoE 升级 Dense-Only → Full
+### 13.9.5 Step 4：MoE 升级 Dense-Only → Full
 
 Dense-only 阶段只把 **Attention + Shared Expert** 放上设备，**Routed Experts** 全留在 CPU。如果此时仍有显存富余，按三级渐进把专家搬上来。
 
@@ -1452,7 +1452,7 @@ if (global_surplus_cpu_moe > 0) { // 有富余，开始升级
 
 ---
 
-### 14.9.6 最终配置生成：`set_ngl_tensor_split_tbo`
+### 13.9.6 最终配置生成：`set_ngl_tensor_split_tbo`
 
 **源码路径：`src/llama.cpp` - `set_ngl_tensor_split_tbo` lambda（第150-200行）**
 
@@ -1490,35 +1490,35 @@ auto set_ngl_tensor_split_tbo = [&](const std::vector<ngl_t> & ngl_per_device,
 
 ---
 
-## 14.10 设计中的取舍
+## 13.10 设计中的取舍
 
-### 为什么不用标准库 `std::fstream` / `mmap` 直接调用？
+### 13.10.1 为什么不用标准库 `std::fstream` / `mmap` 直接调用？
 
 **回答：** 标准库无法表达 **Direct I/O**、**对齐读取**、**NUMA 提示**、**mlock** 等硬件相关特性。llama.cpp 需要在 Linux (io_uring)、Windows (IOCP)、macOS (mmap+msync) 上取得一致的高性能表现，必须自研抽象层。
 
-### `mmap` 与 `Direct I/O` 为什么互斥？
+### 13.10.2 `mmap` 与 `Direct I/O` 为什么互斥？
 
 **回答：** `mmap` 本质是让内核管理页缓存，页面缺失时由内核发起读取；`O_DIRECT` 要求用户态自行管理缓冲区和对齐，绕过页缓存。若同时开启，`mmap` 依然会走页缓存，抵消了 Direct I/O 的零拷贝优势，还会造成内存重复占用（页缓存 + 用户缓冲区）。代码中强制 `use_mmap && use_direct_io` 时关闭 mmap，正是基于此权衡。
 
-### 为什么 `staged upload` 固定 4 个 buffer，64MB 大小？
+### 13.10.3 为什么 `staged upload` 固定 4 个 buffer，64MB 大小？
 
 **回答：** 经验值平衡：
 - **Buffer 数**：2 个不够隐藏延迟（读+传串行），8 个内存占用翻倍，4 个是“双缓冲的双缓冲”甜蜜点。
 - **Buffer 大小**：64MB 能覆盖绝大多数单张量（最大通常是 `token_embd` ~200MB，但它常走 mmap zero-copy），加上 2×alignment 做 padding 安全边际。
 
-### `per_layer` 优化为什么只在 save 时做，不在 load 时做？
+### 13.10.4 `per_layer` 优化为什么只在 save 时做，不在 load 时做？
 
 **回答：** Load 时文件已经是展开后的数组（或标量广播），内存中自然共享；Save 时是把内存中可能不同的值写入文件，**写入前检测同值并压缩**才能减小文件体积。Load 端无需感知。
 
-### `llama_params_fit` 为什么用“二次加载模型”测量内存？
+### 13.10.5 `llama_params_fit` 为什么用“二次加载模型”测量内存？
 
 **回答：** GGML 后端的内存分配策略极其复杂（碎片整合、buffer pool、图级优化），静态公式无法精确预测。**实测才是真理**：用 `no_alloc` 加载元数据，建立上下文触发真实分配，读取 `memory_breakdown`，虽慢（几秒）但绝对准确。
 
 ---
 
-## 14.11 动手练习
+## 13.11 动手练习
 
-### 练习 1：理解 Direct I/O 与 mmap 的工程取舍
+### 13.11.1 练习 1：理解 Direct I/O 与 mmap 的工程取舍
 
 1. 阅读 `src/llama-mmap.cpp` 第 157-165 行 `impl(const char*, const char*, bool)`、第 168-182 行 `init_fd()`，第 258-276 行 `read_aligned_chunk()`，理解：
    - 为什么 `O_DIRECT` 需要把任意 offset 对齐到块设备边界？
@@ -1529,7 +1529,7 @@ auto set_ngl_tensor_split_tbo = [&](const std::vector<ngl_t> & ngl_per_device,
    - 当 `numa=true` 时为什么要把 `prefetch` 置 0 并切到 `POSIX_MADV_RANDOM`？
 3. 动手：在你的 Linux 工作站上用 `strace -e trace=mmap,read,openat llama-cli -m model.gguf` 观察真实加载行为，记录 mmap 调用次数与 Direct I/O 是否生效。
 
-### 练习 2：理解 GGUFMeta::GKV 模板体系
+### 13.11.2 练习 2：理解 GGUFMeta::GKV 模板体系
 
 1. 阅读 `src/llama-model-loader.cpp` 第 128-244 行 `GGUFMeta` 命名空间，回答：
    - `GKV_Base_Type` 与 `GKV_Base` 的分层设计是如何把「类型 → gguf_type → getter 函数」三步合一的？
@@ -1539,7 +1539,7 @@ auto set_ngl_tensor_split_tbo = [&](const std::vector<ngl_t> & ngl_per_device,
    - `try_override` 通过 SFINAE 派分了哪 4 种 override 类型？类型不匹配时会怎样？
 2. 动手实验：写一段小程序，构造一个 `bool` 字段 + 一个 `int32_t` 字段，然后用一个 `LLAMA_KV_OVERRIDE_TYPE_STR` 的 override 去覆盖 `int32_t` 字段，观察日志输出。
 
-### 练习 3：理解模型加载器与 split 文件自动发现
+### 13.11.3 练习 3：理解模型加载器与 split 文件自动发现
 
 1. 阅读 `src/llama-model-loader.cpp` 第 85-107 行 `llama_get_list_splits` 与第 490-630 行构造函数，回答：
    - `llama_split_prefix` 是如何从 `<name>-00002-of-00004.gguf` 反推出前缀的？
@@ -1549,7 +1549,7 @@ auto set_ngl_tensor_split_tbo = [&](const std::vector<ngl_t> & ngl_per_device,
    - ftype 的推断是先读 KV 还是先统计张量类型？两者的优先级是什么？
 2. 动手：把一个模型用 `llama-gguf-split` 切成 4 份，再用 `strace` 跟踪 `llama_model_load_from_splits` 的 `open`/`mmap` 调用，确认加载顺序是否先主文件后从文件。
 
-### 练习 4：理解 create_tensor 的多缓冲区调度
+### 13.11.4 练习 4：理解 create_tensor 的多缓冲区调度
 
 1. 阅读 `src/llama-model-loader.cpp` 第 770-1010 行，回答：
    - `weight_buft_supported` 为不同算子（GET_ROWS / MUL_MAT / MUL_MAT_ID / ROPE / SSM_SCAN）构造测试张量时为什么要用 0 字节的临时 buffer？
@@ -1559,7 +1559,7 @@ auto set_ngl_tensor_split_tbo = [&](const std::vector<ngl_t> & ngl_per_device,
    - `create_tensor_as_view` 为什么要求 `cur->type == base->type`？零拷贝视图节省了多少内存？
 2. 动手：打开一个 7B 的 Q4_K 模型，在 `create_tensor` 入口打日志，记录每个张量被分配到了哪种 buft，观察 token_embd 与 output 是否共享同一份 buffer。
 
-### 练习 5：理解 staged upload 与 Direct I/O 对齐读取
+### 13.11.5 练习 5：理解 staged upload 与 Direct I/O 对齐读取
 
 1. 阅读 `src/llama-model-loader.cpp` 第 1110-1330 行 `load_all_data`，回答：
    - 4 个 pinned buffer 轮转的目的什么？为什么是 64MB+2*alignment 而不是更大的尺寸？
@@ -1569,7 +1569,7 @@ auto set_ngl_tensor_split_tbo = [&](const std::vector<ngl_t> & ngl_per_device,
    - `ggml_backend_event_synchronize` 与 `buffer_idx %= n_buffers` 是如何保证 buffer 不被并发重用的？
 2. 动手：用 `nsys profile` 或 `rocm-smi --progs` 跟踪一次 70B Q4_K 模型在 ROCm 后端的加载过程，统计 pinned buffer 的分配次数与同步等待时间占比。
 
-### 练习 6：理解 llama_model_saver 的镜像逻辑
+### 13.11.6 练习 6：理解 llama_model_saver 的镜像逻辑
 
 1. 阅读 `src/llama-model-saver.cpp` 第 15-35 行 `llama_model_saver_supports_arch`、第 75-260 行，回答：
    - 哪些架构被显式排除？为什么这些架构目前不支持 save？
@@ -1579,7 +1579,7 @@ auto set_ngl_tensor_split_tbo = [&](const std::vector<ngl_t> & ngl_per_device,
    - `add_kv_from_model` 写入了多少个 hparams + vocab 字段？这些字段与 llama-quantize 的写入是否一致？
 2. 动手：尝试把一个不支持的架构（如 Gemma3）传入 `llama_model_saver` 构造，观察是否立即抛出断言。
 
-### 练习 7：理解 llama_params_fit 的四步预算
+### 13.11.7 练习 7：理解 llama_params_fit 的四步预算
 
 1. 阅读 `src/llama.cpp` 第 60-460 行，回答：
    - Step 1 中如果设备返回 free=0 且 total=0，函数会怎么处理？
@@ -1591,7 +1591,7 @@ auto set_ngl_tensor_split_tbo = [&](const std::vector<ngl_t> & ngl_per_device,
 
 ---
 
-## 14.12 本章小结
+## 13.12 本章小结
 
 这一章中我们深入剖析了 llama.cpp 模型加载与持久化的完整工程实现。首先，我们了解了跨平台的底层文件抽象 `llama_file`，它通过 Pimpl 模式统一封装了 POSIX 与 Windows 的文件操作，并实现了 Direct I/O 与对齐读取以绕过页缓存、减少拷贝。其次，我们探索了 `llama_mmap` 如何利用 `mmap`/`MapViewOfFile` 实现零拷贝访问，并通过 `posix_fadvise`/`madvise` 与 `PrefetchVirtualMemory` 针对顺序读取与 NUMA 拓扑进行预取优化，同时提供 `unmap_fragment` 粒度释放虚拟地址空间。接着，我们分析了 `llama_mlock` 如何按页粒度将模型锁定在物理内存中，POSIX 下检查 `RLIMIT_MEMLOCK` 给出可读建议，Windows 下结合 `VirtualLock` 与 Working Set 调整达成等价效果。
 

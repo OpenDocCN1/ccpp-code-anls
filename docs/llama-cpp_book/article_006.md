@@ -1,5 +1,5 @@
 
-# 遗留模型转换工具 —— 兼容「远古版本」的手术刀
+# 第6章 遗留模型转换工具 —— 兼容「远古版本」的手术刀
 
 ## 学习目标
 
@@ -15,11 +15,11 @@
 - 熟悉 load_hparams_from_hf 的 HF Hub 配置拉取流程与 parse_args CLI 解析
 - 能够阅读并修改自定义 GGUF 转换器逻辑
 
-## 7.1 生活类比
+## 6.1 生活类比
 
 想象 GGML→GGUF 转换器是一座「文物修复工厂」，专门复活三个时代的旧模型档案：GGMLFormat 三代头部 = 三种不同的封蜡方式（GGML 老式火漆/GGMF 钢印/GGJT 条码），用 magic 字节一秒识别年代；GGMLFType 量化枚举 = 修复工坊的「工具箱标签」：每个量化方案都有专属代号（F32/F16/Q4_0/Q4_K/Q6_K...）；Hyperparameters 7 元组 = 修复工坊收到的「配方卡」：一次性读取 7 个数字（词表/维度/头数/层数/旋转/格式）；Hyperparameters.__init__ = 空白的「配方卡」：先把 7 个字段填 0，等待后续读取；Vocab 长度前缀协议 = 档案柜的「标签箱」：每个抽屉先贴长度标签，再放内容（可选评分）；Vocab.__init__ = 「空柜子准备」：决定是否装评分格（GGML 格式不带分数）；Tensor 32 字节对齐 = 档案柜的「整齐码放」：每个卷宗结束都要补齐到 32 字节，方便卡车一箱箱搬运；Tensor.__init__ = 「空卷宗封皮」：先写下名称长度、维度、对齐方式，等真正读取时再填内容；GGMLModel.__init__ = 「工坊开工准备」：先摆放好 hp/vocab/tensors 四个空抽屉，等待装填；GQA 反推 = 侦探从「分组因子」反推「KV 头数」：1~255 逐一排查，找到能让 n_head/x == gqa 的 x；params_override 优先级 = 资深修复师的「权威判断」：一旦提供完整图纸，命令行参数全部靠边站；add_tensors 维度转置 = 「卷宗调头」：GGML 习惯把维度 0/1 反着写，GGUF 要正过来，所以交换前两维；add_vocab 字节 token 重编码 = 「古董符号翻译」：单字节字符按 0xXX 重新贴标签，让旧模型兼容新推理器；LoraTorchTensor = 永远成对出现的「双胞胎文件」：哥哥 A 是 (rank, row)，弟弟 B 是 (col, rank)，索引时必须联动；LoraTorchTensor.shape/dtype/size = 「双胞胎的合成身份」：对外只展示组合后的总维度，dtype 永远是共同的；LoraTorchTensor.contiguous/to = 「双胞胎同步搬家」：连续化或迁移设备时，必须同时搬运 A 和 B；PartialLoraTensor 合并 = 整理「散装零件」：先把所有 A/B 按 base_name 分组入柜，再校验齐备才打包；LoraModel.set_type / set_vocab = 「特化车间印章」：标记文件是适配器（ADAPTER），并跳过基础词表设置；LoraModel.generate_extra_tensors = 「明确说不要赠品」：返回空，禁止注入 RoPE 频率等额外张量；load_hparams_from_hf = 「快递员代取基模型配置」：通过 huggingface_hub 直接拉 config.json 即可；aLoRA invocation tokens = 「激活口令本」：从 HF 配置拿口令词，让 tokenizer 现场编码，并把首 token 撕掉（修补老版误差）。就像文物修复师既要尊重原件的原始结构（老 GGML 格式），又要让它兼容现代设备（GGUF），这套转换器在「忠实历史」与「面向未来」之间精妙平衡。
 
-## 7.2 源码地图
+## 6.2 源码地图
 
 ./convert_llama_ggml_to_gguf.py
 ├── GGMLFormat(IntEnum)                  # 三代格式枚举（GGML/GGMF/GGJT）
@@ -82,21 +82,21 @@
 │       ├── get_tensors()                # PartialLoraTensor 合并 → LoraTorchTensor
 │       └── modify_tensors()             # 拆分为 .lora_a / .lora_b
 
-## 7.3 GGML 头部验证与模型初始化 —— 解读「历史文件」的第一道关卡
+## 6.3 GGML 头部验证与模型初始化 —— 解读「历史文件」的第一道关卡
 
-### 7.3.1 为什么需要识别 magic 字节？
+### 6.3.1 为什么需要识别 magic 字节？
 
 GGML 经历了 GGML → GGMF → GGJT 三代演进，每代头部布局都不同。通过 magic 字节（lmgg / fmgg / tjgg）即可秒判文件类型与版本。防止用户误把 GGUF 文件当作 GGML 转换，避免破坏已有数据。
 
-### 7.3.2 版本兼容性的关键约束
+### 6.3.2 版本兼容性的关键约束
 
 GGJTv2 之前不支持量化（仅 F32/F16），遇到量化文件必须报错。GGJTv3 重新设计了 Q4/Q8 编码，遇到旧量化同样拒绝转换。validate_conversion 在加载前主动拦截不兼容组合。
 
-### 7.3.3 GGMLModel 的容器初始化
+### 6.3.3 GGMLModel 的容器初始化
 
 __init__ 准备好 hyperparameters / tensor_map / tensors / vocab 四个抽屉。后续 validate_header → load 方法才会向这些抽屉装填内容。
 
-### 7.3.4 GGMLFormat：三代格式枚举
+### 6.3.4 GGMLFormat：三代格式枚举
 
 源码路径：`./convert_llama_ggml_to_gguf.py` - `GGMLFormat`（第 18-22 行）
 
@@ -110,7 +110,7 @@ class GGMLFormat(IntEnum):
 
 这段代码定义了 GGML 文件的三代格式枚举，用于后续 identify 文件年代。
 
-### 7.3.5 GGMLFType：量化类型枚举
+### 6.3.5 GGMLFType：量化类型枚举
 
 源码路径：`./convert_llama_ggml_to_gguf.py` - `GGMLFType`（第 25-44 行）
 
@@ -136,7 +136,7 @@ class GGMLFType(IntEnum):
 
 这段代码定义了 GGML 文件支持的全部量化方案代号，Hyperparameters.ftype 直接映射到本枚举，驱动后续量化校验。
 
-### 7.3.6 GGMLModel.__init__：四抽屉准备
+### 6.3.6 GGMLModel.__init__：四抽屉准备
 
 源码路径：`./convert_llama_ggml_to_gguf.py` - `GGMLModel.__init__`（第 158-164 行）
 
@@ -150,7 +150,7 @@ def __init__(self):
 
 这段代码初始化模型聚合容器，为后续流水线加载预留空槽位。
 
-### 7.3.7 validate_header：识别三代魔数
+### 6.3.7 validate_header：识别三代魔数
 
 源码路径：`./convert_llama_ggml_to_gguf.py` - `GGMLModel.validate_header()`（第 175-195 行）
 
@@ -181,7 +181,7 @@ def validate_header(self, data, offset):
 
 这段代码实现了文件头识别逻辑：先读 4 字节 magic 判断代际，二/三代再读版本号。GGMLv1 只有 magic，无版本号；GGMF/GGJT 均为 8 字节头部（magic+version）。遇到 GGUF 直接报错拦截。
 
-### 7.3.8 validate_conversion：量化兼容性闸门
+### 6.3.8 validate_conversion：量化兼容性闸门
 
 源码路径：`./convert_llama_ggml_to_gguf.py` - `GGMLModel.validate_conversion()`（第 197-211 行）
 
@@ -203,13 +203,13 @@ def validate_conversion(self, ftype):
 
 这段代码实现了转换前的兼容性检查：GGJTv2 前只允许 F32/F16；GGJTv2 遇到旧 Q4/Q8 直接拒绝。保护用户不产出错误的 GGUF。
 
-## 7.4 超参数与词表解析 —— 模型「身份档案」的重构
+## 6.4 超参数与词表解析 —— 模型「身份档案」的重构
 
-### 7.4.1 Hyperparameters 类：小而美的 7 元组
+### 6.4.1 Hyperparameters 类：小而美的 7 元组
 
 __init__ 把 7 个数字字段全部置 0，ftype 默认 ALL_F32。__str__ 提供调试友好的字符串表示。load 用 struct.unpack('<7I') 一次性读取 n_vocab / n_embd / n_mult / n_head / n_layer / n_rot / ftype。set_n_ff 反向查询 w1.weight 张量的第二维来推断 FF 维度。
 
-### 7.4.2 Hyperparameters.__init__：空白配方卡
+### 6.4.2 Hyperparameters.__init__：空白配方卡
 
 源码路径：`./convert_llama_ggml_to_gguf.py` - `Hyperparameters.__init__`（第 53-57 行）
 
@@ -222,7 +222,7 @@ def __init__(self):
 
 这段代码把所有超参数字段初始化为 0，ftype 默认为全精度 F32，等待 load 填充真实值。
 
-### 7.4.3 Hyperparameters.__str__：调试友好打印
+### 6.4.3 Hyperparameters.__str__：调试友好打印
 
 源码路径：`./convert_llama_ggml_to_gguf.py` - `Hyperparameters.__str__`（第 76-77 行）
 
@@ -233,7 +233,7 @@ def __str__(self):
 
 这段代码提供了可读的调试字符串，包含全部关键字段与枚举名。
 
-### 7.4.4 Hyperparameters.load：一次性读 7 字段
+### 6.4.4 Hyperparameters.load：一次性读 7 字段
 
 源码路径：`./convert_llama_ggml_to_gguf.py` - `Hyperparameters.load()`（第 65-74 行）
 
@@ -250,7 +250,7 @@ def load(self, data, offset):
 
 这段代码使用小端序一次性解包 7 个 uint32，再将 ftype 转为枚举。返回消耗字节数供流水线推进 offset。
 
-### 7.4.5 Hyperparameters.set_n_ff：反向推断 FF 维度
+### 6.4.5 Hyperparameters.set_n_ff：反向推断 FF 维度
 
 源码路径：`./convert_llama_ggml_to_gguf.py` - `Hyperparameters.set_n_ff()`（第 59-63 行）
 
@@ -264,15 +264,15 @@ def set_n_ff(self, model):
 
 这段代码通过查找第 0 层 FFN 的 w1.weight 张量，从其形状第二维反推 n_ff。这是 GGML 旧格式未显式存储 n_ff 的补救措施。
 
-### 7.4.6 GGMLFType 枚举：所有量化方案的代号表
+### 6.4.6 GGMLFType 枚举：所有量化方案的代号表
 
 前文已展示完整枚举。F32/F16 是基础款；Q4_0/Q4_1/Q5_0/Q5_1/Q8_0 是早期整数位量化；Q2_K/Q3_K_*/Q4_K_*/Q5_K_*/Q6_K 是 K-quant 精细化系列。ftype 字段映射到本枚举，决定了模型兼容性与精度档位。
 
-### 7.4.7 Vocab 类的「长度前缀」加载协议
+### 6.4.7 Vocab 类的「长度前缀」加载协议
 
 __init__(load_scores=True) 根据格式决定是否带分数格。GGML 格式不带分数（load_scores=False），GGMF/GGJT 才有 scores。每个词条 = [uint32 长度] + [字节内容] + [可选 float 分数]。加载过程中严格检查 itemlen < 4096，防止恶意文件攻击。
 
-### 7.4.8 Vocab.__init__：空柜子准备
+### 6.4.8 Vocab.__init__：空柜子准备
 
 源码路径：`./convert_llama_ggml_to_gguf.py` - `Vocab.__init__`（第 80-83 行）
 
@@ -284,7 +284,7 @@ def __init__(self, load_scores = True):
 
 这段代码初始化空词表列表，load_scores 标志决定后续 load 是否读取分数。GGMLv1 不带分数，传 False；GGMF/GGJT 默认 True。
 
-### 7.4.9 Vocab.load：逐条目解析
+### 6.4.9 Vocab.load：逐条目解析
 
 源码路径：`./convert_llama_ggml_to_gguf.py` - `Vocab.load()`（第 85-98 行）
 
@@ -308,17 +308,17 @@ def load(self, data, offset, n_vocab):
 
 这段代码实现了长度前缀协议：每个 token 先读 4 字节长度，再读内容，最后可选读 4 字节 float 分数。4096 上限防止异常长 token 攻击。
 
-### 7.4.10 特殊 token 的智能推断
+### 6.4.10 特殊 token 的智能推断
 
 前 3 个 token 默认为 ࠀ/ ࡱ/ ࠁ。3~258 范围的单字节 token 被重新编码为 <0xXX> 字节 token。空格被替换为 ▁（U+2581），与 SentencePiece 保持一致。这一逻辑在后续 GGMLToGGUF.add_vocab 中实现。
 
-## 7.5 张量元数据解析 —— 「逐块」读取二进制布局
+## 6.5 张量元数据解析 —— 「逐块」读取二进制布局
 
-### 7.5.1 Tensor 的初始化与对齐标志
+### 6.5.1 Tensor 的初始化与对齐标志
 
 __init__ 设置默认值：name=None / dims=() / dtype=None / start_offset=0 / len_bytes=0。use_padding 控制在 GGMF 之后的格式才启用 32 字节对齐。
 
-### 7.5.2 Tensor.__init__：空卷宗封皮
+### 6.5.2 Tensor.__init__：空卷宗封皮
 
 源码路径：`./convert_llama_ggml_to_gguf.py` - `Tensor.__init__`（第 91-98 行）
 
@@ -334,11 +334,11 @@ def __init__(self, use_padding = True):
 
 这段代码初始化张量元数据容器，use_padding 决定是否在读取名字后进行 32 字节对齐（GGMLv1 不对齐，GGMF/GGJT 对齐）。
 
-### 7.5.3 Tensor.load 的三段式读取
+### 6.5.3 Tensor.load 的三段式读取
 
 前 12 字节：n_dims / name_len / dtype 三元组。接着 n_dims × 4 字节：每个维度的具体数值。再 name_len 字节：张量名。
 
-### 7.5.4 Tensor.load：完整解析流程
+### 6.5.4 Tensor.load：完整解析流程
 
 源码路径：`./convert_llama_ggml_to_gguf.py` - `Tensor.load()`（第 110-132 行）
 
@@ -369,11 +369,11 @@ def load(self, data, offset):
 
 这段代码完整解析张量元数据：12 字节头 → 维度数组 → 名字 → 32 字节对齐 → 计算数据区字节长度。使用 gguf.GGML_QUANT_SIZES 查表得到 (blksize, tysize) 计算 n_bytes。例如 Q4_K 的 256 元素共用一个 144 字节的块。
 
-### 7.5.5 GGML 的 32 字节对齐机制
+### 6.5.5 GGML 的 32 字节对齐机制
 
 通过 ((offset + 31) & ~31) - offset 计算填充字节。对齐可让 mmap 读取时按页加载更高效。GGMLv1 不对齐（use_padding=False），GGMF/GGJT 开启对齐。
 
-### 7.5.6 GGMLModel.load：流水线串联
+### 6.5.6 GGMLModel.load：流水线串联
 
 源码路径：`./convert_llama_ggml_to_gguf.py` - `GGMLModel.load()`（第 213-231 行）
 
@@ -403,13 +403,13 @@ def load(self, data, offset):
 
 这段代码串联了完整的解析流水线：头部 → 超参 → 词表 → 张量循环 → 反推 n_ff。使用 np.memmap 零拷贝读取文件，offset 逐段推进。
 
-## 7.6 GGUF 输出流水线 —— 「装配」现代文件格式
+## 6.6 GGUF 输出流水线 —— 「装配」现代文件格式
 
-### 7.6.1 GGMLToGGUF 的三大装配阶段
+### 6.6.1 GGMLToGGUF 的三大装配阶段
 
 add_params 写入所有超参数 KV 对。add_vocab 写入 tokenizer 类型 + token 列表 + 分数 + 类型。add_tensors 通过 mmap 直接切片写入权重。
 
-### 7.6.2 GGMLToGGUF.__init__：GQA 反推与名称映射
+### 6.6.2 GGMLToGGUF.__init__：GQA 反推与名称映射
 
 源码路径：`./convert_llama_ggml_to_gguf.py` - `GGMLToGGUF.__init__()`（第 234-243 行）
 
@@ -441,11 +441,11 @@ def __init__(self, ggml_model, data, cfg, params_override = None, vocab_override
 
 这段代码完成两件事：① 若无 params_override，根据 --gqa 反推 n_kv_head（遍历 1~255）；② 获取 LLAMA 架构的标准张量名映射表，用于后续重命名。
 
-### 7.6.3 GQA 反推机制
+### 6.6.3 GQA 反推机制
 
 用户通过 --gqa 传入分组因子。遍历 1~255 找出 n_head / x == gqa 的 x。找不到时报错退出，提醒用户检查参数。
 
-### 7.6.4 GGMLToGGUF.save：四阶段写入
+### 6.6.4 GGMLToGGUF.save：四阶段写入
 
 源码路径：`./convert_llama_ggml_to_gguf.py` - `GGMLToGGUF.save()`（第 245-262 行）
 
@@ -472,7 +472,7 @@ def save(self):
 
 这段代码按 GGUF 规范顺序写入：创建 Writer → add_params → add_vocab → add_tensors → write_header → write_kv → write_tensors → close。use_temp_file=False 直接写目标文件。
 
-### 7.6.5 add_params：参数写入与 params_override 优先级
+### 6.6.5 add_params：参数写入与 params_override 优先级
 
 源码路径：`./convert_llama_ggml_to_gguf.py` - `GGMLToGGUF.add_params()`（第 264-307 行）
 
@@ -520,7 +520,7 @@ def add_params(self, gguf_writer):
 
 这段代码实现了参数写入的两套逻辑：有 params_override 时，完全使用外部参数并校验 n_embd/n_layer/n_head 一致（防止人为错误）；无覆盖时，用 CLI 的 --context-length/--eps 与 hp 推导值混合。params_override 优先级最高，一旦提供，--gqa/--eps/--context-length 全部失效。
 
-### 7.6.6 add_vocab 的特殊 token 智能识别
+### 6.6.6 add_vocab 的特殊 token 智能识别
 
 源码路径：`./convert_llama_ggml_to_gguf.py` - `GGMLToGGUF.add_vocab()`（第 309-360 行）
 
@@ -581,7 +581,7 @@ def add_vocab(self, gguf_writer):
 
 这段代码实现了词表写入的核心逻辑：有 vocab_override 直接用外部词表并校验数量；否则遍历原始 vocab，对前 3 个 token 强制替换为 UNK/BOS/EOS 并打标签，3~258 单字节 token 重编码为 <0xXX> 字节类型，空格统一替换为 ▁。最后写入 token 列表、分数、类型及特殊 token ID。
 
-### 7.6.7 add_tensors 的维度对齐与 mmap 直传
+### 6.6.7 add_tensors 的维度对齐与 mmap 直传
 
 源码路径：`./convert_llama_ggml_to_gguf.py` - `GGMLToGGUF.add_tensors()`（第 362-389 行）
 
@@ -608,7 +608,7 @@ def add_tensors(self, gguf_writer):
 
 这段代码遍历所有张量：① 用 tensor_map 将旧名映射为 GGUF 标准名（兼容 .weight/.bias 后缀）；② 交换前两维适配 GGUF 布局（GGML 习惯 [out, in]，GGUF 习惯 [in, out]）；③ 通过 numpy memmap 切片直接取数据，无额外拷贝，极其高效。
 
-### 7.6.8 补充：模块依赖图
+### 6.6.8 补充：模块依赖图
 
 ```mermaid
 graph TD
@@ -631,17 +631,17 @@ graph TD
     N --> R[save 写入文件]
 ```
 
-## 7.7 外部元数据覆盖与 CLI —— 借助「现代参数」修补古董模型
+## 6.7 外部元数据覆盖与 CLI —— 借助「现代参数」修补古董模型
 
-### 7.7.1 为什么需要 handle_metadata？
+### 6.7.1 为什么需要 handle_metadata？
 
 古董 GGML 文件常常缺少 GQA / eps / n_head_kv 等新参数。通过 HuggingFace 仓库或 params.json 重建完整参数集。让 LLaMA1 / OpenLLaMA 等老模型获得现代推理引擎的全部能力。
 
-### 7.7.2 「假模型」反向探测技术
+### 6.7.2 「假模型」反向探测技术
 
 构造只含 shape 字段的 LazyTensor，不实际加载权重。让 convert_legacy_llama.Params 类在不读权重的情况下验证维度。节省大量内存与磁盘 I/O。
 
-### 7.7.3 handle_metadata：多源参数加载
+### 6.7.3 handle_metadata：多源参数加载
 
 源码路径：`./convert_llama_ggml_to_gguf.py` - `handle_metadata()`（第 392-418 行）
 
@@ -673,7 +673,7 @@ def handle_metadata(cfg, hp):
 
 这段代码实现了元数据覆盖：优先读 config.json（HF 格式），回退到 params.json（OpenLLaMA 格式）。用「假模型」只传 shape 给 Params 类验证维度。通过 VocabFactory 统一加载 spm/hfft 等多种 tokenizer。最后 check_vocab_size 校验词表大小一致。
 
-### 7.7.4 handle_args 的参数设计
+### 6.7.4 handle_args 的参数设计
 
 源码路径：`./convert_llama_ggml_to_gguf.py` - `handle_args()`（第 421-455 行）
 
@@ -696,7 +696,7 @@ def handle_args():
 
 这段代码定义了 CLI 参数：--gqa 控制 GQA 分组（LLaMA2 70B 用 8）；--eps 默认 5e-6（LLaMA1/OpenLLaMA 用 1e-6，LLaMA2 用 1e-5）；--context-length 默认 2048（LLaMA1）或 4096（LLaMA2）。--model-metadata-dir 触发参数与词表覆盖。
 
-### 7.7.5 main 的执行流程
+### 6.7.5 main 的执行流程
 
 源码路径：`./convert_llama_ggml_to_gguf.py` - `main()`（第 458-501 行）
 
@@ -738,7 +738,7 @@ def main():
 
 这段代码是主流程：解析参数 → 打印警告 → mmap 读文件 → GGMLModel.load 扫描 → 可选 handle_metadata → 实例化 GGMLToGGUF → save 写出。若无 metadata_dir 且用默认 gqa/eps，提示 LLaMA2 需显式指定；若是 GGMLv1，强烈建议用 metadata。
 
-### 7.7.6 __main__ 入口
+### 6.7.6 __main__ 入口
 
 源码路径：`./convert_llama_ggml_to_gguf.py` - `__main__`（第 504-538 行）
 
@@ -749,13 +749,13 @@ if __name__ == '__main__':
 
 标准 Python 模块入口，直接调用 main()。
 
-## 7.8 LoraTorchTensor 基础与属性 —— 「孪生张量」的算术魔法
+## 6.8 LoraTorchTensor 基础与属性 —— 「孪生张量」的算术魔法
 
-### 7.8.1 为什么要把 A/B 张量封装为一对？
+### 6.8.1 为什么要把 A/B 张量封装为一对？
 
 LoRA 的 A (n_rank, row) 与 B (col, n_rank) 在计算中需要协同。合并公式：W_new = W + alpha/rank * B @ A。保持两者绑定可避免索引时错位。
 
-### 7.8.2 LoraTorchTensor.__init__：双胞胎构造
+### 6.8.2 LoraTorchTensor.__init__：双胞胎构造
 
 源码路径：`./convert_lora_to_gguf.py` - `LoraTorchTensor.__init__()`（第 64-72 行）
 
@@ -773,7 +773,7 @@ def __init__(self, A: Tensor, B: Tensor):
 
 这段代码构造孪生张量：断言维数相同、A 的倒数第二维等于 B 的最后一维（即 rank 一致）。dtype 不一致时自动统一到 float32，记录 rank 供后续 reshape 使用。
 
-### 7.8.3 get_lora_A_B 解包方法
+### 6.8.3 get_lora_A_B 解包方法
 
 源码路径：`./convert_lora_to_gguf.py` - `LoraTorchTensor.get_lora_A_B()`（第 74-75 行）
 
@@ -784,11 +784,11 @@ def get_lora_A_B(self) -> tuple[Tensor, Tensor]:
 
 返回原始 A、B 张量对，供 modify_tensors 拆分 .lora_a / .lora_b 时使用。
 
-### 7.8.4 property 属性的合成语义
+### 6.8.4 property 属性的合成语义
 
 dtype：A 与 B 必须保持一致，否则断言失败。shape：合成形状 = (*B.shape[:-1], A.shape[-1])。size(dim=None)：包装 shape，等价 PyTorch 的 size() 接口。
 
-### 7.8.5 LoraTorchTensor.dtype/shape/size
+### 6.8.5 LoraTorchTensor.dtype/shape/size
 
 源码路径：`./convert_lora_to_gguf.py` - `LoraTorchTensor.dtype/shape/size`（第 121-133 行）
 
@@ -810,11 +810,11 @@ def size(self, dim=None):
 
 这三个 property 对外呈现「合成张量」的统一视图：dtype 以 A 为准（已断言一致），shape 取 B 的前缀维度 + A 的最后一维（即合并后的完整形状），size 直接委托 shape。
 
-### 7.8.6 张量操作的同步机制
+### 6.8.6 张量操作的同步机制
 
 contiguous：同时对 A、B 调用 contiguous()。to(*args, **kwargs)：对 A、B 同时迁移 dtype/device。view(*size)：内部调用 reshape，保持双胞胎同步。
 
-### 7.8.7 LoraTorchTensor.contiguous/to/view
+### 6.8.7 LoraTorchTensor.contiguous/to/view
 
 源码路径：`./convert_lora_to_gguf.py` - `LoraTorchTensor.contiguous/to/view`（第 135-140、189-190、164-165 行）
 
@@ -831,7 +831,7 @@ def view(self, *size: int) -> LoraTorchTensor:
 
 这三个方法保证双胞胎同步变换：contiguous/to 直接对 A、B 并行调用；view 只是 reshape 别名。
 
-### 7.8.8 reshape_as 的等价实现
+### 6.8.8 reshape_as 的等价实现
 
 源码路径：`./convert_lora_to_gguf.py` - `LoraTorchTensor.reshape_as()`（第 207-208 行）
 
@@ -842,11 +842,11 @@ def reshape_as(self, other: Tensor) -> LoraTorchTensor:
 
 直接调用 reshape(*other.shape)，按目标张量的形状重塑自身。
 
-### 7.8.9 __getitem__ 的复杂维度处理
+### 6.8.9 __getitem__ 的复杂维度处理
 
 对最后维度做 A 索引，其余维度广播到 B。自动展开 Ellipsis 占位符到正确的切片数量。2D 与 N-D 张量的索引行为不同，需分别处理。
 
-### 7.8.10 LoraTorchTensor.__getitem__：索引分离逻辑
+### 6.8.10 LoraTorchTensor.__getitem__：索引分离逻辑
 
 源码路径：`./convert_lora_to_gguf.py` - `LoraTorchTensor.__getitem__()`（第 77-119 行）
 
@@ -881,11 +881,11 @@ def __getitem__(self, indices: ...) -> LoraTorchTensor:
 
 这段代码实现了 LoRA 张量的索引语义：标量索引仅支持 >2D；切片索引在 2D 时只对 B 切片；元组索引时，A 只在最后一维响应索引，其余维度广播（全切片），B 正常响应前 N-1 维。Ellipsis 自动展开。这是 LoRA 数学结构（A 只在 rank 维变化）的直接体现。
 
-### 7.8.11 reshape 的形状约束
+### 6.8.11 reshape 的形状约束
 
 总元素数必须保持不变（处理 -1 推断）。A 重塑为 (..., rank, row)，B 重塑为 (..., col, rank)。不能跨越最后维度做 reshape，会破坏 LoRA 结构。
 
-### 7.8.12 LoraTorchTensor.reshape：维度守恒
+### 6.8.12 LoraTorchTensor.reshape：维度守恒
 
 源码路径：`./convert_lora_to_gguf.py` - `LoraTorchTensor.reshape()`（第 139-159 行）
 
@@ -912,13 +912,13 @@ def reshape(self, *shape: int | tuple[int, ...]) -> LoraTorchTensor:
 
 这段代码严格保护 LoRA 结构：最后一维（输出维度）不能变；A 的 shape 强制为 (..., rank, row)，B 强制为 (..., col, rank)。-1 自动推断。确保合并后 B@A 的数学意义不变。
 
-## 7.9 维度置换与算子重载 —— PyTorch 接口的「完美伪装」
+## 6.9 维度置换与算子重载 —— PyTorch 接口的「完美伪装」
 
-### 7.9.1 permute 的双重分支处理
+### 6.9.1 permute 的双重分支处理
 
 仅置换最后一维 → 走 B.permute 路径。2D 张量的 (0,1) 全转置 → 需同时交换 A、B 的对应维度。其他组合抛 NotImplementedError 限制误用。
 
-### 7.9.2 LoraTorchTensor.permute：受控置换
+### 6.9.2 LoraTorchTensor.permute：受控置换
 
 源码路径：`./convert_lora_to_gguf.py` - `LoraTorchTensor.permute()`（第 187-202 行）
 
@@ -937,11 +937,11 @@ def permute(self, *dims: int) -> LoraTorchTensor:
 
 这段代码只允许两种置换：① 仅动最后一维 → 只动 B（A 的前缀全是 1）；② 2D 张量完整转置 → 同时置换 A、B 并交换角色（因为转置后 A/B 维度角色互换）。其他情况禁止，防止破坏低秩结构。
 
-### 7.9.3 transpose 与 swapaxes 的实现差异
+### 6.9.3 transpose 与 swapaxes 的实现差异
 
 transpose(dim0, dim1)：构造新的维度顺序后委托给 permute。swapaxes(axis0, axis1)：直接调用 transpose，是其语义别名。
 
-### 7.9.4 LoraTorchTensor.transpose/swapaxes
+### 6.9.4 LoraTorchTensor.transpose/swapaxes
 
 源码路径：`./convert_lora_to_gguf.py` - `LoraTorchTensor.transpose/swapaxes()`（第 213-187 行）
 
@@ -958,11 +958,11 @@ def swapaxes(self, axis0: int, axis1: int) -> LoraTorchTensor:
 
 transpose 只是构造置换元组转给 permute；swapaxes 直接别名。核心逻辑在 permute。
 
-### 7.9.5 __torch_function__ 协议桥接
+### 6.9.5 __torch_function__ 协议桥接
 
 拦截 torch.permute / reshape / stack / cat 等函数。让 LoraTorchTensor 可在父类代码中无缝替换原生 Tensor。stack/cat 仅在 dim=0 时支持，其他维度抛错。
 
-### 7.9.6 LoraTorchTensor.__torch_function__：算子拦截
+### 6.9.6 LoraTorchTensor.__torch_function__：算子拦截
 
 源码路径：`./convert_lora_to_gguf.py` - `LoraTorchTensor.__torch_function__()`（第 227-260 行）
 
@@ -1004,17 +1004,17 @@ def __torch_function__(cls, func: Callable, types, args=(), kwargs=None):
 
 这段代码实现了 PyTorch 函数重载协议：permute/reshape 委托给实例方法；stack 要求 dim=0，对 A/B 分别 stack；cat 要求 dim=0，若 >2D 则 A/B 同猫，若 2D 且所有 A 相同则只 cat B（mergekit 多适配器合并常见优化）。其他函数直接抛错。
 
-### 7.9.7 cat 的 A 共享优化
+### 6.9.7 cat 的 A 共享优化
 
 当所有张量的 A 相同时，只 cat B 即可。来自 mergekit 提取的多适配器场景的常见情况。大幅节省显存与拷贝时间。
 
-## 7.10 LoRA 适配器写入 —— GGUF 的「adapter」分支
+## 6.10 LoRA 适配器写入 —— GGUF 的「adapter」分支
 
-### 7.10.1 张量命名清洗规则
+### 6.10.1 张量命名清洗规则
 
 去掉 base_model.model. 前缀。把 .lora_A.weight / .lora_B.weight 还原为 .weight。兼容 .lora_embedding_A / .lora_embedding_B（mergekit 扩展）。
 
-### 7.10.2 get_base_tensor_name：命名清洗
+### 6.10.2 get_base_tensor_name：命名清洗
 
 源码路径：`./convert_lora_to_gguf.py` - `get_base_tensor_name()`（第 261-269 行）
 
@@ -1030,7 +1030,7 @@ def get_base_tensor_name(lora_tensor_name: str) -> str:
 
 这段代码将 HF PEFT 格式的 LoRA 张量名还原为基模型张量名：去掉 base_model.model. 前缀，统一 .lora_A.weight/.lora_B.weight/.lora_embedding_A/.lora_embedding_B 为 .weight。
 
-### 7.10.3 load_hparams_from_hf 的 Hub 拉取
+### 6.10.3 load_hparams_from_hf 的 Hub 拉取
 
 源码路径：`./convert_lora_to_gguf.py` - `load_hparams_from_hf()`（第 313-321 行）
 
@@ -1045,7 +1045,7 @@ def load_hparams_from_hf(hf_model_id: str) -> tuple[dict[str, Any], Path | None]
 
 通过 huggingface_hub.AutoConfig 拉取基模型 config，同时返回本地缓存目录（用于后续加载 tokenizer/权重）。
 
-### 7.10.4 parse_args 的 CLI 设计
+### 6.10.4 parse_args 的 CLI 设计
 
 源码路径：`./convert_lora_to_gguf.py` - `parse_args()`（第 272-311 行）
 
@@ -1066,11 +1066,11 @@ def parse_args() -> argparse.Namespace:
 
 CLI 支持：--outtype 控制输出精度（f32/f16/bf16/q8_0/auto）；--base/--base-model-id 配合 lparams 做基模型定位；--no-lazy/--dry-run 应对特殊场景。
 
-### 7.10.5 LoraModel 的子类化重写
+### 6.10.5 LoraModel 的子类化重写
 
 __init__ 在调用 super().__init__ 之前/之后保存 dir_lora_model 与 lora_alpha。set_type 标记 GGUFType.ADAPTER 并写入 Keys.Adapter.TYPE='lora'。set_vocab 空实现，禁用基类词表写入逻辑（适配器不需要词表）。generate_extra_tensors 返回空迭代器，抑制 RoPE 频率等额外张量。
 
-### 7.10.6 LoraModel.__init__/set_type/set_vocab/generate_extra_tensors
+### 6.10.6 LoraModel.__init__/set_type/set_vocab/generate_extra_tensors
 
 源码路径：`./convert_lora_to_gguf.py` - `LoraModel` 核心方法（第 360-372、376-396 行）
 
@@ -1093,11 +1093,11 @@ def generate_extra_tensors(self) -> Iterable[tuple[str, Tensor]]:
 
 这四个方法完成了 LoRA 适配器的特化：标记文件类型为 ADAPTER，写入 type='lora'；禁用词表写入；禁止额外张量生成（如 RoPE 频率）。
 
-### 7.10.7 PartialLoraTensor 的合并机制
+### 6.10.7 PartialLoraTensor 的合并机制
 
 第一遍遍历：把所有 .lora_A 与 .lora_B 按 base_name 分组。第二遍：校验 A 与 B 都齐备，组合成 LoraTorchTensor。跳过 .base_layer.weight（原始权重，LoRA 不需要）。
 
-### 7.10.8 LoraModel.get_tensors：两遍合并
+### 6.10.8 LoraModel.get_tensors：两遍合并
 
 源码路径：`./convert_lora_to_gguf.py` - `LoraModel.get_tensors()`（第 444-490 行）
 
@@ -1139,11 +1139,11 @@ def get_tensors(self) -> Iterator[tuple[str, Tensor]]:
 
 这段代码实现了两遍合并：第一遍按 base_name 分组收集 A/B；第二遍断言 A/B 都存在，封装为 LoraTorchTensor。Norm 层直接透传（非 LoRA 结构）。Embedding/lm_head 出现报错提示用户参考 PR #9948。
 
-### 7.10.9 GGUFType.ADAPTER 的元数据标记
+### 6.10.9 GGUFType.ADAPTER 的元数据标记
 
 通过 add_type 标记文件类型为适配器。add_string(Keys.Adapter.TYPE, 'lora') 明确说明。add_float32(Keys.Adapter.LORA_ALPHA) 记录缩放超参。
 
-### 7.10.10 LoraModel.set_gguf_parameters：写入 LoRA 专用 KV
+### 6.10.10 LoraModel.set_gguf_parameters：写入 LoRA 专用 KV
 
 源码路径：`./convert_lora_to_gguf.py` - `LoraModel.set_gguf_parameters()`（第 379-407 行）
 
@@ -1174,11 +1174,11 @@ def set_gguf_parameters(self):
 
 这段代码写入 LoRA 专用元数据：LORA_ALPHA 缩放因子；若配置中有 invocation_string 而无现成 invocation_tokens，则用基模型 tokenizer 现场编码，并主动跳过首 token（修正老版 aLoRA 的 off-by-one 问题）。
 
-### 7.10.11 aLoRA 调用 token 处理
+### 6.10.11 aLoRA 调用 token 处理
 
 优先读取 alora_invocation_tokens。否则通过 invocation_string + tokenizer 现场编码。主动跳过首 token 修正老版 aLoRA 的 off-by-one 问题。
 
-### 7.10.12 LoraModel.modify_tensors：拆分 .lora_a / .lora_b
+### 6.10.12 LoraModel.modify_tensors：拆分 .lora_a / .lora_b
 
 源码路径：`./convert_lora_to_gguf.py` - `LoraModel.modify_tensors()`（第 492-524 行）
 
@@ -1202,7 +1202,7 @@ def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iter
 
 这段代码将合并后的 LoraTorchTensor 拆回 .lora_a / .lora_b 两个张量写入 GGUF。Norm 层保持原样（1D）。token_embd.weight 的 lora_a 需转置（适配 GGUF 期望的布局）。lm_head.weight 若出现在 adapter 但 base model 忽略则报错。
 
-## 7.11 设计中的取舍
+## 6.11 设计中的取舍
 
 为什么 GGML 转换器不直接支持所有量化类型？GGJTv2 前不支持量化，GGJTv2/3 量化编码不同，强行转换会产生错误权重。与其给错误结果，不如早报错引导用户用原版工具或寻找未量化版本。
 
@@ -1214,9 +1214,9 @@ def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iter
 
 为什么 LoraModel.generate_extra_tensors 返回空？基模型已包含 RoPE 频率等张量，适配器只存增量权重。写入额外张量会重复且可能冲突。
 
-## 7.12 动手练习
+## 6.12 动手练习
 
-### 7.12.1 练习 1：追踪 GGML 头部识别逻辑
+### 6.12.1 练习 1：追踪 GGML 头部识别逻辑
 
 阅读 `./convert_llama_ggml_to_gguf.py` 第 175-211 行的 `validate_header` 与 `validate_conversion` 方法，回答：
 1. `lmgg` / `fmgg` / `tjgg` 三种 magic 字节分别代表什么？
@@ -1224,7 +1224,7 @@ def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iter
 3. GGJTv2 与 GGJTv3 在 Q4/Q8 量化上有什么关键差异？
 4. 如果输入文件是 GGUF 格式，函数会抛出什么异常？
 
-### 7.12.2 练习 2：分析 Hyperparameters 与 Tensor 加载流程
+### 6.12.2 练习 2：分析 Hyperparameters 与 Tensor 加载流程
 
 阅读 `./convert_llama_ggml_to_gguf.py` 第 26-119 行的 `Hyperparameters` / `Vocab` / `Tensor` 类，回答：
 1. `set_n_ff` 方法为什么要从 w1.weight 的第二维推断 FF 维度？
@@ -1235,7 +1235,7 @@ def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iter
 6. 量化类型 Q4_K 的 (blksize, tysize) 各是多少？
 7. 如果张量名包含非法 UTF-8，`add_tensors` 会如何处理？
 
-### 7.12.3 练习 3：理解 GGUF 输出装配与 GQA 反推
+### 6.12.3 练习 3：理解 GGUF 输出装配与 GQA 反推
 
 阅读 `./convert_llama_ggml_to_gguf.py` 第 234-389 行的 `GGMLToGGUF.__init__` / `add_params` / `add_vocab` / `add_tensors`，回答：
 1. GQA 反推为什么在 1~255 范围内查找？
@@ -1245,7 +1245,7 @@ def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iter
 5. `add_tensors` 中为什么要交换前两个维度？
 6. `tensor_map.get_name` 的 `try_suffixes` 参数起什么作用？
 
-### 7.12.4 练习 4：剖析 handle_metadata 与 CLI 主流程
+### 6.12.4 练习 4：剖析 handle_metadata 与 CLI 主流程
 
 阅读 `./convert_llama_ggml_to_gguf.py` 第 392-538 行的 `handle_metadata` / `handle_args` / `main` / `__main__`，回答：
 1. 为什么需要构造「假模型」（fake LazyTensor）？
@@ -1255,7 +1255,7 @@ def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iter
 5. `handle_args` 中 `--gqa` / `--eps` 的默认值为什么是 1 / 5e-6？
 6. `main` 在何时输出「LLaMA2 转换提示」与「GGMLv1 文件警告」？
 
-### 7.12.5 练习 5：解读 LoraTorchTensor 的 PyTorch 伪装
+### 6.12.5 练习 5：解读 LoraTorchTensor 的 PyTorch 伪装
 
 阅读 `./convert_lora_to_gguf.py` 第 47-260 行的 `LoraTorchTensor` 类，回答：
 1. `__init__` 中为什么要强制将 A/B dtype 对齐到 float32？
@@ -1268,7 +1268,7 @@ def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iter
 8. `transpose` 与 `swapaxes` 的实现差异？
 9. `cat` 操作的 A 共享优化在什么场景下生效？
 
-### 7.12.6 练习 6：理解 LoRA 适配器的装配与 aLoRA 处理
+### 6.12.6 练习 6：理解 LoRA 适配器的装配与 aLoRA 处理
 
 阅读 `./convert_lora_to_gguf.py` 第 261-524 行的 `get_base_tensor_name` / `load_hparams_from_hf` / `parse_args` / `LoraModel`，回答：
 1. `get_base_tensor_name` 中 `.lora_embedding_A` / `.lora_embedding_B` 是哪个工具的扩展？
@@ -1281,7 +1281,7 @@ def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iter
 8. `token_embd.weight` 为什么要对 `lora_a` 做转置？
 9. `parse_args` 中 `--outtype auto` 与 `--no-lazy` / `--dry-run` 的用途？
 
-## 7.13 本章小结
+## 6.13 本章小结
 
 这一章中我们学习了 GGML 旧格式到 GGUF 的转换全流程，以及 Hugging Face LoRA 适配器到 GGUF 适配器的打包流程。首先我们剖析了 GGML 三代格式的头部识别与兼容性校验，理解了 magic 字节如何秒判文件年代，validate_conversion 如何拦截跨代量化组合。其次我们深入了 Hyperparameters/Vocab/Tensor 三大数据结构的加载协议：7 元组一次性读取、长度前缀词表、32 字节对齐的张量元数据。接着我们详细解读了 GGUF 输出流水线的四阶段写入，重点分析了 GQA 反推、params_override 优先级、特殊 token 智能推断、字节 token 重编码、维度转置与 mmap 直传等关键工程细节。然后我们探讨了 handle_metadata 如何借助 HF config/params.json 修补古董模型缺失参数，以及 CLI 参数设计的工程考量。随后我们转向 LoRA 转换器，重点剖析了 LoraTorchTensor 如何以「孪生张量」模拟 PyTorch 接口：从 __init__ 的 dtype 对齐、property 的合成视图、__getitem__ 的索引分离、reshape 的结构守恒，到 permute/transpose/swapaxes/__torch_function__ 的受控置换与算子拦截。最后我们分析了 LoRA 适配器的 GGUF 装配：命名清洗、基模型配置拉取、PartialLoraTensor 两遍合并、LoraModel 子类化重写（ADAPTER 类型、禁用词表、抑制额外张量）、aLoRA invocation tokens 的延迟编码与 off-by-one 修正、modify_tensors 拆分 .lora_a/.lora_b。
 

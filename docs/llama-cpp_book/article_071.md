@@ -2,7 +2,7 @@
 
 
 
-# 控制向量生成器架构 —— 模型行为的「隐形遥控器」
+# 第71章 控制向量生成器架构 —— 模型行为的「隐形遥控器」
 
 ## 学习目标
 
@@ -14,11 +14,11 @@
 - 了解 PCA 参数结构体与结果结构体的设计意图
 - 能够将控制向量导出为 GGUF 并在推理时加载应用
 
-## 72.1 生活类比
+## 71.1 生活类比
 
 想象控制向量生成器是一位「行为调音师」，他的工作就像给一架精密的钢琴调音。正负提示对好比两组对照实验——一组是「快乐的演奏」，另一组是「悲伤的演奏」，他让模型分别演奏这两段旋律，然后用灵敏的监听设备（隐藏层捕获）记录下每一次琴弦振动的波形。接着，他把两段波形叠加在一起做差，得到「快乐减悲伤」的净效应信号。这时候他有两个选择：要么把所有反应简单平均（均值法），像个快速但粗糙的调音旋钮；要么用 PCA 幂迭代找到最主要的频率成分（就像调准乐器的基音），把最本质的行为方向提炼出来。最后，他把调好的「行为旋钮」打包成标准配件（GGUF 导出），送到模型的乐器架上。从此以后，模型只要加载这个配件，就能自动偏向你想要的行为——这一切，无需重新调教整架钢琴。
 
-## 72.2 源码地图
+## 71.2 源码地图
 
 ```
 tools/cvector-generator/cvector-generator.cpp
@@ -68,13 +68,13 @@ tools/cvector-generator/pca.hpp
     └── run_pca()
 ```
 
-## 72.3 控制向量生成器总览 —— 核心流水线架构
+## 71.3 控制向量生成器总览 —— 核心流水线架构
 
 控制向量（Control Vector）是一种无需重新训练就能调节模型行为的技术。它的核心思想非常朴素：对比同一模型在「正提示」和「负提示」下的隐藏层激活，提取出代表行为方向的向量。比如，你想让模型更「诚实」，就用「诚实的回答」作为正提示、「欺骗的回答」作为负提示，两者在各层的激活差异就编码了「诚实」这个方向。在推理时，把这个向量加到对应层的输出上，模型就会偏向该行为。这就像给模型安装了一个「行为调节器」，无需动权重本身。
 
 整个工具的工作流程可以概括为一条流水线：加载模型 → 读取正负提示对文件 → 逐对推理获取隐藏层输出 → 计算差异 → 降维（PCA 或均值）→ 导出 GGUF。最终生成的 `control_vector.gguf` 可在 llama.cpp 中通过 `--control-vector` 加载使用。
 
-### 72.3.1 `__main__()`：主流程与参数解析
+### 71.3.1 `__main__()`：主流程与参数解析
 
 源码路径：`tools/cvector-generator/cvector-generator.cpp` - `__main__()`（第370-428行）
 
@@ -172,7 +172,7 @@ int main(int argc, char ** argv) {
 
 这段代码定义、展示并实现了控制向量生成器的完整主流程：从命令行参数解析、正负提示对的加载与 token 化，到逐对推理采集隐藏层差异、降维计算，最终将控制向量导出为 GGUF 文件。你注意到它用 `params.cb_eval = cb_eval` 把回调函数注入到 common_params 中，使得每次 `llama_decode` 都能透明地捕获隐藏层输出——这是整个工具与 llama.cpp 引擎对话的唯一通道。注意主循环内部设置 `cb_data.n_tokens = t.max_seq_len` 使用的是填充后的最大序列长度，而非原始提示长度，这在后续 `cb_eval` 的校验中至关重要。
 
-### 72.3.2 PCA 降维整体流程
+### 71.3.2 PCA 降维整体流程
 
 ```mermaid
 flowchart TD
@@ -197,11 +197,11 @@ flowchart TD
     P --> B
 ```
 
-## 72.4 正负提示对管理 —— 构造「对比实验」的输入
+## 71.4 正负提示对管理 —— 构造「对比实验」的输入
 
 控制向量的核心是「差异」：同一层在正提示（如「快乐」）和负提示（如「悲伤」）下的激活值之差。通过多组对比，可以统计出稳定的行为方向。这就要求你为工具提供成对的提示文本——每一对都是一次对照实验。`tokenized_prompt` 就是这批实验的输入封装：它负责把一对正负提示分别 token 化，再用空格 token 把较短的一方填充到相同长度，确保后续矩阵运算的维度对齐。
 
-### 72.4.1 `tokenized_prompt`：提示对的封装与填充
+### 71.4.1 `tokenized_prompt`：提示对的封装与填充
 
 源码路径：`tools/cvector-generator/cvector-generator.cpp` - `tokenized_prompt()`（第273-281行）
 
@@ -236,7 +236,7 @@ tokenized_prompt(llama_context * ctx, std::string pos, std::string neg) {
 
 这段代码定义并实现了 `tokenized_prompt` 的构造函数：它把正负提示分别 token 化后，统一填充到相同长度，保证后续推理时两个序列的 batch 维度一致。你可能会问：为什么必须等长？因为 `llama_decode` 内部会把一个 batch 里的所有序列当作一个矩阵运算，维度不一致会直接导致计算失败。
 
-### 72.4.2 `padding_seq()`：用空格 token 对齐长度
+### 71.4.2 `padding_seq()`：用空格 token 对齐长度
 
 源码路径：`tools/cvector-generator/cvector-generator.cpp` - `padding_seq()`（第283-289行）
 
@@ -262,7 +262,7 @@ void padding_seq(llama_context * ctx, std::vector<llama_token> & tokens, size_t 
 
 这段代码实现了 `padding_seq` 函数：它用一个单纯的空格 token 把较短的序列补齐到目标长度。选择空格 token 是有意为之——它是一个「中性」token，几乎不携带语义信息，不会污染模型对提示内容的编码，同时又能占据位置让 batch 维度对齐。
 
-### 72.4.3 `prepare_entries()`：提示对的加载与校验
+### 71.4.3 `prepare_entries()`：提示对的加载与校验
 
 源码路径：`tools/cvector-generator/cvector-generator.cpp` - `prepare_entries()`（第353-367行）
 
@@ -298,7 +298,7 @@ static int prepare_entries(common_params & params, train_context & ctx_train) {
 
 这段代码实现了 `prepare_entries` 函数：它从两个独立文件中分别加载正负提示列表，然后强制校验两者数量相等且非空。这个校验很关键——如果数量不等，后续逐对推理时就会出现索引错位，提取的「差异」也就毫无意义了。
 
-### 72.4.4 `ctrlvec_load_prompt_file()`：提示文件的读取
+### 71.4.4 `ctrlvec_load_prompt_file()`：提示文件的读取
 
 源码路径：`tools/cvector-generator/cvector-generator.cpp` - `ctrlvec_load_prompt_file()`（第301-314行）
 
@@ -337,11 +337,11 @@ static std::vector<std::string> ctrlvec_load_prompt_file(std::string path, bool 
 
 这段代码实现了 `ctrlvec_load_prompt_file` 函数：它按行读取提示文件，支持跳过空行，并用 `string_process_escapes` 处理 `\n` 之类的转义序列。把每行当作一条独立的正（或负）提示，最终返回一个字符串向量供后续配对使用。
 
-## 72.5 隐藏层捕获机制 —— 在推理中「窃听」神经活动
+## 71.5 隐藏层捕获机制 —— 在推理中「窃听」神经活动
 
 有了输入，接下来要解决的问题是：如何拿到模型内部各层的输出？llama.cpp 提供了 `cb_eval` 回调机制，它在每次 `llama_decode` 时都会询问你对哪些张量感兴趣。工具的解法是：只捕获名称以 `l_out` 开头的张量（即各 Transformer 层的输出），在回调里把它们拷贝一份存起来，事后就能随意计算差异了。
 
-### 72.5.1 `cb_eval()`：推理回调的入口
+### 71.5.1 `cb_eval()`：推理回调的入口
 
 源码路径：`tools/cvector-generator/cvector-generator.cpp` - `cb_eval()`（第317-327行）
 
@@ -374,7 +374,7 @@ static bool cb_eval(struct ggml_tensor * t, bool ask, void * user_data) {
 
 这段代码实现了 `cb_eval` 回调函数：它是 llama.cpp 引擎与控制向量工具之间的唯一对话窗口。`ask=true` 时它只声明对 `l_out` 前缀张量的兴趣，引擎据此只把这些张量传回来；`ask=false` 时它校验张量名和 token 数（`t->ne[1]` 必须等于当前提示的填充后最大长度 `cb_data->n_tokens`），通过后调用 `save_tensor_for_layer` 完成实际捕获。这种「先声明、后捕获」的设计，避免了把整个计算图的所有中间张量都拷贝一遍。
 
-### 72.5.2 `callback_data.save_tensor_for_layer()`：隐藏层张量的捕获
+### 71.5.2 `callback_data.save_tensor_for_layer()`：隐藏层张量的捕获
 
 源码路径：`tools/cvector-generator/cvector-generator.cpp` - `save_tensor_for_layer()`（第80-106行）
 
@@ -415,7 +415,7 @@ void save_tensor_for_layer(struct ggml_tensor * t) {
 
 这段代码定义并实现了 `callback_data::save_tensor_for_layer`：它在回调触发时，把引擎传来的 `l_out` 张量从 GPU/CPU 后端完整拷贝一份到自主管理的 ggml 上下文中，并根据 `is_eval_pos` 标志把数据分流到 `v_pos` 或 `v_neg` 向量。这里有一个细节值得你注意：`no_alloc=true` 让上下文只管理张量元数据（结构体本身），`mem_size` 预留 `ggml_tensor_overhead() * n_layers * 3u` 字节用于存放张量头（对应 `v_pos`、`v_neg`、`v_diff_filtered` 三个向量的容量），而张量数据用 `malloc` 手动分配——这样可以精确控制生命周期，避免 ggml 自动分配器在多次回调中反复申请释放内存。
 
-### 72.5.3 `get_hidden_layers()`：单次推理的执行
+### 71.5.3 `get_hidden_layers()`：单次推理的执行
 
 源码路径：`tools/cvector-generator/cvector-generator.cpp` - `get_hidden_layers()`（第329-336行）
 
@@ -446,11 +446,11 @@ static bool get_hidden_layers(llama_context * ctx, std::vector<llama_token> & to
 
 这段代码实现了 `get_hidden_layers` 函数：它先清空 KV 缓存以保证每次推理的独立性，再用 `llama_batch_get_one` 把 token 序列打包成单条 batch 送入模型。在 `llama_decode` 执行期间，我们之前注册的 `cb_eval` 回调会被引擎自动触发，静默地把每一层的 `l_out` 输出收集到 `callback_data` 中——你看到的只是这一行 `llama_decode`，但背后已经完成了整层的「窃听」工作。
 
-## 72.6 差异计算与过滤 —— 提取「净效应」信号
+## 71.6 差异计算与过滤 —— 提取「净效应」信号
 
 正负提示都推理完毕后，`callback_data` 里同时持有一份正样本输出和一份负样本输出。下一步要做的，就是对每一层计算 `v_pos[i] -= v_neg[i]`，得到「行为差异」张量。但这里有个麻烦：序列里有相当一部分是填充用的空格 token，它们对应的行全是零，会污染后续的降维计算。所以工具又实现了 `filter_nonzero_rows`，把这些无效行剔除掉。
 
-### 72.6.1 `callback_data.calc_diff()`：正负差异的计算
+### 71.6.1 `callback_data.calc_diff()`：正负差异的计算
 
 源码路径：`tools/cvector-generator/cvector-generator.cpp` - `calc_diff()`（第108-117行）
 
@@ -484,7 +484,7 @@ std::vector<struct ggml_tensor *> calc_diff() {
 
 这段代码实现了 `callback_data::calc_diff`：它对每一层直接做原地减法 `a[j] -= b[j]`，把正样本张量就地改写成「正减负」的差异张量。这种原地修改省去了额外的拷贝开销，但代价是 `v_pos` 被破坏了——所以紧接着它调用 `filter_nonzero_rows` 基于这份差异张量提取有效行，再把过滤后的结果 push 到 `v_diff_filtered` 中，供后续的训练上下文累积。注意循环变量 `il` 使用 `float` 类型而非整型，虽然能通过隐式转换工作，但不符合规范，建议改为 `int` 或 `size_t`。
 
-### 72.6.2 `callback_data.filter_nonzero_rows()`：有效行的提取
+### 71.6.2 `callback_data.filter_nonzero_rows()`：有效行的提取
 
 源码路径：`tools/cvector-generator/cvector-generator.cpp` - `filter_nonzero_rows()`（第119-151行）
 
@@ -536,7 +536,7 @@ struct ggml_tensor * filter_nonzero_rows(struct ggml_tensor * a) {
 
 这段代码定义并实现了 `filter_nonzero_rows`：它逐行检查差异张量，用 `1e-6` 作为阈值剔除所有元素绝对值均小于该阈值的行（即那些只由填充空格 token 产生的无效位置），然后把有效行紧凑拷贝到一个形状为 `[n_embd, n_nonzero_rows]` 的新张量中。这一步至关重要——如果不做过滤，PCA 或均值计算都会被 padding 位置拉偏，最终提取的方向就不纯粹是行为信号了。
 
-### 72.6.3 `callback_data.reset()`：资源的清理
+### 71.6.3 `callback_data.reset()`：资源的清理
 
 源码路径：`tools/cvector-generator/cvector-generator.cpp` - `reset()`（第153-162行）
 
@@ -568,11 +568,11 @@ void reset() {
 
 这段代码实现了 `callback_data::reset`：它在每一对提示处理完成后，释放所有捕获张量的内存、清空向量，并销毁临时 ggml 上下文。之所以每次都要完整清理，是因为 `ctx_ggml` 用 `no_alloc=true` 创建，张量头和数据指针都是手动管理的——不显式释放就会内存泄漏，而 `n_layers * 3` 个张量头在成百上千对提示的循环里累积起来相当可观。
 
-## 72.7 训练上下文 —— 汇总所有提示对的「差异大数据」
+## 71.7 训练上下文 —— 汇总所有提示对的「差异大数据」
 
 每一对提示都会产生一份过滤后的差异张量，如何把它们组织成最终可用于降维的矩阵？这就是 `train_context` 的职责。它像一个「训练仓库」：用 `v_diff_tmp` 以字节流形式累积所有提示对的差异数据，等全部推理完毕，再用 `build_v_diff` 把这些字节流构建成规整的二维张量 `[n_embd, n_total_samples]`（均值法）或 `[n_samples, n_embd]`（PCA），送入均值或 PCA 流水线。
 
-### 72.7.1 `train_context`：差异数据的「训练仓库」
+### 71.7.1 `train_context`：差异数据的「训练仓库」
 
 源码路径：`tools/cvector-generator/cvector-generator.cpp` - `train_context()`（第213-228行）
 
@@ -615,7 +615,7 @@ train_context(int n_embd_, int n_layers_) {
 
 这段代码定义并实现了 `train_context` 的构造函数：它为每一层（跳过最后一层，因为 `l_out` 不包含最终输出层——最后一层通常接 LM Head 而非 Transformer 层输出）预分配一个长度为 `n_embd` 的一维张量 `v_final`，用于存放降维后最终的控制向量；同时为每层初始化一个空的字节流 `v_diff_tmp`，用来以原始字节形式累积所有提示对的差异数据。这种「字节流 + 张量」的双层结构，是为了在累积阶段避免频繁重建张量元数据。
 
-### 72.7.2 `concat_diff_tmp()`：差异的累积
+### 71.7.2 `concat_diff_tmp()`：差异的累积
 
 源码路径：`tools/cvector-generator/cvector-generator.cpp` - `concat_diff_tmp()`（第230-238行）
 
@@ -646,7 +646,7 @@ void concat_diff_tmp(const std::vector<struct ggml_tensor *> & diff_filtered) {
 
 这段代码实现了 `train_context::concat_diff_tmp`：它把每对提示产生的过滤后差异张量，以纯字节形式追加到对应层的字节流 `v_diff_tmp[il]` 后面。用字节流而非张量来累积，是为了让后续的 `build_v_diff` 可以一次性把所有样本的字节连续拷贝到一个规整的二维张量里，避免在循环中反复调整张量形状——这是典型的「先乱后整」数据处理策略。
 
-### 72.7.3 `build_v_diff()`：最终差异矩阵的构建
+### 71.7.3 `build_v_diff()`：最终差异矩阵的构建
 
 源码路径：`tools/cvector-generator/cvector-generator.cpp` - `build_v_diff()`（第240-259行）
 
@@ -700,11 +700,11 @@ void build_v_diff(bool transpose) {
 
 这段代码定义并实现了 `train_context::build_v_diff`：它把累积的字节流构建成规整的二维差异张量。当 `transpose=true`（PCA 场景）时，创建形状为 `[n_rows, n_embd]` 即 `[n_samples, n_embd]` 的张量，逐元素搬运实现转置，以满足幂迭代法要求输入形状为 `[n_samples, n_embd]` 以便直接计算 `input^T * input` 得到协方差矩阵；当 `transpose=false`（均值法场景）时，创建形状为 `[n_embd, n_rows]` 即 `[n_embd, n_samples]` 的张量并直接 `memcpy`，以匹配 `mean::run` 按列（样本维度）遍历求均值的逻辑。构建完成后它立即清空字节流，释放已用内存。
 
-## 72.8 均值法：最简单的方向提取 —— 「平均即方向」
+## 71.8 均值法：最简单的方向提取 —— 「平均即方向」
 
 当你面对的样本量不大、或者各提示对产生的行为方向本身就高度一致时，不需要动用复杂的 PCA，直接取均值就能得到一个可用的控制向量。`mean.hpp` 中的 `mean::run` 就是为此而生的最简方案：对每一层，把所有样本在每个嵌入维度上的值求平均，再做 L2 归一化，让方向向量的长度恒为 1。
 
-### 72.8.1 `mean::run()`：最简单的方向提取
+### 71.8.1 `mean::run()`：最简单的方向提取
 
 源码路径：`tools/cvector-generator/mean.hpp` - `mean::run()`（第1-42行）
 
@@ -772,11 +772,11 @@ static void run(
 
 这段代码定义并实现了 `mean::run`：它对每一层的差异矩阵按列求均值，得到一个长度为 `n_embd` 的方向向量，随后做 L2 归一化使其长度恒为 1。输出向量被命名为 `direction.1`、`direction.2`……，与 llama.cpp 加载时的约定完全一致。均值法的优点显而易见——计算简单、无需迭代、没有随机性；缺点也很明显：它只取「平均方向」，如果不同提示对引出的行为方向存在多个子方向（比如「诚实」和「有条理」混在一起），均值就会把它们混成一个模糊的折中方向，不如 PCA 能分离出主成分。
 
-## 72.9 PCA 降维：幂迭代法 —— 用 ggml 计算图求主成分
+## 71.9 PCA 降维：幂迭代法 —— 用 ggml 计算图求主成分
 
 当样本量大、行为方向复杂时，均值法就力不从心了。PCA（主成分分析）能找出数据中方差最大的方向，也就是最「显著」的行为信号。传统 PCA 需要计算协方差矩阵再做特征分解，复杂度高且难以利用 GPU 加速。工具的选择是幂迭代法：通过反复矩阵乘法逼近最大特征向量，这个过程天然适合用 ggml 在 GPU 上并行加速。
 
-### 72.9.1 `pca_params` 与 `pca_result`：PCA 的配置与中间结果
+### 71.9.1 `pca_params` 与 `pca_result`：PCA 的配置与中间结果
 
 源码路径：`tools/cvector-generator/pca.hpp` - `pca_params` / `pca_result` 结构体定义（第21-53行）
 
@@ -816,7 +816,7 @@ struct pca_result {
 
 这两个结构体分别封装了 PCA 计算的超参数配置与单次图执行的产出。`pca_params` 把原本散落在各处的配置集中管理，方便在 `build_graph_piter`、`compute_piter`、`power_iteration`、`run_pca` 间传递。`pca_result` 采用「节点指针留在设备端、标量拷回主机端」的设计：协方差矩阵节点和特征向量节点只记录指针（因为后续迭代还要继续写入），而距离标量必须拷回 CPU 用于判断收敛——这种「按需拷贝」策略极大减少了设备↔主机的数据传输开销。
 
-### 72.9.2 `pca_model`：PCA 计算的后端封装
+### 71.9.2 `pca_model`：PCA 计算的后端封装
 
 源码路径：`tools/cvector-generator/pca.hpp` - `pca_model()`（第55-104行）
 
@@ -885,7 +885,7 @@ pca_model(struct ggml_tensor * t_input) {
 
 这段代码定义并实现了 `pca_model` 的构造函数：它优先尝试初始化 CUDA 后端，失败则回退到 CPU，然后在后端上分配三个核心张量——输入矩阵 `dev_input`、协方差矩阵 `dev_square` 和特征向量 `dev_eigenvector`。这里有个工程细节值得你注意：特征向量不能初始化为全零（否则幂迭代会原地打转），所以工具用随机向量起步并立即归一化，保证迭代有一个非平凡的起点。
 
-### 72.9.3 `~pca_model()`：资源释放
+### 71.9.3 `~pca_model()`：资源释放
 
 源码路径：`tools/cvector-generator/pca.hpp` - `~pca_model()`（第106-110行）
 
@@ -907,7 +907,7 @@ flowchart TD
 
 这段代码实现了 `pca_model` 的析构函数：按顺序释放 ggml 上下文、后端缓冲区和后端设备。析构顺序是有意为之——先销毁上下文（它持有张量元数据），再释放缓冲区（它持有张量数据），最后才释放后端设备，避免在资源还未解绑时就撤掉底层驱动。
 
-### 72.9.4 `build_graph_piter()`：幂迭代计算图的构建
+### 71.9.4 `build_graph_piter()`：幂迭代计算图的构建
 
 源码路径：`tools/cvector-generator/pca.hpp` - `build_graph_piter()`（第113-158行）
 
@@ -986,7 +986,7 @@ static struct ggml_cgraph * build_graph_piter(
 
 关于归一化步骤 `ggml_div_inplace(b_tensor, ggml_sqrt_inplace(ggml_sum_rows(ggml_sqr(b_tensor))))`：`ggml_sqr` 先逐元素平方，`ggml_sum_rows` 按行求和得到形状为 `[n_embd, 1]` 的列向量，`ggml_sqrt_inplace` 开方得到各行的 L2 范数，最后 `ggml_div_inplace` 利用 ggml 的广播机制将该列向量与 `b_tensor`（形状 `[n_embd, 1]` 或 `[1, n_embd]` 视布局而定）逐行相除完成归一化。
 
-### 72.9.5 `compute_piter()`：图计算的执行与结果提取
+### 71.9.5 `compute_piter()`：图计算的执行与结果提取
 
 源码路径：`tools/cvector-generator/pca.hpp` - `compute_piter()`（第160-199行）
 
@@ -1060,7 +1060,7 @@ static ggml_status compute_piter(
 
 这段代码定义并实现了 `compute_piter`：它负责执行 `build_graph_piter` 产出的计算图，并从图中提取执行结果。关键设计在于按节点类型区别对待——特征向量节点（`b_tensor_norm_*`）和协方差矩阵节点（`tmp_square`）只记录指针不拷贝数据（因为后续迭代还要继续写入），而距离节点（`distance_*`）则立即把单个 float 值从设备拷回 CPU，用于判断收敛。这种「按需拷贝」的策略把设备↔主机的数据传输降到了最低。
 
-### 72.9.6 `power_iteration()`：幂迭代的主循环
+### 71.9.6 `power_iteration()`：幂迭代的主循环
 
 源码路径：`tools/cvector-generator/pca.hpp` - `power_iteration()`（第201-238行）
 
@@ -1139,11 +1139,11 @@ static void power_iteration(
 
 这段代码定义并实现了 `power_iteration`：它是 PCA 的主循环，负责协调模型、图构建、执行与结果回传。每轮迭代内部又按 `n_batch` 分为多个小批量执行（减少图构建开销），每批都会检查距离是否低于 `tolerance` 以提前收敛。首轮计算完协方差矩阵后，通过 `ggml_backend_tensor_copy` 把它缓存到 `model.dev_square`，后续轮次就不再重复计算。最后把特征向量从设备拷回 CPU 输出。注释里那个 TODO 也很有趣——幂迭代算出的特征向量方向可能整体翻转（乘以 -1），这在数学上等价但符号不确定，社区已经给出了处理方案。两处 `ggml_backend_tensor_copy` 参数顺序均为 `src -> dst`，注释已统一说明。
 
-## 72.10 PCA 主循环与结果输出 —— 逐层生成控制向量
+## 71.10 PCA 主循环与结果输出 —— 逐层生成控制向量
 
 `power_iteration` 只负责单层的降维，`run_pca` 则是 PCA 流水线的总调度：它遍历所有层，为每一层的差异矩阵调用 `power_iteration`，产出最终的控制向量。
 
-### 72.10.1 `run_pca()`：逐层生成控制向量
+### 71.10.1 `run_pca()`：逐层生成控制向量
 
 源码路径：`tools/cvector-generator/pca.hpp` - `run_pca()`（第240-254行）
 
@@ -1183,11 +1183,11 @@ static void run_pca(
 
 这段代码定义并实现了 `run_pca`：它逐层调用 `power_iteration`，把每层的差异矩阵降维成一个长度为 `n_embd` 的控制向量，并统一命名为 `direction.1`、`direction.2`……。你可能会好奇：为什么每层的输出维度都是 `n_embd` 而不是更小？因为控制向量最终要加回到对应层的输出上，维度必须与该层输出完全一致——降维只是找方向，不能改变张量形状。
 
-## 72.11 导出 GGUF —— 打包成 llama.cpp 可用的格式
+## 71.11 导出 GGUF —— 打包成 llama.cpp 可用的格式
 
 所有层的控制向量都算好了，最后一步就是把它们打包成 llama.cpp 能识别的格式。`export_gguf` 创建一个空的 GGUF 上下文，写入 `general.architecture = "controlvector"` 等元数据，再逐层添加 `direction.0`、`direction.1`…… 张量，最终写盘。
 
-### 72.11.1 `export_gguf()`：控制向量的打包
+### 71.11.1 `export_gguf()`：控制向量的打包
 
 源码路径：`tools/cvector-generator/cvector-generator.cpp` - `export_gguf()`（第339-351行）
 
@@ -1228,11 +1228,11 @@ static void export_gguf(const std::vector<struct ggml_tensor *> & v_ctrl, const 
 
 这段代码定义并实现了 `export_gguf`：它把所有层的控制向量打包成一个标准的 GGUF 文件。元数据部分写入了三个关键字段：`general.architecture = "controlvector"`（声明文件类型）、`controlvector.model_hint`（记录源模型架构，便于推理时匹配）、`controlvector.layer_count`（记录向量层数，供加载器预分配）。张量部分则逐层以 `direction.0`、`direction.1`…… 的命名写入，与 llama.cpp 加载端的约定一一对应。你在推理时只需加上 `--control-vector control_vector.gguf`，llama.cpp 就会在每层把对应向量加到 `l_out` 上，模型行为就被悄悄「调音」了。
 
-## 72.12 辅助工具与调试 —— 提升开发体验的「小工具」
+## 71.12 辅助工具与调试 —— 提升开发体验的「小工具」
 
 除了核心流程，工具箱里还有几个小函数，它们不改变算法结果，但极大提升了可调试性和可用性。
 
-### 72.12.1 `tokens_to_str()`：token 序列的可读化
+### 71.12.1 `tokens_to_str()`：token 序列的可读化
 
 源码路径：`tools/cvector-generator/cvector-generator.cpp` - `tokens_to_str()`（第38-47行）
 
@@ -1256,7 +1256,7 @@ static std::string tokens_to_str(llama_context * ctx, Iter begin, Iter end) {
 
 这段代码定义了 `tokens_to_str` 模板函数：它把 token ID 序列逐个转回可读的字符串片段并拼接。它在主流程的进度打印中被大量使用——你看到的 `"Evaluating prompt: \"快乐的演奏\" - \"悲伤的演奏\""` 就是由它生成的，让你能在日志里直接对照原始文本和 token 化结果。
 
-### 72.12.2 `print_usage()`：使用说明
+### 71.12.2 `print_usage()`：使用说明
 
 源码路径：`tools/cvector-generator/cvector-generator.cpp` - `print_usage()`（第52-61行）
 
@@ -1282,7 +1282,7 @@ static void print_usage(int, char ** argv) {
 
 这段代码实现了 `print_usage`：它在命令行参数解析失败时打印四种典型使用场景——纯 CPU、GPU 卸载、高级 PCA 参数、以及切换到均值法。把这些示例直接写在报错路径上，用户不用翻文档就能立刻上手。
 
-### 72.12.3 `print_debug_tensor()`：张量调试
+### 71.12.3 `print_debug_tensor()`：张量调试
 
 源码路径：`tools/cvector-generator/pca.hpp` - `print_debug_tensor()`（第12-19行）
 
@@ -1310,7 +1310,7 @@ static void print_debug_tensor(struct ggml_tensor * t, bool with_data = true) {
 
 这段代码定义了 `print_debug_tensor`：它在 `build_v_diff`（`cvector-generator.cpp`）、`build_graph_piter`（被注释的 `ggml_graph_dump_dot` 附近）和 `power_iteration`（被注释的 `print_debug_tensor(output)`）中被调用，用于打印张量的名称、类型、形状和前几个元素值。`DEBUG_POS` 是在 `pca.hpp` 文件顶部通过 `#define DEBUG_POS 5` 定义的宏（未在提供的代码片段中显示，但在实际源码中存在），控制打印元素的数量。在开发阶段，这个函数能帮你快速确认差异矩阵是否构建正确、控制向量是否归一化——比如发现某层输出形状不是预期的 `[n_embd, n_samples]`，就能立刻定位到 `build_v_diff` 的转置逻辑。
 
-## 72.13 设计中的取舍
+## 71.13 设计中的取舍
 
 为什么选择幂迭代法而非传统特征分解？传统 PCA 需要先计算协方差矩阵，再对其做特征分解（如 Jacobi 或 QR 算法），复杂度为 O(n³) 且难以并行化。幂迭代法把问题转化为反复的「矩阵-向量乘法 + 归一化」，每次迭代只需 O(n²) 的矩阵乘法，而且这种运算天然适合 ggml 在 GPU 上批量并行执行。对于 n_embd 在几千到几万的典型场景，幂迭代法既能利用 GPU 加速，又能在少量迭代内收敛，是精度、速度和硬件利用率的平衡点。
 
@@ -1320,7 +1320,7 @@ static void print_debug_tensor(struct ggml_tensor * t, bool with_data = true) {
 
 为什么均值法和 PCA 需要两种独立实现？均值法本质上是逐维度求平均，运算是「列方向」的规约，直接用 CPU 循环就能高效完成，没有跨维度依赖，不需要构建计算图。PCA 的幂迭代涉及 `input^T * input` 和反复的 `A * v` 矩阵乘法，这些运算在 GPU 上才能发挥优势，必须走 ggml 计算图路径。两种方法的硬件特性和数据流完全不同，拆成两个实现比试图用统一框架覆盖要简单得多——这也符合 llama.cpp 「简单问题用简单方案」的一贯哲学。
 
-## 72.14 动手练习
+## 71.14 动手练习
 
 - 阅读 `tools/cvector-generator/cvector-generator.cpp` 中 `__main__`、`prepare_entries`、`ctrlvec_load_prompt_file`、`tokenized_prompt` 等实现。
 - 回答问题：
@@ -1347,7 +1347,7 @@ static void print_debug_tensor(struct ggml_tensor * t, bool with_data = true) {
   - GGUF 中控制向量的命名规则是什么？
   - 元数据中的 `controlvector.layer_count` 作用是什么？
 
-## 72.15 本章小结
+## 71.15 本章小结
 
 这一章中我们学习了如何把「调节模型行为」这个抽象想法变成一条可运行的工程流水线。首先，我们从正负提示对出发，理解控制向量的核心是「差异」——用对照实验提取行为方向。接着，我们深入 `cb_eval` 回调机制，看工具如何在推理过程中透明地捕获各层的 `l_out` 输出，并通过 `calc_diff` 与 `filter_nonzero_rows` 把正负差异中的有效信号提取出来。然后，`train_context` 把所有提示对的差异累积成规整的二维矩阵，为降维准备好数据。降维环节提供了两条路径：均值法简单直接，适合方向一致的场景；PCA 幂迭代法利用 ggml 计算图在 GPU 上加速，能分离出数据中方差最大的主成分。最后，`export_gguf` 把所有层的控制向量打包成标准 GGUF 文件，供 llama.cpp 在推理时加载使用。
 

@@ -1,6 +1,6 @@
 
 
-# 第69章 智能终端矩阵：命令行交互工具的四重奏 —— 从遥控面板到感知中枢的架构演进
+# 第68章 智能终端矩阵：命令行交互工具的四重奏 —— 从遥控面板到感知中枢的架构演进
 
 ## 学习目标
 
@@ -11,11 +11,11 @@
 - 对比 llama-mtmd-cli 中 mtmd_cli_context 的生命周期管理、视觉上下文初始化、媒体加载、多模态评估与生成循环
 - 对比分析不同工具中命令行交互组件的设计模式与实现差异
 
-## 69.1 生活类比
+## 68.1 生活类比
 
 想象你正在参观一个现代化的「智能家居系统」。在这个系统里，每一件电器都是一个"智能终端"，它们接收指令、处理信息、反馈状态，共同维持着家庭的运转。llama-cli 就像这套系统的「智能电视大脑」——它拥有完整的交互界面，能理解语音遥控器发来的各种命令（`/clear`、`/image`、`/read`），还能同时管理多路信号源（文本、图像、音频），把画面和声音精准地呈现给主人；llama-completion 则像一台「空调遥控器芯片」，它不像智能电视那样注重花哨的交互，而是专注于把温度（生成质量）调节到最舒适的状态，内部用全局状态指针记住当前的设定，一旦主人按下开关就能立刻响应；llama-tokenize 仿佛是「门禁识别芯片」，它的任务非常纯粹——把访客的脸（原始文本）精准地转换成门禁系统能识别的身份证号（token ID），支持从钥匙扣（命令行参数）、登记簿（文件）或访客登记处（标准输入）多种方式读取访客信息；而 llama-mtmd-cli 宛如「多模态感知中枢」，它不仅能听懂语音，还能看清门外的监控画面、理解环境的背景声音，把视觉和听觉信号一起转化成家庭中枢能理解的指令。在这个智能家居里，每一个工具都是一个"智能终端"，它们用不同的交互方式对模型进行精细调整，让模型在部署时既能保持活力，又能适应各种环境。
 
-## 69.2 源码地图
+## 68.2 源码地图
 
 ```
 tools/cli/cli.cpp
@@ -75,11 +75,11 @@ tools/mtmd/mtmd-cli.cpp
     └── 聊天模式 (交互式 /image /audio 命令)
 ```
 
-## 69.3 cli_context：智能电视大脑的中央控制器 —— 封装服务端上下文与流式生成
+## 68.3 cli_context：智能电视大脑的中央控制器 —— 封装服务端上下文与流式生成
 
 在命令行工具链中，llama-cli 是功能最完整、交互最丰富的"智能电视大脑"。它不仅负责把用户的文本输入转化为模型能理解的指令，还要同时管理多路信号源——文本文件、图像、音频——并在终端上实时呈现生成结果。它的核心是一个名为 `cli_context` 的类，这个类封装了服务器上下文、聊天消息、输入文件以及推理参数，是整个交互流程的中枢。
 
-### cli_context::cli_context()：聊天会话中央控制器的初始化图纸
+### 68.3.1 cli_context::cli_context()：聊天会话中央控制器的初始化图纸
 
 源码路径：`tools/cli/cli.cpp` - `cli_context` 构造函数（66-99 行）
 
@@ -349,11 +349,11 @@ flowchart TD
     AG --> AH[返回 0]
 ```
 
-## 69.4 全局状态管理与信号处理 —— llama-completion 的"空调遥控器芯片"
+## 68.4 全局状态管理与信号处理 —— llama-completion 的"空调遥控器芯片"
 
 如果说 llama-cli 是功能齐全的"智能电视大脑"，那么 llama-completion 就是专注于温度调节的「空调遥控器芯片」。它不像前者那样提供丰富的交互命令，而是把全部精力放在生成流程的控制上——从参数解析、模型加载、线程池管理，到上下文移位、反提示词检测、交互状态机，每一个环节都经过精细调优。最显著的设计特征是它的全局状态管理：所有关键指针都存放在全局变量中，信号处理器和生成循环通过这些全局变量协同工作。
 
-### __main__ 全局变量：全局状态指针阵列与交互标志
+### 68.4.1 __main__ 全局变量：全局状态指针阵列与交互标志
 
 源码路径：`tools/completion/completion.cpp` - 全局变量（1-75 行）
 
@@ -424,7 +424,7 @@ graph TD
     I --> J
 ```
 
-### print_usage()：极简使用说明
+### 68.4.2 print_usage()：极简使用说明
 
 源码路径：`tools/completion/completion.cpp` - `print_usage()`（38-44 行）
 
@@ -441,7 +441,7 @@ static void print_usage(int argc, char ** argv) {
 
 `print_usage()` 只展示两种最典型的用法：纯文本生成与聊天对话，体现了"空调遥控器芯片"专注核心功能的设计哲学——不罗列所有参数，只给用户最直接的起步指引。
 
-### file_exists() 与 file_is_empty()：会话文件的轻量级状态探测
+### 68.4.3 file_exists() 与 file_is_empty()：会话文件的轻量级状态探测
 
 源码路径：`tools/completion/completion.cpp` - `file_exists()`/`file_is_empty()`（46-56 行）
 
@@ -473,7 +473,7 @@ flowchart TD
     G -->|否| I[返回 false]
 ```
 
-### sigint_handler()：交互模式下的中断软切换与硬退出
+### 68.4.4 sigint_handler()：交互模式下的中断软切换与硬退出
 
 源码路径：`tools/completion/completion.cpp` - `sigint_handler()`（60-75 行）
 
@@ -509,11 +509,11 @@ stateDiagram-v2
     交互等待 --> 退出: Ctrl+C (再次)
 ```
 
-### main()：核心生成循环与会话管理的完整实现
+### 68.4.5 main()：核心生成循环与会话管理的完整实现
 
 源码路径：`tools/completion/completion.cpp` - `main()`（78-1000 行，此处展示关键片段）
 
-#### 78-200 行：参数解析、模型加载、线程池初始化、会话加载
+#### 68.4.5.1 -200 行：参数解析、模型加载、线程池初始化、会话加载
 
 ```cpp
 int main(int argc, char ** argv) {
@@ -577,7 +577,7 @@ flowchart TD
     H -->|否| K
 ```
 
-#### 200-420 行：前缀匹配与上下文复用逻辑
+#### 68.4.5.2 -420 行：前缀匹配与上下文复用逻辑
 
 ```cpp
     // ... tokenize prompt 得到 embd_inp ...
@@ -639,7 +639,7 @@ graph TD
     F --> H[进入生成循环]
 ```
 
-#### 420-690 行：Self-Extend 分组注意力、上下文移位、生成主循环、反提示词检测
+#### 68.4.5.3 -690 行：Self-Extend 分组注意力、上下文移位、生成主循环、反提示词检测
 
 ```cpp
     // Self-Extend 状态
@@ -686,7 +686,7 @@ flowchart TD
     K --> P
 ```
 
-#### 876-1000 行：会话保存、清理与退出
+#### 68.4.5.4 -1000 行：会话保存、清理与退出
 
 ```cpp
     // ... 循环结束 ...
@@ -706,11 +706,11 @@ flowchart TD
 
 退出前若 `session_do_save` 为真，调用 `llama_state_save_file` 持久化 KV 缓存与 token 序列，实现会话的跨进程复用。最后打印性能统计与内存分解。
 
-## 69.5 llama-tokenize：门禁系统的"识别芯片" —— 纯分词的极简工具
+## 68.5 llama-tokenize：门禁系统的"识别芯片" —— 纯分词的极简工具
 
 在 llama.cpp 的工具链中，llama-tokenize 是最纯粹、最轻量的工具——它就像「门禁系统的识别芯片」，唯一的任务就是把原始文本（访客的脸）转换成模型能理解的 token ID（门禁卡号）。它不参与生成，不管理对话历史，甚至不需要加载模型权重，只需 vocab_only 模式加载词汇表即可实现秒级响应。这种极简设计让它在调试提示词、统计 token 数量、验证特殊 token 处理等场景中成为不可或缺的工具。
 
-### print_usage_information()：完整的命令行参数说明
+### 68.5.1 print_usage_information()：完整的命令行参数说明
 
 源码路径：`tools/tokenize/tokenize.cpp` - `print_usage_information()`（20-39 行）
 
@@ -740,7 +740,7 @@ static void print_usage_information(const char * argv0) {
 
 `print_usage_information()` 完整列出了所有支持的参数，包括三种互斥的输入源（`--prompt`、`--file`、`--stdin`）、BOS/转义/特殊 token 控制、日志静默、token 计数输出，以及仅输出 ID 数组的 `--ids` 模式。这种详尽的帮助信息体现了"识别芯片"作为调试工具的专业性。
 
-### llama_log_callback_null()：日志静默回调
+### 68.5.2 llama_log_callback_null()：日志静默回调
 
 源码路径：`tools/tokenize/tokenize.cpp` - `llama_log_callback_null()`（41-45 行）
 
@@ -754,7 +754,7 @@ static void llama_log_callback_null(ggml_log_level level, const char * text, voi
 
 当用户指定 `--log-disable` 时，`main()` 会调用 `llama_log_set(llama_log_callback_null, NULL)` 注册此空回调，彻底屏蔽模型加载过程中的所有日志输出，保证标准错误流纯净，便于脚本解析工具输出。
 
-### read_prompt_from_file()：二进制安全的文件读取
+### 68.5.3 read_prompt_from_file()：二进制安全的文件读取
 
 源码路径：`tools/tokenize/tokenize.cpp` - `read_prompt_from_file()`（47-65 行）
 
@@ -793,7 +793,7 @@ flowchart TD
     F -->|否| H[success=true + 返回 buffer.str()]
 ```
 
-### ingest_args()：Windows 宽字符转 UTF-8 的跨平台参数摄入
+### 68.5.4 ingest_args()：Windows 宽字符转 UTF-8 的跨平台参数摄入
 
 源码路径：`tools/tokenize/tokenize.cpp` - `ingest_args()`（79-117 行）
 
@@ -858,7 +858,7 @@ flowchart TD
     K --> L
 ```
 
-### write_utf8_cstr_to_stdout()：跨平台 UTF-8 输出兜底
+### 68.5.5 write_utf8_cstr_to_stdout()：跨平台 UTF-8 输出兜底
 
 源码路径：`tools/tokenize/tokenize.cpp` - `write_utf8_cstr_to_stdout()`（129-178 行）
 
@@ -938,7 +938,7 @@ flowchart TD
     B -->|否| O[printf 直接输出]
 ```
 
-### main()：分词主流程 —— 多源输入、转义控制、双模式输出
+### 68.5.6 main()：分词主流程 —— 多源输入、转义控制、双模式输出
 
 源码路径：`tools/tokenize/tokenize.cpp` - `main()`（180-366 行）
 
@@ -1014,11 +1014,11 @@ flowchart TD
     R --> S[清理资源 + 返回]
 ```
 
-## 69.6 mtmd_cli_context：多模态感知中枢的运行时核心 —— 集成 LLM 与视觉/音频编码器
+## 68.6 mtmd_cli_context：多模态感知中枢的运行时核心 —— 集成 LLM 与视觉/音频编码器
 
 llama-mtmd-cli 是 llama.cpp 工具链中唯一支持图像和音频的"多模态感知中枢"。与只能处理文本的工具不同，它需要同时管理 LLM 上下文、视觉/音频编码器、聊天模板、位图数据和反提示词令牌，把视觉信号（图像像素）和听觉信号（音频波形）转换成 LLM 能理解的 token 序列。它的核心是 `mtmd_cli_context` 类，这个类封装了从模型初始化、视觉上下文加载、媒体文件解析到消息格式化的完整多模态推理流程。
 
-### mtmd_cli_context::mtmd_cli_context()：多模态运行时上下文的构造图纸
+### 68.6.1 mtmd_cli_context::mtmd_cli_context()：多模态运行时上下文的构造图纸
 
 源码路径：`tools/mtmd/mtmd-cli.cpp` - `mtmd_cli_context` 构造函数（74-104 行）
 
@@ -1098,7 +1098,7 @@ sequenceDiagram
     C->>C: antiprompt_tokens 根据模板设置
 ```
 
-### ~mtmd_cli_context()：显式释放批次与采样器的析构器
+### 68.6.2 ~mtmd_cli_context()：显式释放批次与采样器的析构器
 
 源码路径：`tools/mtmd/mtmd-cli.cpp` - 析构函数（106-109 行）
 
@@ -1114,7 +1114,7 @@ sequenceDiagram
 
 析构函数负责释放批次数据和采样器，确保资源泄漏不会在多轮对话中累积。`llama_init` 与 `ctx_vision` 由智能指针管理，析构时自动释放。
 
-### init_vision_context()：视觉模型加载入口 —— 配置 GPU、FlashAttention、图像 token 限制
+### 68.6.3 init_vision_context()：视觉模型加载入口 —— 配置 GPU、FlashAttention、图像 token 限制
 
 源码路径：`tools/mtmd/mtmd-cli.cpp` - `init_vision_context()`（111-128 行）
 
@@ -1157,7 +1157,7 @@ flowchart TD
     H -->|是| J[ctx_vision.reset 持有所有权]
 ```
 
-### check_antiprompt()：反提示词尾部序列精确匹配
+### 68.6.4 check_antiprompt()：反提示词尾部序列精确匹配
 
 源码路径：`tools/mtmd/mtmd-cli.cpp` - `check_antiprompt()`（130-137 行）
 
@@ -1186,7 +1186,7 @@ flowchart TD
     E --> F[返回匹配结果]
 ```
 
-### load_media()：媒体文件到位图的统一加载器
+### 68.6.5 load_media()：媒体文件到位图的统一加载器
 
 源码路径：`tools/mtmd/mtmd-cli.cpp` - `load_media()`（139-146 行）
 
@@ -1203,7 +1203,7 @@ bool load_media(const std::string & fname) {
 
 `load_media()` 把图像/音频文件解析为位图对象并存入 `bitmaps.entries`，供后续 `eval_message()` 中的 `mtmd_tokenize` 使用。加载失败返回 false，由调用者打印错误。
 
-### show_additional_info()：多模态 CLI 的使用说明
+### 68.6.6 show_additional_info()：多模态 CLI 的使用说明
 
 源码路径：`tools/mtmd/mtmd-cli.cpp` - `show_additional_info()`（27-36 行）
 
@@ -1223,7 +1223,7 @@ static void show_additional_info(int /*argc*/, char ** argv) {
 
 `show_additional_info()` 明确标注"Experimental CLI"，说明 `-m` 与 `--mmproj` 为必选，`--image`/`--audio`/`-p` 可选（缺省进入聊天模式），并提示 `--no-mmproj-offload` 禁用视觉模型 GPU 卸载。
 
-### sigint_handler()：多模态生成的中断状态机
+### 68.6.7 sigint_handler()：多模态生成的中断状态机
 
 源码路径：`tools/mtmd/mtmd-cli.cpp` - `sigint_handler()`（40-50 行）
 
@@ -1256,7 +1256,7 @@ stateDiagram-v2
     正常结束 --> 等待输入
 ```
 
-### generate_response()：多模态生成主循环 —— 采样、解码、停止条件协同
+### 68.6.8 generate_response()：多模态生成主循环 —— 采样、解码、停止条件协同
 
 源码路径：`tools/mtmd/mtmd-cli.cpp` - `generate_response()`（148-184 行）
 
@@ -1324,7 +1324,7 @@ flowchart TD
     K --> A
 ```
 
-### chat_add_and_format()：消息格式化与历史追加的原子操作
+### 68.6.9 chat_add_and_format()：消息格式化与历史追加的原子操作
 
 源码路径：`tools/mtmd/mtmd-cli.cpp` - `chat_add_and_format()`（186-194 行）
 
@@ -1342,7 +1342,7 @@ static std::string chat_add_and_format(mtmd_cli_context & ctx, common_chat_msg &
 
 `chat_add_and_format()` 将新消息与现有历史一起通过 `common_chat_format_single` 应用聊天模板，得到格式化后的字符串，同时将消息追加到 `chat_history`。这种"格式化即入队"的原子操作保证了历史与模板输入的一致性。
 
-### eval_message()：多模态评估 —— 文本与位图联合分词与前向传播
+### 68.6.10 eval_message()：多模态评估 —— 文本与位图联合分词与前向传播
 
 源码路径：`tools/mtmd/mtmd-cli.cpp` - `eval_message()`（196-229 行）
 
@@ -1410,7 +1410,7 @@ sequenceDiagram
     C-->>U: 返回 0 成功
 ```
 
-### main()：双模式入口 —— 单轮推理与交互式聊天
+### 68.6.11 main()：双模式入口 —— 单轮推理与交互式聊天
 
 源码路径：`tools/mtmd/mtmd-cli.cpp` - `main()`（231-354 行）
 
@@ -1572,7 +1572,7 @@ flowchart TD
     O --> J
 ```
 
-## 69.7 设计中的取舍
+## 68.7 设计中的取舍
 
 为什么 llama-cli 使用类封装（cli_context）而 llama-completion 使用全局变量？这是因为 llama-cli 需要同时管理服务器上下文、聊天消息、输入文件等多种状态，类封装能提供清晰的接口边界和生命周期管理，适合复杂的交互式 REPL 场景；llama-completion 则更注重生成流程的控制效率，全局变量避免了参数传递的开销，使信号处理器和生成循环能直接访问关键状态，适合对延迟敏感的批处理场景。这种设计的 trade-off 在于：类封装提升了可读性和可维护性，但引入了对象构造与销毁的开销；全局变量减少了传递成本，但增加了状态耦合和测试难度。llama-cli 的用户更注重交互体验，llama-completion 的用户更注重生成性能，这一取舍正好对应了两种不同的使用需求。
 
@@ -1580,7 +1580,7 @@ flowchart TD
 
 多模态工具中为什么需要 chunks 而不是直接处理 token？图像和音频的 token 序列需要与文本 token 按特定的交错顺序排列（如 `<image>` 标记前后可能需要特殊 token），直接处理单个 token 无法表达这种结构。chunks 提供了抽象层，把多模态序列的复杂性封装在视觉编码器内部，让上层逻辑只需关注消息级别的操作。
 
-## 69.8 动手练习
+## 68.8 动手练习
 
 - 阅读 `tools/cli/cli.cpp` 与 `tools/mtmd/mtmd-cli.cpp` 中的类与代码片段，理解为什么 `cli_context` 和 `mtmd_cli_context` 的方法会「无法被检测」但实际上是存在的：
   1. 观察 `cli_context` 的定义：它是如何封装的？它的数据成员（defaults, input_files 等）是如何被初始化的？
@@ -1614,7 +1614,7 @@ flowchart TD
   - 如果你要为 llama.cpp 设计一个全新的「批量处理工具」，你会如何设计它的输入接口？命令行参数？
   - 在什么场景下，llama-completion 的使用比 llama-cli 更合适？它有哪些功能是 llama-cli 没有的？
 
-## 69.9 本章小结
+## 68.9 本章小结
 
 本章我们学习了命令行交互工具的核心实现与使用方法，理解了它们在 llama.cpp 工具链中各自扮演的"智能终端"角色。首先，我们深入了 cli_context 的构造与流式生成机制，理解了它如何封装 server_context 并管理聊天历史；其次，我们剖析了 llama-completion 的全局状态管理与会话复用，掌握了前缀匹配与上下文移位技巧；接着，我们探索了 llama-tokenize 的多源输入与跨平台输出，理解了 vocab_only 模式的轻量优势；然后，我们研究了 llama-mtmd-cli 的多模态上下文生命周期，包括视觉初始化与媒体加载机制；最后，我们对比了不同工具中命令行组件的设计模式，理解了通用性与特异性的取舍。
 

@@ -1,7 +1,7 @@
 
 
 
-# 61. 元数据自动提取 —— 模型档案的"户籍科"
+# 第62章 元数据自动提取 —— 模型档案的"户籍科"
 
 ## 学习目标
 
@@ -11,11 +11,11 @@
 - 掌握 size_label 的智能判定、base_models/datasets 的多形态解析与去重逻辑
 - 了解 set_gguf_meta_model 如何把内存中的 Metadata 字段规范化写入 GGUFWriter
 
-## 61.1 生活类比
+## 62.1 生活类比
 
 把 Hugging Face 模型仓库想象成一位求职者的应聘材料袋，而 `Metadata` 就是档案管理员手中的标准员工档案表：模型卡（README.md）是求职者的个人简历，YAML frontmatter 是简历最上方的摘要栏；`config.json` 是学历证明，由官方出具的技术参数凭证；`generation_config.json` 是工作偏好表，记录着期望的采样参数与惩罚策略；而 `metadata_override.json` 加上 CLI 参数则是 HR 的手工批注，具有最高优先级，能直接覆盖前面所有信息。`get_model_id_components` 则像人事专员，根据工号规则把 `meta-llama/Llama-3-8B-Instruct` 拆解成部门（org）、姓名（name）、职级（version）、岗位类型（finetune/size_label）。档案整理的顺序是：先把简历、学历、偏好按表格栏位誊写一遍，发现空缺就通过工号规则推测填补，最后再用 HR 批注一次性覆盖校准——保证落盘的 GGUF 档案既完整又准确。
 
-## 61.2 源码地图
+## 62.2 源码地图
 
 ```mermaid
 graph TD
@@ -32,7 +32,7 @@ graph TD
     B --> C10["__main__ / 模块级逻辑\n批量写入扩展字段"]
 ```
 
-## 61.3 Metadata 数据类 —— 模型档案的"中枢仓库"
+## 62.3 Metadata 数据类 —— 模型档案的"中枢仓库"
 
 你把 GGUF 转换想象成给模型办"落户"：Hugging Face 仓库里的信息散落在 README、config.json、generation_config.json 三处，GGUF 却要求一个统一的 KV 容器。`Metadata` 就是那个把碎片拼成户口本的中枢仓库——它是一个数据类，字段覆盖了采样参数、作者版权、身份标识和生态纽带四大块。
 
@@ -50,7 +50,7 @@ graph TD
 
 类比：模型户籍科。每个模型都有一张"户口本"，每条字段可独立填写或留白，写入 GGUF 前可以覆盖、补充，保证最终档案准确。
 
-### 61.3.1 字段总览：模型档案的"户籍本"
+### 62.3.1 字段总览：模型档案的"户籍本"
 
 在深入函数之前，先把这张"户籍本"的字段布局看清楚（以下是 `Metadata` 数据类的核心字段分组）：
 
@@ -64,7 +64,7 @@ graph TD
 
 这些字段构成了 GGUF 元数据的"最小完备集合"——写入时逐个判断 `is not None`，空值自动跳过，避免污染 KV 存储。
 
-### Metadata.load()：总调度入口
+### 62.3.2 Metadata.load()：总调度入口
 
 源码路径：`gguf-py/gguf/metadata.py` - `Metadata.load()`（155-238 行）
 
@@ -159,7 +159,7 @@ def load(metadata_override_path=None, model_path=None, model_name=None, total_pa
 
 这段代码定义并实现了 `Metadata` 的总调度入口 `load()`：它按"模型卡 → HF 参数 → 生成配置 → 启发式 → 覆盖文件 → CLI 参数"的优先级链，把散落在仓库各处的元数据收集、合并、覆盖，最终产出一个完整的 `Metadata` 实例。注意覆盖文件用的是 `Keys.General.*` 常量做键名映射，这意味着用户不需要了解 Python 字段名，直接用 GGUF 的 KV 键名就能精确控制最终写入。
 
-### Metadata.load_metadata_override()：读取 JSON 覆盖文件
+### 62.3.3 Metadata.load_metadata_override()：读取 JSON 覆盖文件
 
 源码路径：`gguf-py/gguf/metadata.py` - `Metadata.load_metadata_override()`（240-247 行）
 
@@ -182,7 +182,7 @@ def load_metadata_override(metadata_override_path=None) -> dict[str, Any]:
 
 这段代码定义并实现了 `load_metadata_override`：它读取用户提供的 JSON 覆盖文件，键名直接对应 GGUF 的 KV 键名（如 `general.name`、`general.sampling_top_p`），返回字典供后续精确覆盖。
 
-### Metadata.load_hf_parameters()：透传 config.json
+### 62.3.4 Metadata.load_hf_parameters()：透传 config.json
 
 源码路径：`gguf-py/gguf/metadata.py` - `Metadata.load_hf_parameters()`（292-303 行）
 
@@ -210,7 +210,7 @@ def load_hf_parameters(model_path=None) -> dict[str, Any]:
 
 这段代码定义并实现了 `load_hf_parameters`：它直接透传 `config.json` 的全部内容，不做任何过滤或转换，作为 HF 官方参数的"原始档案"。
 
-### Metadata.load_generation_config()：容错读取采样偏好
+### 62.3.5 Metadata.load_generation_config()：容错读取采样偏好
 
 源码路径：`gguf-py/gguf/metadata.py` - `Metadata.load_generation_config()`（305-318 行）
 
@@ -243,7 +243,7 @@ def load_generation_config(model_path=None) -> dict[str, Any]:
 
 这段代码定义并实现了 `load_generation_config`：它容错读取 `generation_config.json`，文件不存在、损坏或无权限时静默返回空字典，避免中断整个加载流程。
 
-### Metadata.load_model_card()：YAML frontmatter 解析器
+### 62.3.6 Metadata.load_model_card()：YAML frontmatter 解析器
 
 源码路径：`gguf-py/gguf/metadata.py` - `Metadata.load_model_card()`（249-290 行）
 
@@ -310,11 +310,11 @@ def load_model_card(model_path=None) -> dict[str, Any]:
 
 这段代码定义并实现了模型卡加载器：它从 README.md 中提取 `---` 包围的 YAML frontmatter，修复了 Norway 问题（`- no` 被误判为布尔）和 Tab 缩进问题，最终用 `yaml.safe_load` 反序列化为字典，非 dict 结果记日志并置空。
 
-## 61.4 启发式推断 —— 把 HuggingFace ID 翻译成结构化元数据
+## 62.4 启发式推断 —— 把 HuggingFace ID 翻译成结构化元数据
 
 三条情报线拿到的原始数据还是"毛坯"：模型卡是自由格式的 YAML，config.json 里是一堆 HF 专有键，真正需要写进 GGUF 的 name/author/basename/finetune/version/size_label 六元组，得靠 `get_model_id_components` 这套"工号拆解规则"来推导。
 
-### Metadata.id_to_title()：短横线命名转标题
+### 62.4.1 Metadata.id_to_title()：短横线命名转标题
 
 源码路径：`gguf-py/gguf/metadata.py` - `Metadata.id_to_title()`（322-324 行）
 
@@ -342,7 +342,7 @@ def id_to_title(string):
 
 这段代码定义并实现了 `id_to_title`：它把 `meta-llama` 这样的短横线命名转成 `Meta Llama`，但遇到 `v0.2`、`7b` 这类版本号或数字开头的词就原样保留，避免把 `7B` 错误标题化为 `7B` 之外的形式。
 
-### Metadata.get_model_id_components()：解析 <org>/<name>
+### 62.4.2 Metadata.get_model_id_components()：解析 <org>/<name>
 
 源码路径：`gguf-py/gguf/metadata.py` - `Metadata.get_model_id_components()`（326-421 行）
 
@@ -469,7 +469,7 @@ def get_model_id_components(model_id=None, total_params=0):
 
 这段代码定义并实现了模型 ID 的拆解引擎：它把 `<org>/<name>` 形式的 HuggingFace ID 按 `-` 切分后逐段打标签（version / type / size_label / finetune），用 `total_params` 智能区分"模型尺寸"和"上下文长度"，最终用保序去重的方式拼出 basename / size_label / finetune / version 四个结构化字段。
 
-### Metadata.apply_metadata_heuristic()：按优先级填充字段
+### 62.4.3 Metadata.apply_metadata_heuristic()：按优先级填充字段
 
 源码路径：`gguf-py/gguf/metadata.py` - `Metadata.apply_metadata_heuristic()`（423-565 行）
 
@@ -684,11 +684,11 @@ def apply_metadata_heuristic(metadata, model_card=None, hf_params=None, model_pa
 
 这段代码定义并实现了三源合并启发式：模型卡优先填充 name/author/version 等字段并解析 base_models/datasets 的三种形态（字符串 URL、HF ID、字典），HF 参数用 `_name_or_path` 兜底，目录名作为最后一道防线——每一级都只在字段为空时写入，保证优先级链不互相覆盖。
 
-## 61.5 写入 GGUF —— 元数据落盘的"最后一公里"
+## 62.5 写入 GGUF —— 元数据落盘的"最后一公里"
 
 内存里的 `Metadata` 实例还只是"户口本草稿"，真正要变成 GGUF 文件里的 KV 键值对，还得靠 `set_gguf_meta_model` 这道工序。
 
-### Metadata.set_gguf_meta_model()：字段到 KV 的搬运工
+### 62.5.1 Metadata.set_gguf_meta_model()：字段到 KV 的搬运工
 
 源码路径：`gguf-py/gguf/metadata.py` - `Metadata.set_gguf_meta_model()`（567-587 行）
 
@@ -763,7 +763,7 @@ def set_gguf_meta_model(self, gguf_writer):
 
 这段代码定义并实现了 `set_gguf_meta_model`：它遍历 `Metadata` 的采样参数与身份字段，把非 None 的值逐项转交给 `GGUFWriter` 的 `add_*` 系列方法，入口处的 `assert self.name is not None` 确保 GGUF 文件至少有核心名称，空字段自动跳过以避免污染 KV 存储。
 
-### 模块级逻辑/__main__：扩展字段的批量写入
+### 62.5.2 模块级逻辑/__main__：扩展字段的批量写入
 
 源码路径：`gguf-py/gguf/metadata.py` - 扩展字段写入（649-731 行）
 
@@ -894,7 +894,7 @@ if self.languages is not None:
 
 这段代码定义并实现了模块级扩展写入逻辑：它把 `license` 列表合并为逗号分隔字符串，把 `base_models`/`datasets` 先写总数再循环编号展开，`tags`/`languages` 直接透传——最终把内存中的 `Metadata` 完整映射为 GGUF 的 KV 键值对。
 
-## 61.6 设计中的取舍
+## 62.6 设计中的取舍
 
 **为什么用静态方法而不是直接实例化？** 因为元数据的加载是一个有副作用的编排过程——涉及文件 I/O、YAML 解析、正则匹配，用静态方法可以屏蔽"先 new 再填"的两步操作，调用者只需一行 `Metadata.load(...)` 就能拿到完整实例。而且这些方法之间没有共享的实例状态（每调用一次都新建 `Metadata()`），用静态方法也避免了把文件路径之类的东西塞进 `self` 的尴尬。
 
@@ -904,7 +904,7 @@ if self.languages is not None:
 
 **为什么用启发式而不是强制用户填写？** 因为 Hugging Face 仓库的元数据质量参差不齐，很多模型的 README 根本不写作者、版本号。如果强制要求填写，大量模型就转不成 GGUF。启发式用"模型卡 → HF 参数 → 目录名"三级兜底，尽可能从模型 ID 本身推导出结构化字段，把"能不能转"变成"转得准不准"——这是工程上典型的宽松输入、严格输出策略。
 
-## 61.7 动手练习
+## 62.7 动手练习
 
 - 参考 `Metadata.load_model_card()`（249-290 行），在不运行整个 gguf-py 的前提下，用 Python 编写一个独立函数 `extract_frontmatter(readme_path)`。
   - 仅当文件首行为 `---` 时提取 YAML 区
@@ -937,7 +937,7 @@ if self.languages is not None:
   - 对比 `license`、`base_models`、`datasets` 三种字段在写入前的特殊处理（字符串拼接、count 前缀、循环编号）
   - 用伪代码或流程图描述 "Metadata → GGUF KV" 的完整写入流水线，并思考：为什么必须在入口处 `assert self.name is not None`？
 
-## 61.8 本章小结
+## 62.8 本章小结
 
 这一章中我们学习了 gguf-py 如何把散落在 Hugging Face 仓库各处的模型元数据收集、规范化并写入 GGUF。首先，`Metadata` 数据类作为模型元数据的中枢仓库，聚合了采样参数、作者版权、身份标识和生态纽带四大块字段；其次，`Metadata.load()` 作为总调度入口，按"模型卡 → HF 参数 → 生成配置 → 启发式 → 覆盖文件 → CLI 参数"的优先级链把信息逐层合并；接着，`load_model_card` 用 YAML frontmatter 解析器处理 Norway 问题和 Tab 缩进，`load_hf_parameters` 透传 config.json，`load_generation_config` 容错读取采样偏好；然后，`get_model_id_components` 把 HuggingFace 风格的模型 ID 拆解为 name/org/basename/finetune/version/size_label 六元组，`apply_metadata_heuristic` 按三级优先级把结构化字段填回实例并解析 base_models/datasets 的三种形态；最后，`set_gguf_meta_model` 把内存中的字段逐项转交给 GGUFWriter，列表型字段用 count 前缀 + 循环编号展开，空值自动跳过。
 

@@ -1,6 +1,6 @@
 
 
-# 第92章 推测解码 —— 小模型起草，大模型验证（Speculative Decoding）
+# 第93章 推测解码 —— 小模型起草，大模型验证（Speculative Decoding）
 
 想象一下，你是一位在高档餐厅中工作的大厨，而餐厅正处于晚市高峰。每一道菜都必须由你亲手烹制：从选材、调味到摆盘，每一个环节都需要你的专业判断。这种方式虽然能保证每道菜的品质，但面对源源不断的订单，出菜速度成了最大的瓶颈——这正如自回归语言模型逐个 token 地生成文本，每一步都需要完整的模型计算，既精确又缓慢。
 
@@ -10,7 +10,7 @@
 
 需要指出的是，本章中所有"副手"与"大厨"的分工并非一成不变。就如同餐厅在不同时段会调整人员配置一样，四种策略在草稿来源与管理方式上也各有巧妙：经典方案使用真正的"副手模型"（草稿模型）提出多条候选路径；简化版仅保留一条线性建议；Lookup 方案则如同一位记忆力超群的助理，直接从前文中翻找常用短语作为建议；而 Lookahead 更是将"并行试菜"发挥到极致。我们将沿着这套"大厨与副手"的餐厅叙事，逐一品味每种策略的精彩之处。
 
-## 92.1 源码地图：四种推测解码方案的落地布局
+## 93.1 源码地图：四种推测解码方案的落地布局
 
 在深入代码之前，我们先像看地图一样浏览一下本章涉及的源码文件，建立一个整体框架。当你需要回顾某个特定功能时，这张地图能帮你快速定位。
 
@@ -73,13 +73,13 @@ examples/lookahead/
 
 这张地图清晰地展示了四种方案的代码组织方式。`speculative` 系列侧重于有专门草稿模型的经典方案；`lookup` 系列则围绕 n-gram 缓存构建了一套完整的工具链，包括创建、合并和统计；而 `lookahead` 则独立展示了并行解码的巧思。现在，让我们从最复杂的经典方案开始逐步拆解。
 
-## 92.2 经典推测解码 —— 树状草稿，批量验证的"多面手"（Draft & Verify with Tree）
+## 93.2 经典推测解码 —— 树状草稿，批量验证的"多面手"（Draft & Verify with Tree）
 
 回到我们的大厨与副手的类比。在这个场景中，副手可以同时准备多道菜的不同做法，厨房里会同时放着几个候选版本（分支）。当大厨审视时，他会优先检查最符合标准的版本，如果第一个版本不合格，他会迅速转向第二个备选版本，而不是让副手重新开始准备。通过这样的树状分支探索，大厨一次就能确认多个正确的菜品组件。
 
 `speculative` 示例就是这种"多面手"策略的完整实现。它的核心架构是"一大多小"的模型组合：一个轻量级的草稿模型（draft model）作为副手，负责快速生成候选 token 序列；而一个重型的目标模型（target model）作为大厨，负责批量验证这些候选。在这种方案中，草稿模型可以在单次解码时并行生成多个候选分支（即树状结构），而目标模型则对这些分支统一进行前向计算。当多个分支同时被验证时，只要其中一个分支的第一个 token 被接受，其他分支就可以被安全地丢弃，而无需再做额外的采样——这是一种用计算换速度的典型策略。
 
-### `seq_draft`：单个草稿分支的状态容器
+### 93.2.1 `seq_draft`：单个草稿分支的状态容器
 
 源码路径：`examples/speculative/speculative.cpp` - `struct seq_draft`（25-31行）
 
@@ -99,11 +99,11 @@ struct seq_draft {
 
 这个结构体定义了推测解码树中的**一个分支**。每个分支相当于副手提出的一条完整假设路径。`active` 标记该分支是否还有继续验证的价值；`drafts` 存储分支上的每个待验证 token；`probs` 是为每个草稿 token 保存的模型概率分布，在采用"随机验证"（stochastic verification）策略时，我们需要比较草稿模型与目标模型在相同 token 上的概率比值来决定接受与否，因此这里必须保留完整的概率向量；`smpl` 则是在该分支上用于采样的采样器实例。
 
-### 树状分支的创建、复制与淘汰机制
+### 93.2.2 树状分支的创建、复制与淘汰机制
 
 在 `speculative.cpp` 的主循环背后，树状分支的管理是由 `common_speculative_init`、`common_speculative_begin` 和 `common_speculative_draft` 这三个核心接口共同完成的。这如同副手的训练、上岗与配菜三部曲，我们逐一来看。
 
-#### `common_speculative_init`：草稿厨房的筹备与副手的聘用
+#### 93.2.2.1 `common_speculative_init`：草稿厨房的筹备与副手的聘用
 
 源码路径：`common/speculative.cpp` - `common_speculative_init()`
 
@@ -138,7 +138,7 @@ struct common_speculative * common_speculative_init(struct common_speculative_pa
 
 这个函数如同大厨为副手准备独立的厨房与设备。它为目标模型保留主序列（`seq_id = 0`），并为草稿模型创建独立的上下文 `ctx_dft`，其上下文大小取决于目标模型单序列上下文与配置值的较小者（通常为 512 左右）。关键点在于 `n_parallel` 参数：它决定了副手能同时准备多少个候选分支，即树状结构的分支数。此外，每个分支的采样器初始为空，需在后续草稿生成前按需创建。通过 `common_speculative` 结构体，所有这些信息被封装起来，供后续草稿生成与验证使用。
 
-#### `common_speculative_begin`：提示词的共享填充，副手的统一岗前培训
+#### 93.2.2.2 `common_speculative_begin`：提示词的共享填充，副手的统一岗前培训
 
 源码路径：`common/speculative.cpp` - `common_speculative_begin()`
 
@@ -157,7 +157,7 @@ void common_speculative_begin(struct common_speculative * spec, const llama_toke
 
 这个函数执行"共享前缀填充"。提示词首先被解码到草稿模型的上下文，然后将这个公共前缀的 KV 缓存通过 `llama_memory_seq_cp` 复制到所有分支序列（`0` 到 `seq_dft.size()-1`）。这里复制操作似乎是先解码到序列 0 再复制到其他序列。实际上，`llama_decode` 默认填充的是序列 0，然后 `llama_memory_seq_cp` 将序列 0 的 KV 数据复制给所有其他序列，从而让每个分支都共享相同的上下文起点。这确保了即使分支后续走向不同，它们都能基于相同的"历史记忆"进行推理。
 
-#### `common_speculative_draft`：树状分支的并行起草与动态长度调整
+#### 93.2.2.3 `common_speculative_draft`：树状分支的并行起草与动态长度调整
 
 源码路径：`common/speculative.cpp` - `common_speculative_draft()`
 
@@ -217,7 +217,7 @@ llama_tokens common_speculative_draft(struct common_speculative * spec, const st
 
 `common_speculative_draft`（草稿）函数是树状草稿分支的核心引擎，它在每一轮迭代中为每条活跃分支采样一个新的 token。每个分支拥有自己独立的采样器。循环通过检查 `params.n_max`（最大草稿长度）来停止采样，实现动态长度控制。当某个分支达到长度上限或被停用时，该分支不再贡献 token，而其他分支可以继续扩展。最终，它返回第一个活跃分支的草稿序列作为整体的草稿候选。树状分支的具体创建、复制与淘汰，实际上由外层逻辑（如 `speculative.cpp` 的主循环）通过设置 `seq_dft[s].active` 和创建新分支的方式驱动，`common_speculative_draft` 主要负责在给定分支状态下的并行采样。
 
-### `main`：经典推测解码主函数，验收与上菜的完整流程
+### 93.2.3 `main`：经典推测解码主函数，验收与上菜的完整流程
 
 源码路径：`examples/speculative/speculative.cpp` - `main()`（33-563行）
 
@@ -339,7 +339,7 @@ int main(int argc, char ** argv) {
 
 这段代码完整展示了"大厨与副手"的协作流程。在初始化阶段，程序像聘用副手一样，为草稿模型分配参数与资源，并单独加载模型文件。这里需要注意，`common_speculative_init` 是推测解码器的核心抽象，负责创建草稿模型的上下文与 KV 缓存；`common_speculative_begin` 将提示词前缀填充进草稿模型，相当于副手的"岗前培训"。在主循环中，`common_speculative_draft`（草稿）生成候选 token 序列；随后构建包含最后已接受 token 与所有草稿 token 的批次，一次性交给目标模型进行前向解码。由于 LLM 的前向计算是高度并行的，这比逐个 token 生成要快得多。验证阶段由 `common_sampler_sample_and_accept_n` 完成，它从目标模型解码的 logits 中采样 token，并按照验证规则接受或拒绝草稿 token。最后，`llama_memory_seq_rm` 清理未接受的草稿 token 对应的 KV 缓存，避免位置错乱。
 
-#### `common_sampler_sample_and_accept_n`：大厨的验收标准——贪心与随机验证
+#### 93.2.3.1 `common_sampler_sample_and_accept_n`：大厨的验收标准——贪心与随机验证
 
 源码路径：`common/sampling.cpp` - `common_sampler_sample_and_accept_n()`
 
@@ -406,7 +406,7 @@ std::vector<llama_token> common_sampler_sample_and_accept_n(struct common_sample
 
 还需说明，`common_sampler_sample` 与 `common_sampler_accept` 在内部会维护采样器状态，包括概率分布、随机数种子、已接受 token 的记录等。因此，在随机验证中调用 `common_sampler_probs` 和 `common_sampler_rand` 时，获取的是当前最新状态的正确数据。在贪心模式下，`common_sampler_sample` 会直接选择概率最高的 token，且 `common_sampler_probs` 返回的分布中 `p_tgt` 将与 `p_dft` 的比较结果自动触发 `ratio >= 1` 或 `ratio < 1` 的逻辑分支。
 
-### 经典与简化版的架构对比
+### 93.2.4 经典与简化版的架构对比
 
 为了更直观地理解树状草稿与线性草稿的差异，我们通过一张架构对比图来审视两种策略：
 
@@ -458,13 +458,13 @@ flowchart TD
     K -- 是 --> L[输出统计信息并退出]
 ```
 
-## 92.3 简化版推测解码 —— 线性草稿，一目了然的"双人舞"（Simple Draft & Verify）
+## 93.3 简化版推测解码 —— 线性草稿，一目了然的"双人舞"（Simple Draft & Verify）
 
 现在，让我们从复杂的树状分支回到一个更简洁的场景。想象你是同时管理着多条快递分拣线的主任。每条分拣线都配备了一个经验丰富的助理，但这位助理的能力相对有限，他只能按照固定的顺序依次为每个包裹贴好标签，而不能像资深助理那样提出多种备选方案。尽管如此，只要主任能够快速审核，这条线的分拣效率依然远高于独自作战。
 
 `speculative-simple` 正是这样的一个"简化"实现。与 `speculative` 的多分支树状结构不同，这个示例只维护**一条草稿序列**，草稿模型每次生成 `n_max` 个候选 token，目标模型验证并接受后，草稿序列被更新，然后进入下一轮。虽然这种"单路径"策略的接受率不如树状分支，但它的代码逻辑简单直接，非常适合用来学习推测解码的核心机制。
 
-### `main`：简化版推测解码主函数，大厨的单线审核
+### 93.3.1 `main`：简化版推测解码主函数，大厨的单线审核
 
 源码路径：`examples/speculative-simple/speculative-simple.cpp` - `main()`（1-198行）
 
@@ -617,13 +617,13 @@ flowchart LR
     F --> A
 ```
 
-## 92.4 Lookup 推测解码 —— 缓存复用，无需草稿模型的"轻骑兵"（N-gram Cache Lookup）
+## 93.4 Lookup 推测解码 —— 缓存复用，无需草稿模型的"轻骑兵"（N-gram Cache Lookup）
 
 现在，让我们换一种思维。想象你正在翻译一本关于中国历史的书籍。你并不需要每遇到一个"长城"、"秦始皇"这样的词汇就重新去查阅百科全书，因为这些词汇在你的长期记忆（静态缓存）和这本书前文（动态缓存）中已经反复出现。你可以直接从记忆中"调取"这些固定搭配，快速给出翻译草稿，再由你的翻译搭档（目标模型）来把关。
 
 `lookup` 系列示例正是这种思路的工程实现：**完全不需要单独的草稿模型**。它的核心思想是，在文本生成过程中，许多高频词汇和短语会重复出现。我们可以将输入提示词以及生成过程中已经出现过的所有 n-gram（连续的 n 个 token）片段存储在一个哈希表中。当需要猜测下一个 token 时，不是在语言模型中进行前向计算，而是直接在哈希表中查找以当前最后一个 token 开头的最长 n-gram 片段，将其作为候选草稿。
 
-### `main`：Lookup 推测解码主函数，记忆力超群的大厨助理
+### 93.4.1 `main`：Lookup 推测解码主函数，记忆力超群的大厨助理
 
 源码路径：`examples/lookup/lookup.cpp` - `main()`（14-228行）
 
@@ -802,7 +802,7 @@ int main(int argc, char ** argv){
 
 这个函数展示了 Lookup 推测解码的独特流程。首先，它初始化了三源缓存：`common_ngram_cache_context` 从输入上下文中提取，每次更新；`common_ngram_cache_dynamic` 是一个跨会话累积的缓存，程序结束时保存；`common_ngram_cache_static` 是一个预先构建的"词典"，可以由 `lookup-create` 工具从语料库生成。三者共同参与草稿生成，提高了缓存覆盖度。其次，在内层验证循环中，程序反复从目标模型当前 `i_dft` 位置的 logits 中采样，并与草稿序列中对应位置的 token 比对。如果一致，索引 `i_dft` 后移继续验证；一旦不一致或草稿耗尽，循环退出并重新进行草稿生成。`common_ngram_cache_draft` 是 Lookup 的核心，它接收当前已生成的所有 token（`inp`）、初始的 `draft`（包含新采样 token）、目标草稿长度 `n_draft` 以及三个缓存。它尝试从 `inp` 的末尾开始，查找是否存在以某个 token 开头的、长度介于 `LLAMA_NGRAM_MIN` 与 `LLAMA_NGRAM_MAX` 之间的 n-gram 序列。如果找到这样的序列，就将其后续 token 依次追加到 `draft` 中，直到达到 `n_draft` 的限制。最后，因为没有第二语言模型，推理过程的额外开销只是哈希查找和缓存更新。这使得 Lookup 在短文本、重复模式多的场景（例如代码补全、API 调用生成）中拥有显著的加速比。
 
-#### `common_ngram_cache_load`：加载缓存文件的助手
+#### 93.4.1.1 `common_ngram_cache_load`：加载缓存文件的助手
 
 源码路径：`common/ngram-cache.cpp` - `common_ngram_cache_load()`
 
@@ -826,7 +826,7 @@ common_ngram_cache common_ngram_cache_load(const std::string & path) {
 
 这个助手函数充当一个"读取记忆"的角色，负责从磁盘上的缓存文件恢复 n-gram 哈希表。它验证文件格式，并逐个读取记录，为 `lookup.cpp` 的动态与静态缓存提供数据载入能力。
 
-#### `common_ngram_cache_save`：保存缓存文件的助手
+#### 93.4.1.2 `common_ngram_cache_save`：保存缓存文件的助手
 
 源码路径：`common/ngram-cache.cpp` - `common_ngram_cache_save()`
 
@@ -886,7 +886,7 @@ flowchart LR
 
 图中可以看到四条工具链路径：通过 `lookup-create` 构建静态缓存，通过 `lookup-merge` 合并多个缓存，通过 `lookup-stats` 进行离线性能评估，以及主程序 `lookup` 在解码循环中同时利用静态、动态和上下文缓存进行草稿生成。
 
-### `lookup-create.cpp`：静态缓存创建工具，定制专属"记忆词典"
+### 93.4.2 `lookup-create.cpp`：静态缓存创建工具，定制专属"记忆词典"
 
 源码路径：`examples/lookup/lookup-create.cpp` - `main()`（10-43行）
 
@@ -926,7 +926,7 @@ int main(int argc, char ** argv){
 
 这是创建静态 Lookup 缓存的工具。它的核心逻辑非常清晰：加载模型（用于获取词表）→ 对输入文本进行 tokenize → 从 token 序列中提取所有 `LLAMA_NGRAM_STATIC` 长度的 n-gram 并存入哈希表 → 将哈希表序列化到磁盘。这个工具可以用于从大型语料库中构建通用的"词典"，然后在 `lookup.cpp` 运行时加载，作为 `ngram_cache_static` 使用。通过这个工具，我们可以预先从海量的领域文档中提取高频片段，显著提升草稿命中率。
 
-### `print_usage`与`main`：缓存合并工具，融合多本"记忆词典"
+### 93.4.3 `print_usage`与`main`：缓存合并工具，融合多本"记忆词典"
 
 源码路径：`examples/lookup/lookup-merge.cpp` - `print_usage()`（15-18行）与 `main()`（20-49行）
 
@@ -972,7 +972,7 @@ int main(int argc, char ** argv){
 
 当我们需要结合多个来源的语料（例如不同领域的文档）来构建一个更全面的静态缓存时，`lookup-merge` 工具就派上了用场。它的逻辑很直接：加载第一个缓存文件，然后依次读取后续文件，并通过 `common_ngram_cache_merge` 将它们的 n-gram 记录合并（去重）进第一个缓存，最后保存到指定的输出文件。这个工具为静态缓存的增量构建提供了一种轻量级方案。例如，你可以在工作日分别处理技术文档、新闻稿和法律条文，周末时将所有的缓存文件合并成一个全面的"知识库"，供后续的生成任务使用。这种流水线化的处理方式大大提高了缓存构建的灵活性。
 
-#### `common_ngram_cache_merge`：合并缓存数据的核心逻辑
+#### 93.4.3.1 `common_ngram_cache_merge`：合并缓存数据的核心逻辑
 
 源码路径：`common/ngram-cache.cpp` - `common_ngram_cache_merge()`
 
@@ -990,7 +990,7 @@ void common_ngram_cache_merge(common_ngram_cache & ngram_cache_dst, const common
 
 这个函数定义了缓存合并的核心逻辑：将源缓存（`src`）中的所有 n-gram 记录插入目标缓存（`dst`），利用哈希集合的自动去重特性，确保合并后的缓存不会包含重复记录。这是 `lookup-merge` 工具和 `lookup.cpp` 中动态缓存更新机制的基础。
 
-### `main`：性能统计工具，离线预演副手的命中率
+### 93.4.4 `main`：性能统计工具，离线预演副手的命中率
 
 源码路径：`examples/lookup/lookup-stats.cpp` - `main()`（16-117行）
 
@@ -1120,13 +1120,13 @@ int main(int argc, char ** argv){
 
 这种设计让我们能够在部署前对缓存的命中率蓝图进行估算，确保其有效性。例如，如果我们计划将 Lookup 用于代码补全，可以先用一个大型的代码库运行 `lookup-stats`，如果接受率只有 20%，那么就需要考虑引入其他策略（如经典的 `speculative`）或者扩展静态缓存。这避免了在真实推理时才发现性能不佳的尴尬境地。
 
-## 92.5 Lookahead 解码 —— Jacobi 迭代，并行解码的"先驱"（Lookahead Decoding）
+## 93.5 Lookahead 解码 —— Jacobi 迭代，并行解码的"先驱"（Lookahead Decoding）
 
 让我们把思维再创新一些。想象你正在玩一个填字游戏。你需要在 5x5 的格子中填入单词，而不是逐格填写。你根据行与列的线索，同时猜出所有格子的候选答案（前瞻矩阵），然后通过交叉验证来确认哪些是正确的。如果某个格子的答案与行和列的线索都吻合，那么你就可以确信它是正确的，并以此为锚点，继续推理出相邻格子的答案。
 
 `lookahead` 示例实现的就是这种理念：一种不依赖草稿模型的并行解码算法——基于 Jacobi 迭代的 Lookahead 解码。它的核心思想是，我们可以维护一个"前瞻矩阵"（lookahead matrix），其中每一行代表一个前瞻位置，每一列代表一个可能的分支。在每一轮迭代中，我们利用当前 KV Cache 中的信息，同步更新矩阵中所有位置的 token 猜测，然后通过 n-gram 验证来评估哪些猜测是正确的。这个过程类似于在解一个非线性方程组时，利用 Jacobi 迭代同时更新所有未知数，而不是逐个更新。
 
-### `ngram_data`与`ngram_container`：数据结构的基石
+### 93.5.1 `ngram_data`与`ngram_container`：数据结构的基石
 
 源码路径：`examples/lookahead/lookahead.cpp` - `struct ngram_data`（17-25行）与 `struct ngram_container`（27-38行）
 
@@ -1155,7 +1155,7 @@ struct ngram_container {
 
 这两个结构体构成了 Lookahead 解码的"记忆"与"工作"单元。`ngram_data` 是每一轮验证中的"工作单元"。当 n-gram 被触发并验证时，它的 `i_batch` 数组将 batch 中每个 token 的位置与 n-gram 中的位置关联起来，从而让目标模型能够在一次前向传播中同时验证所有这些 n-gram。`ngram_container` 则采用了一种内存高效的数据结构。它不是为每个 token 单独存储一个链表，而是预先分配了一块大小为 `n_vocab * G * (N - 1)` 的连续内存，利用 `head` 指针实现环形缓冲区。这种设计避免了频繁的动态内存分配，同时实现了高效的插入与查找操作。但需要指出的是，其实际复杂度并非严格的 O(1)，因为查找 n-gram 时仍需遍历以某个 token 开头的全部 `cnt` 条记录进行比对（见主函数中的 `is_unique` 检查），复杂度为 O(cnt × N)。
 
-### `main`：Lookahead 解码主函数，大胆试菜、交叉验证的大厨
+### 93.5.2 `main`：Lookahead 解码主函数，大胆试菜、交叉验证的大厨
 
 源码路径：`examples/lookahead/lookahead.cpp` - `main()`（42-419行）
 
@@ -1453,11 +1453,11 @@ int main(int argc, char ** argv) {
 
 **Jacobi 迭代的体现**在于，`tokens_j` 矩阵在每一轮结束后都会更新。当某个位置的 token 被验证为正确时，它将被锁定并成为后续位置的上下文；当被拒绝时，则被替换为新的猜测。经过多轮迭代，正确的 token 会"扩散"到整个矩阵，从而一次性产生多个正确的 token。这正是 Jacobi 迭代法的核心——利用旧值不断逼近真实解。
 
-#### 理解 W、N、G：探索广度与验证深度的权衡
+#### 93.5.2.1 理解 W、N、G：探索广度与验证深度的权衡
 
 在 Lookahead 解码中，`W`（window）、`N`（n-gram size）与 `G`（max verification n-grams）三个参数共同控制了算法的"激进程度"。`W` 代表前瞻窗口的大小，它决定了在每一轮解码中，我们"向前看"多远；`W` 越大，潜在的并行度越高，但 KV Cache 占用和计算量也越大。`N` 代表验证 n-gram 的长度，它指的是用于验证的 n-gram 的 token 个数；`N=5` 意味着我们使用 5-gram 进行匹配验证，存储布局中每个 n-gram 需要 `(N-1)` 个"后续 token"位置被记录。`G` 代表最大并行验证的 n-gram 数量，它限制了每一轮中最多可以并行验证多少个不同的 n-gram 假设；`G` 越大，可以同时验证的候选假设越多，但计算开销也随之上升。值得注意的是，在代码中，`ngrams_observed.tokens` 的分配大小为 `n_vocab * G * (N - 1)`，这是因为对于每个起始 token，最多记录 `G` 个 n-gram，每个 n-gram 包含 `(N-1)` 个后续 token（第一个 token 作为索引键无需重复存储）。验证循环 `for (int v = 0; v < N; ++v)` 遍历 n-gram 的每个位置，而 `tokens_j` 矩阵的大小为 `(N-1) × W`，其中每个元素代表某一分支在某一位置的猜测。
 
-#### `llama_memory_seq_keep`：保留最佳序列的钥匙
+#### 93.5.2.2 `llama_memory_seq_keep`：保留最佳序列的钥匙
 
 源码路径：`llama.cpp` / `ggml.c` 相关实现
 
@@ -1476,7 +1476,7 @@ void llama_memory_seq_keep(llama_memory * mem, llama_seq_id seq_id) {
 
 这个函数在 Lookahead 的 KV Cache 管理中承担"保留"职责。在每一轮迭代结束后，模型已经决定哪个序列（`seq_id_best`）是被验证的最佳序列。`llama_memory_seq_keep(mem, seq_id_best)` 保留这个最佳序列的 KV 数据，确保其不被垃圾回收。随后将其复制回主序列（`seq_id=0`），作为下一轮解码的"真实上下文"。这一操作类似于大厨在试完所有候选菜品后，将最满意的那道菜作为标准，供下一轮参考。
 
-#### `llama_memory_seq_cp`：复制序列缓存的桥梁
+#### 93.5.2.3 `llama_memory_seq_cp`：复制序列缓存的桥梁
 
 源码路径：`llama.cpp` / `ggml.c` 相关实现
 
@@ -1510,7 +1510,7 @@ flowchart TD
     K -- 是 --> L[输出统计与结果]
 ```
 
-## 92.6 设计中的取舍（Design Trade-offs）
+## 93.6 设计中的取舍（Design Trade-offs）
 
 在深入剖析了四种推测解码策略之后，我们有必要停下来，从"取舍"的角度重新审视这些技术。这里我们将通过一系列问答，系统比较在显存、延迟、吞吐、实现复杂度和接受率上的差异。
 
@@ -1550,7 +1550,7 @@ Lookahead 适合重复模式较多的文本（如代码、结构化文本），�
 
 综合来看，没有"银弹"方案。经典方案适合追求最高质量的场景；Lookup 适合资源受限但文本重复度高的场景；Lookahead 则在无需额外模型的前提下提供了并行加速的可能，是"探索广度"与"验证深度"之间的一种精妙平衡。
 
-## 92.7 动手练习（Hands-on Exercises）
+## 93.7 动手练习（Hands-on Exercises）
 
 1.  **经典推测解码流程分析**
     -   阅读 `examples/speculative/speculative.cpp` 中主循环的部分。
@@ -1597,7 +1597,7 @@ Lookahead 适合重复模式较多的文本（如代码、结构化文本），�
         -   对于给定的硬件资源，哪种方法的整体解码速度最快？你如何从代码中推断出这种性能差异？
         -   你能否设计一个简单的实验来证明 `lookahead` 在代码生成（重复模式多）任务中的优势？
 
-## 92.8 本章小结（Summary）
+## 93.8 本章小结（Summary）
 
 这一章中我们学习了推测解码的四种实现，完成了从"单模型逐步生成"到"多模型/多序列批量验证"的视角转换。首先，我们剖析了 `speculative` 和 `speculative-simple` 示例，理解了经典的双模型协作机制，以及树状草稿分支如何提升接受率。接着，我们深入了 `lookup` 系列示例，掌握了如何利用 n-gram 缓存构建高效的草稿生成器，而不需要额外的模型资源。然后，我们分析了 `lookahead` 示例，见识了 Jacobi 迭代并行解码算法与 KV Cache 序列管理的精妙之处。最后，我们在设计取舍中对比了这几种方案的适用场景、性能特征与资源消耗，帮助你在实际项目中做出更明智的技术选型。
 

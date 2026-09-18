@@ -2,7 +2,7 @@
 
 
 
-# 第 28 章：专家系统的炼金术 —— 从稠密砖瓦到稀疏摩天楼的 MoE 大爆发
+# 第27章 ：专家系统的炼金术 —— 从稠密砖瓦到稀疏摩天楼的 MoE 大爆发
 
 ## 学习目标
 
@@ -16,11 +16,11 @@
 - 掌握 LLaDA-MoE 作为扩散语言模型如何通过无缓存注意力实现双向注意力
 - 能识别各 MoE 模型在门控函数、专家权重归一化、激活函数、归一化位置上的设计差异
 
-## 28.1 生活类比
+## 27.1 生活类比
 
 想象 MoE 模型是一家**大型专科医院**，每层 Transformer 都是一次门诊流程。标准注意力相当于全科分诊台——每个患者（token）都要挂号；路由专家对应各科专家医生（神经科、骨科、心脏科……），患者按病情被分配到对应专家；共享专家则是全科医生（基础保健，人人必看）；前 n_layer_dense_lead 层就像急诊室——所有患者必须先经过的初诊区。MLA（潜空间注意力）是病历压缩术：医生把厚厚的病历压缩到一张小卡片（低秩 KV），需要时再展开；吸收优化则是边走边问，在走廊里就把部分问诊做完，到诊室只需问关键问题。ISWA 双 KV 缓存好比大病历柜 + 小病历柜：近期病历放小柜（快速查），远期放大柜。Attention Sink 是医院导诊图：无论走到哪里，先看导诊图找到方向。n_moe_layer_step 对应周期性专家会诊：不是每层都请专家，而是每隔几层集中会诊一次。分组专家（Grovemoe）则是双层路由：先按病情大类分诊，再在大类内选具体专家。就像医院需要平衡专家资源与初诊效率，MoE 模型也需要平衡稠密路径与稀疏专家的计算成本。本章我们将沿用这个医院隐喻，逐一拆解各大 MoE 架构如何在 llama.cpp 中搭建起高效的「专家系统兵工厂」。
 
-## 28.2 源码地图
+## 27.2 源码地图
 
 src/models/deepseek.cpp
 ├── llm_build_deepseek::llm_build_deepseek()  (line 1-140)
@@ -142,11 +142,11 @@ src/models/llada-moe.cpp
 │   ├── 纯 MoE（expert_weights_norm=false）
 │   └── 注意力走全 token 对齐路径（非增量解码）
 
-## 28.3 首块砖瓦：DeepSeek V1 确立稠密到稀疏的奠基范式 —— 急诊室先诊，专科后分
+## 27.3 首块砖瓦：DeepSeek V1 确立稠密到稀疏的奠基范式 —— 急诊室先诊，专科后分
 
 DeepSeek V1 是整个 DeepSeek 系列的起点，它确立了"前稠密后稀疏"的标准范式：前 `n_layer_dense_lead` 层使用普通的稠密 FFN，后续层切换为 MoE FFN + 共享专家的并行结构。这种设计既保证了底层特征提取的稳定性，又在高层引入了稀疏专家的参数效率。在医院隐喻中，前几层是「急诊室」——所有患者（token）必须先经过通用的初诊（稠密 FFN），积累基础语言特征；后几层才分流到「专科专家」（路由专家）与「全科医生」（共享专家）并行会诊。
 
-### llm_build_deepseek()：构建 DeepSeek V1 前向计算图
+### 27.3.1 llm_build_deepseek()：构建 DeepSeek V1 前向计算图
 
 源码路径：`src/models/deepseek.cpp` - `llm_build_deepseek`（第 5-180 行）
 
@@ -282,7 +282,7 @@ llm_build_deepseek(const llama_model & model, const llm_graph_params & params) :
 
 **代码作用概述**：该构造函数完整定义了 DeepSeek V1 的前向计算图。从词嵌入与位置编码开始，逐层构建：注意力模块采用标准 GQA（独立 Q/K/V 投影 + RoPE），FFN 模块根据层索引 `il` 与 `n_layer_dense_lead` 比较，动态选择稠密 FFN 或 MoE FFN + 共享专家并行结构。残差连接贯穿注意力与 FFN 两大子层，最终经输出归一化与 `lm_head` 投影得到 logits。这种"配置驱动架构"的写法，让同一份构建代码同时支持纯稠密、纯 MoE 与混合模式。
 
-### DeepSeek V1 计算图架构图
+### 27.3.2 DeepSeek V1 计算图架构图
 
 ```mermaid
 graph TD
@@ -309,11 +309,11 @@ graph TD
 
 ---
 
-## 28.4 炼金术：DeepSeek V2 MLA 与 YaRN 的潜空间注意力革命 —— 病历压缩术与雅恩缩放
+## 27.4 炼金术：DeepSeek V2 MLA 与 YaRN 的潜空间注意力革命 —— 病历压缩术与雅恩缩放
 
 DeepSeek V2 引入了 MLA（Multi-head Latent Attention），这是本章最核心的创新。MLA 将 Key/Value 压缩到低秩潜空间（`kv_lora_rank`），通过"吸收优化"在推理时避免显式解压完整 K/V，大幅降低显存占用与带宽压力。结合 YaRN RoPE 预缩放，实现了长上下文外推能力的数学级保障。在医院隐喻中，MLA 是「病历压缩术」：医生把厚厚的病历（完整 KV）压缩到一张小卡片（低秩 `kv_cmpr`），需要时通过 `wk_b` 把查询的无 RoPE 部分（`q_nope`）映射到压缩空间，再与 RoPE 部分（`q_pe`）拼接，直接在压缩空间做注意力，省去了「展开病历」的显式解压步骤。
 
-### llm_build_deepseek2()：构建 DeepSeek V2/OCR 计算图的双架构入口函数
+### 27.4.1 llm_build_deepseek2()：构建 DeepSeek V2/OCR 计算图的双架构入口函数
 
 源码路径：`src/models/deepseek2.cpp` - `llm_build_deepseek2`（第 1-330 行）
 
@@ -527,7 +527,7 @@ llm_build_deepseek2::llm_build_deepseek2(const llama_model & model, const llm_gr
 
 **代码作用概述**：该构造函数实现了 DeepSeek V2 的双架构分支构建。核心创新在于 MLA 吸收优化路径：`wkv_a_mqa` 一次矩阵乘输出拼接的压缩 KV 与 K_RoPE，通过 `view_2d/3d` 零拷贝切分；`wq_a` → Norm → `wq_b` 两阶段 Q 投影产出完整 Q，再 `view_3d` 切分 `q_nope` 与 `q_pe`；吸收优化时 `wk_b` 将 `q_nope` 映射到压缩 K 空间，与 `q_pe` 拼接后直接走 `build_attn_inp_k`（仅缓存 K），避免了显式解压 `wkv_b`。YaRN RoPE 通过 `attn_factor_org` 撤销原始调整，再乘 `mscale` 得到 `kq_scale = mscale²/√d_k`。OCR 变体强制走纯 MHA + NEOX RoPE + 固定 `freq_base=10000`。
 
-### MLA 核心张量流向图
+### 27.4.2 MLA 核心张量流向图
 
 ```mermaid
 graph TD
@@ -554,11 +554,11 @@ graph TD
 
 ---
 
-## 28.5 双生演进：Qwen2MoE 显式门控 vs Qwen3MoE 隐式缩放 —— 自适应阀门与隐式融合
+## 27.5 双生演进：Qwen2MoE 显式门控 vs Qwen3MoE 隐式缩放 —— 自适应阀门与隐式融合
 
 Qwen 系列展示了 MoE 架构的两种演进方向：Qwen2MoE 保留显式共享专家并用独立门控调节；Qwen3MoE 则通过 Q/K 归一化与专家权重缩放张量实现隐式融合。在医院隐喻中，Qwen2MoE 给全科医生（共享专家）加了一个「自适应阀门」——`sigmoid(silu(x)/x)`，模型可动态决定基础保健用量；Qwen3MoE 则把全科医生并入专家团队，通过 `_exps_s` 缩放张量在路由层面内隐式平衡各专家贡献，计算图更紧凑。
 
-### llm_build_qwen2moe()：构建 Qwen2MoE 计算图的入口函数
+### 27.5.1 llm_build_qwen2moe()：构建 Qwen2MoE 计算图的入口函数
 
 源码路径：`src/models/qwen2moe.cpp` - `llm_build_qwen2moe`（第 4-128 行）
 
@@ -690,7 +690,7 @@ llm_build_qwen2moe::llm_build_qwen2moe(const llama_model & model, const llm_grap
 
 **代码作用概述**：Qwen2MoE 采用标准 GQA 注意力（支持 Q/K/V 偏置），FFN 阶段先跑路由专家 `build_moe_ffn`（SOFTMAX 门控），再显式计算共享专家：独立门控投影 `ffn_gate_inp_shexp` → `sigmoid(silu(x)/x)` 门控 → 共享专家 FFN → 门控调制输出 → 与 MoE 输出相加。这种显式门控设计让共享专家贡献可被动态调节，类似给全科医生加了一个「自适应阀门」。
 
-### Qwen2MoE 共享专家门控流程图
+### 27.5.2 Qwen2MoE 共享专家门控流程图
 
 ```mermaid
 graph TD
@@ -711,7 +711,7 @@ graph TD
 
 ---
 
-### llm_build_qwen3moe()：构建 Qwen3MoE 计算图的入口函数
+### 27.5.3 llm_build_qwen3moe()：构建 Qwen3MoE 计算图的入口函数
 
 源码路径：`src/models/qwen3moe.cpp` - `llm_build_qwen3moe`（第 1-99 行）
 
@@ -795,7 +795,7 @@ llm_build_qwen3moe::llm_build_qwen3moe(const llama_model & model, const llm_grap
 
 **代码作用概述**：Qwen3MoE 在注意力侧引入 Q/K 双 RMSNorm（`attn_q_norm`/`attn_k_norm`）与 LoRA 缩放因子（`wq_s`/`wk_s`/`wv_s`/`wo_s`），FFN 侧取消显式共享专家分支，改为在 `build_moe_ffn` 内部通过 `expert_weights_norm=true` 与三个 `_exps_s` 缩放张量实现专家权重归一化与隐式共享专家融合。计算图更紧凑，推理延迟更低，符合现代编译器融合算子的优化趋势。
 
-### Qwen3MoE 注意力与 MoE 架构图
+### 27.5.4 Qwen3MoE 注意力与 MoE 架构图
 
 ```mermaid
 graph TD
@@ -819,11 +819,11 @@ graph TD
 
 ---
 
-## 28.6 双城记：DBRX 单矩阵 QKV + Clamp 与 Arctic 稠密+MoE 并联 —— 一体化分诊台与双轨制会诊
+## 27.6 双城记：DBRX 单矩阵 QKV + Clamp 与 Arctic 稠密+MoE 并联 —— 一体化分诊台与双轨制会诊
 
 DBRX 与 Arctic 代表了北美 MoE 设计的两种极致工程哲学：DBRX 追求算子融合与数值稳定的极致压缩，Arctic 追求稠密与稀疏路径的解耦并行。医院隐喻中，DBRX 是「一体化分诊台」——Q/K/V 一张表单（单矩阵）填完，再用 Clamp 限制数值防止极端病例；Arctic 是「双轨制会诊」——稠密全科医生与专科专家团队同步工作，互不干扰，最后三方会诊定诊断。
 
-### llm_build_dbrx()：构建 DBRX 计算图的入口函数
+### 27.6.1 llm_build_dbrx()：构建 DBRX 计算图的入口函数
 
 源码路径：`src/models/dbrx.cpp` - `llm_build_dbrx`（第 1-81 行）
 
@@ -893,7 +893,7 @@ llm_build_dbrx::llm_build_dbrx(const llama_model & model, const llm_graph_params
 
 **代码作用概述**：DBRX 全模型使用标准 LayerNorm（`LLM_NORM`），注意力投影合并为单矩阵 `wqkv`，输出经 `ggml_clamp` 限制在 `[-f_clamp_kqv, f_clamp_kqv]` 防止数值溢出，随后通过 `view_3d` 按字节偏移零拷贝切分 Q/K/V。注意力输出后再接一层 `attn_out_norm`（LayerNorm），FFN 部分全层均为 MoE（`expert_weights_norm=true`），无稠密分支。这种设计极致压缩了算子数量与内存读取，适合大规模专家并行部署。
 
-### DBRX 单矩阵 QKV 切分流程图
+### 27.6.2 DBRX 单矩阵 QKV 切分流程图
 
 ```mermaid
 graph TD
@@ -913,7 +913,7 @@ graph TD
 
 ---
 
-### llm_build_arctic()：构建 Arctic 计算图的入口函数
+### 27.6.3 llm_build_arctic()：构建 Arctic 计算图的入口函数
 
 源码路径：`src/models/arctic.cpp` - `llm_build_arctic`（第 7-107 行）
 
@@ -1000,7 +1000,7 @@ llm_build_arctic::llm_build_arctic(const llama_model & model, const llm_graph_pa
 
 **代码作用概述**：Arctic 每层并行跑两套 FFN——稠密 FFN 输入为残差流 `ffn_inp`，MoE FFN 输入为注意力输出 `inpSA`（经独立 `ffn_norm_exps`）。稠密 FFN 先做残差得到 `ffn_out`，MoE FFN 计算后再与 `ffn_out` 相加，形成 `cur = dense_ffn + moe_ffn + ffn_inp` 三路融合。这种双 FFN 并联让稠密路径学通用语言能力，MoE 路径学专业化知识，梯度互不干扰，适合中小规模模型在有限激活参数下提升上限。
 
-### Arctic 双 FFN 并联架构图
+### 27.6.4 Arctic 双 FFN 并联架构图
 
 ```mermaid
 graph TD
@@ -1018,9 +1018,9 @@ graph TD
 
 ---
 
-## 28.7 三岔口：Grok 双后归一化、Olmoe 标准派、Grovemoe 双层路由 —— 会诊后复核、标准派教科书、两级分诊
+## 27.7 三岔口：Grok 双后归一化、Olmoe 标准派、Grovemoe 双层路由 —— 会诊后复核、标准派教科书、两级分诊
 
-### llm_build_grok()：构建 Grok 计算图的入口函数
+### 27.7.1 llm_build_grok()：构建 Grok 计算图的入口函数
 
 源码路径：`src/models/grok.cpp` - `llm_build_grok`（第 1-121 行）
 
@@ -1118,7 +1118,7 @@ llm_build_grok::llm_build_grok(const llama_model & model, const llm_graph_params
 
 **代码作用概述**：Grok 引入四大独特机制：1) 双后置归一化（`attn_out_norm` 与 `ffn_post_norm`），形成 post-norm 风格，利于深层梯度流；2) MoE 与可选稠密 FFN 均采用 `LLM_FFN_GELU` 激活，区别于主流 SiLU；3) 稠密与 MoE 输出按 `√2/2` 等权缩放相加，防止幅值爆炸；4) 输出 logits 经 `tanh(x/c)*c` 软上限截断（`final_logit_softcapping`），训练稳定性技巧。医院隐喻中，双后置 Norm 如「会诊后复核」，GELU 如「平滑诊断曲线」，软上限如「防止极端诊断结论」。
 
-### Grok 双后置 Norm + GELU + Soft-capping 架构图
+### 27.7.2 Grok 双后置 Norm + GELU + Soft-capping 架构图
 
 ```mermaid
 graph TD
@@ -1140,7 +1140,7 @@ graph TD
 
 ---
 
-### llm_build_olmoe()：构建 Olmoe 计算图的入口函数
+### 27.7.3 llm_build_olmoe()：构建 Olmoe 计算图的入口函数
 
 源码路径：`src/models/olmoe.cpp` - `llm_build_olmoe`（第 1-93 行）
 
@@ -1203,7 +1203,7 @@ llm_build_olmoe::llm_build_olmoe(const llama_model & model, const llm_graph_para
 
 ---
 
-### llm_build_grovemoe()：构建 Grovemoe 计算图的入口函数
+### 27.7.4 llm_build_grovemoe()：构建 Grovemoe 计算图的入口函数
 
 源码路径：`src/models/grovemoe.cpp` - `llm_build_grovemoe`（第 18-130 行）
 
@@ -1280,7 +1280,7 @@ llm_build_grovemoe::llm_build_grovemoe(const llama_model & model, const llm_grap
 
 **代码作用概述**：Grovemoe 实现双层路由机制：`n_chunk_expert = n_expert / n_group_experts` 将专家分组。第一步 `probs = gate_inp(cur)` 一次计算路由概率，两次 `build_moe_ffn` 共享该概率张量，避免重复计算。第一次 MoE 处理全量专家（`n_expert`），第二次处理分组专家（`n_chunk_expert`，`che×ps` 系列权重）。最终通过 `expert_group_scale` 缩放第二分支输出后相加。医院隐喻中，这是「两级分诊」：先在全院专家中选 Top-K，再在专家组内精选，适合超大规模专家池（256+）。
 
-### Grovemoe 双层路由流程图
+### 27.7.5 Grovemoe 双层路由流程图
 
 ```mermaid
 graph TD
@@ -1297,9 +1297,9 @@ graph TD
 
 ---
 
-## 28.8 跨层调度与滑动窗口：ERNIE 4.5 间隔式 MoE 与 EXAONE-MoE ISWA 组合 —— 周期性会诊与双病历柜
+## 27.8 跨层调度与滑动窗口：ERNIE 4.5 间隔式 MoE 与 EXAONE-MoE ISWA 组合 —— 周期性会诊与双病历柜
 
-### llm_build_ernie4_5()：构建 ERNIE 4.5 纯稠密计算图的入口函数
+### 27.8.1 llm_build_ernie4_5()：构建 ERNIE 4.5 纯稠密计算图的入口函数
 
 源码路径：`src/models/ernie4-5.cpp` - `llm_build_ernie4_5`（第 3-78 行）
 
@@ -1397,7 +1397,7 @@ llm_build_ernie4_5::llm_build_ernie4_5(const llama_model & model, const llm_grap
 
 ---
 
-### llm_build_ernie4_5_moe()：构建 ERNIE 4.5 MoE 计算图的入口函数
+### 27.8.2 llm_build_ernie4_5_moe()：构建 ERNIE 4.5 MoE 计算图的入口函数
 
 源码路径：`src/models/ernie4-5-moe.cpp` - `llm_build_ernie4_5_moe`（第 3-115 行）
 
@@ -1527,7 +1527,7 @@ llm_build_ernie4_5_moe::llm_build_ernie4_5_moe(const llama_model & model, const 
 
 **代码作用概述**：ERNIE 4.5 MoE 核心创新是间隔式 MoE 调度：`is_moe_layer = (il >= n_layer_dense_lead) && ((il+1) % n_moe_layer_step == 0)`。不是前稠密后全 MoE，而是按步长 `n_moe_layer_step` 周期性插入 MoE 层（如 step=2 时第 3、5、7... 层为 MoE）。非 MoE 层走稠密 `build_ffn`，MoE 层走 `build_moe_ffn` 并传入 `ffn_exp_probs_b` 专家级偏置实现精细负载均衡。共享专家可选（`n_ff_shexp > 0`）。医院隐喻中，这是「周期性专家会诊」：不是每层都请专家，而是每隔几层集中会诊，平衡专家利用率与稠密特征提取。
 
-### ERNIE 4.5 MoE 间隔式调度流程图
+### 27.8.3 ERNIE 4.5 MoE 间隔式调度流程图
 
 ```mermaid
 graph TD
@@ -1545,7 +1545,7 @@ graph TD
 
 ---
 
-### llm_build_exaone_moe()：构建 EXAONE-MoE 计算图的入口函数
+### 27.8.4 llm_build_exaone_moe()：构建 EXAONE-MoE 计算图的入口函数
 
 源码路径：`src/models/exaone-moe.cpp` - `llm_build_exaone_moe`（第 1-124 行）
 
@@ -1662,7 +1662,7 @@ llm_build_exaone_moe::llm_build_exaone_moe(const llama_model & model, const llm_
 
 **代码作用概述**：EXAONE-MoE 集成三大特色：1) `build_attn_inp_kv_iswa` 创建 ISWA 双缓存（滑动窗口 + 全局），`hparams.is_swa(il)` 动态判断层类型；2) 仅 SWA 层（局部注意力）应用 RoPE，全局注意力层跳过，节省计算且符合长上下文建模直觉；3) Q/K 双 RMSNorm 稳定不同层类型的注意力分布。FFN 侧通过 `ffn_gate_inp` 是否为 null 判断 MoE/稠密，共享专家作为可选分支与 MoE 相加。医院隐喻中，ISWA 是「大病历柜 + 小病历柜」，条件 RoPE 是「仅近期病历加时间戳」，Q/K Norm 是「统一专家诊断标准」。
 
-### EXAONE-MoE ISWA + 条件 RoPE 架构图
+### 27.8.5 EXAONE-MoE ISWA + 条件 RoPE 架构图
 
 ```mermaid
 graph TD
@@ -1685,9 +1685,9 @@ graph TD
 
 ---
 
-## 28.9 边界探索：OpenAI-MOE Attention Sink 与 LLaDA-MoE 扩散双向注意力 —— 导诊图与全员会诊
+## 27.9 边界探索：OpenAI-MOE Attention Sink 与 LLaDA-MoE 扩散双向注意力 —— 导诊图与全员会诊
 
-### llm_build_openai_moe_iswa()：构建 OpenAI-MOE 计算图的入口函数
+### 27.9.1 llm_build_openai_moe_iswa()：构建 OpenAI-MOE 计算图的入口函数
 
 源码路径：`src/models/openai-moe-iswa.cpp` - `llm_build_openai_moe_iswa`（第 1-84 行）
 
@@ -1767,7 +1767,7 @@ llm_build_openai_moe_iswa::llm_build_openai_moe_iswa(const llama_model & model, 
 
 **代码作用概述**：OpenAI-MOE 定制化四大机制：1) `build_attn_inp_kv_iswa` + 每层独立 `get_rope_freq_base/scale` 实现层级差异化位置编码；2) `attn_sinks` 传入 `build_attn` 实现 Attention Sink——在注意力计算中保留全局锚点，防止长序列信息稀释；3) `attn_post_norm` 在残差加法前归一化，采用 post-norm 风格；4) `LLM_FFN_SWIGLU_OAI_MOE` 特殊激活与 `SOFTMAX_WEIGHT` 门控（在标准 softmax 基础上引入专家权重修正路由分布）。所有专家权重（gate/up/down）均支持偏置。医院隐喻中，Attention Sink 是「导诊图」，SwiGLU-OAI 是「定制诊断试剂」，SOFTMAX_WEIGHT 是「专家权重校准器」。
 
-### OpenAI-MOE Attention Sink + Post-norm 架构图
+### 27.9.2 OpenAI-MOE Attention Sink + Post-norm 架构图
 
 ```mermaid
 graph TD
@@ -1783,7 +1783,7 @@ graph TD
 
 ---
 
-### llm_build_llada_moe()：构建 LLaDA-MoE 计算图的入口函数
+### 27.9.3 llm_build_llada_moe()：构建 LLaDA-MoE 计算图的入口函数
 
 源码路径：`src/models/llada-moe.cpp` - `llm_build_llada_moe`（第 1-114 行）
 
@@ -1854,7 +1854,7 @@ llm_build_llada_moe::llm_build_llada_moe(const llama_model & model, const llm_gr
 
 **代码作用概述**：LLaDA-MoE 作为扩散语言模型，核心差异在于 `build_attn_inp_no_cache`——不构建 KV 缓存，注意力计算时所有 token 互相可见（双向），对应扩散模型的并行去噪生成范式。仍使用 Q/K RMSNorm + RoPE，纯 MoE 无共享专家（`expert_weights_norm=false`）。医院隐喻中，这是「全员会诊」：没有病历缓存（KV Cache），所有患者（token）同时在场，医生（注意力）可双向交叉询问，适合非自回归的扩散生成。
 
-### LLaDA-MoE 双向注意力架构图
+### 27.9.4 LLaDA-MoE 双向注意力架构图
 
 ```mermaid
 graph TD
@@ -1871,7 +1871,7 @@ graph TD
 
 ---
 
-## 28.10 设计中的取舍
+## 27.10 设计中的取舍
 
 **为什么 MoE 不全层稀疏，而要保留前几层稠密？**  
 底层 Transformer 提取的是通用语言特征（词法、句法），这些特征对所有任务都有用，稠密 FFN 能提供更稳定的梯度流和特征表示。高层则更偏向任务特定推理，稀疏专家能以更少激活参数建模复杂模式。`n_layer_dense_lead` 正是这个分界点，对应医院的「急诊室必须全员走一遍」原则。
@@ -1905,9 +1905,9 @@ Arctic 并联让稠密与稀疏路径独立学习，梯度不互相干扰，但�
 
 ---
 
-## 28.11 动手练习
+## 27.11 动手练习
 
-### 练习 1：阅读 DeepSeek V2 MLA 实现
+### 27.11.1 练习 1：阅读 DeepSeek V2 MLA 实现
 阅读 `src/models/deepseek2.cpp` 第 1-200 行，理解 MLA 的核心流程。
 1. 追踪 `wkv_a_mqa` 矩阵乘的输出 `kv_cmpr_pe` 的形状
 2. 理解 `view_2d` 与 `view_3d` 如何把压缩张量拆分为 `kv_cmpr` 与 `k_pe`
@@ -1917,7 +1917,7 @@ Arctic 并联让稠密与稀疏路径独立学习，梯度不互相干扰，但�
 - MLA 吸收分支把 Q 投影变成什么形状？
 - 为什么要先 RoPE 再 concat？（提示：与 build_rope_shift 有关）
 
-### 练习 2：对比 Qwen2MoE 与 Qwen3MoE 的共享专家机制
+### 27.11.2 练习 2：对比 Qwen2MoE 与 Qwen3MoE 的共享专家机制
 阅读 `src/models/qwen2moe.cpp` 与 `src/models/qwen3moe.cpp`。
 1. 在 Qwen2MoE 中找到共享专家的门控计算（sigmoid(silu(x)/x)）
 2. 在 Qwen3MoE 中找到 build_moe_ffn 的调用与 _exps_s 缩放张量
@@ -1926,7 +1926,7 @@ Arctic 并联让稠密与稀疏路径独立学习，梯度不互相干扰，但�
 - Qwen3MoE 为什么不需要显式的共享专家分支？
 - 两个模型在注意力 Q/K Norm 上有什么区别？
 
-### 练习 3：理解 DBRX 的单矩阵 QKV 与 Clamp
+### 27.11.3 练习 3：理解 DBRX 的单矩阵 QKV 与 Clamp
 阅读 `src/models/dbrx.cpp` 第 40-80 行。
 1. 找到 `ggml_clamp` 调用的位置
 2. 追踪三个 `ggml_view_3d` 的 offset 参数
@@ -1935,7 +1935,7 @@ Arctic 并联让稠密与稀疏路径独立学习，梯度不互相干扰，但�
 - `f_clamp_kqv` 限制了 Q/K/V 的数值范围到多少？
 - view_3d 中 Q/K/V 的起始 offset 分别是多少字节？
 
-### 练习 4：追踪 Grovemoe 的双层路由
+### 27.11.4 练习 4：追踪 Grovemoe 的双层路由
 阅读 `src/models/grovemoe.cpp` 全文。
 1. 找到 `probs` 张量的计算位置（build_lora_mm ffn_gate_inp）
 2. 找到两次 `build_moe_ffn` 的调用，观察它们传入的 probs 与 che×ps 系列张量
@@ -1944,7 +1944,7 @@ Arctic 并联让稠密与稀疏路径独立学习，梯度不互相干扰，但�
 - 第二次 build_moe_ffn 的 n_expert_used 为什么可能等于 n_chunk_expert？
 - expert_group_scale 缩放因子在何处生效？
 
-### 练习 5：对比 OpenAI-MOE 与标准 MoE 的差异
+### 27.11.5 练习 5：对比 OpenAI-MOE 与标准 MoE 的差异
 阅读 `src/models/openai-moe-iswa.cpp` 全文。
 1. 找到 `attn_sinks` 传入 build_attn 的位置
 2. 找到 `LLM_FFN_SWIGLU_OAI_MOE` 激活与 `SOFTMAX_WEIGHT` 门控
@@ -1954,7 +1954,7 @@ Arctic 并联让稠密与稀疏路径独立学习，梯度不互相干扰，但�
 - SwiGLU-OAI 激活与标准 SwiGLU 有什么区别？
 - SOFTMAX_WEIGHT 门控在 expert 路由概率上做了什么修正？
 
-### 练习 6：理解 LLaDA-MoE 的扩散双向注意力
+### 27.11.6 练习 6：理解 LLaDA-MoE 的扩散双向注意力
 阅读 `src/models/llada-moe.cpp` 全文。
 1. 找到 `build_attn_inp_no_cache` 的调用
 2. 与 `src/models/olmoe.cpp` 对比注意力输入的差异
@@ -1965,7 +1965,7 @@ Arctic 并联让稠密与稀疏路径独立学习，梯度不互相干扰，但�
 
 ---
 
-## 28.12 本章小结
+## 27.12 本章小结
 
 本章我们一起学习了以下概念：
 

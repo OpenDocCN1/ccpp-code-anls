@@ -1,6 +1,6 @@
 
 
-# 第41章 三大通用 GPU 后端的“高速公路网”—— OpenCL、Vulkan 与 WebGPU 的设备探测、内核编译与计算图调度
+# 第40章 三大通用 GPU 后端的“高速公路网”—— OpenCL、Vulkan 与 WebGPU 的设备探测、内核编译与计算图调度
 
 想象一下，llama.cpp 的三大通用 GPU 后端是三条驶向不同目的地的**高速公路系统**。尽管这三条道路的路况、收费规则和通车条件各不相同，但它们的目标高度一致：把 GGML 计算图这辆满载着量化参数和计算指令的货车，安全、高效地从 CPU 娘家送达 GPU 婆家。在这三条高速公路上，**初始化**是入口收费站，**设备探测**是导航系统，**内核加载与编译**是预制构件的拼装，而**计算图调度**则是路口信号灯系统，指挥着每一辆作业车辆平稳通行。
 
@@ -10,7 +10,7 @@ Vulkan 则更像多厂商兼容的标准化高速公路网。`get_device_archite
 
 WebGPU 则像浏览器里的轻量级磁悬浮，它把 `webgpu_param_arena` 当作共享充电宝站，通过槽位快速借还 uniform 参数缓冲区；`ggml_webgpu_shader_lib` 是自助图书馆，根据操作类型、数据类型和硬件能力借阅合适的 WGSL 教材；`embed_wgsl.py` 是电子书打包器，把多个 WGSL 文件和 `#include` 依赖合并成 C++ 字符串，并在文件过大时自动分卷；`pre_wgsl::Preprocessor` 则负责把 `#define`、`#if` 和 `#include` 翻译为最终可执行的 WGSL。当库中的管线缓存缺失时，系统会像图书馆的采编室一样，先预处理源码再创建管线，最后放入缓存架。
 
-## 41.1 学习目标
+## 40.1 学习目标
 
 - 理解 OpenCL、Vulkan、WebGPU 三大通用 GPU 后端的初始化流程与设备管理机制
 - 掌握 Adreno GPU 硬件识别（get_adreno_gpu_gen）与编译器版本检测的实现原理
@@ -25,7 +25,7 @@ WebGPU 则像浏览器里的轻量级磁悬浮，它把 `webgpu_param_arena` 当
 - 对比三大后端在算子支持矩阵（supports_op）上的约束差异与回退策略
 - 掌握 Vulkan 后端中 push constants 的模板化初始化与快速除法（fastdiv）预计算机制
 
-## 41.2 源码地图
+## 40.2 源码地图
 
 ```text
 ggml/include/ggml-opencl.h
@@ -179,13 +179,13 @@ ggml/src/ggml-webgpu/wgsl-shaders/embed_wgsl.py
 └── write_shader()
 ```
 
-## 41.3 OpenCL 公共 API —— 通用 GPU 的“收费站入口”
+## 40.3 OpenCL 公共 API —— 通用 GPU 的“收费站入口”
 
 OpenCL 后端首先通过一个很小的公共头文件接入 GGML。这个接口并不暴露设备上下文、内核对象等实现细节，而是只提供初始化、类型识别、缓冲区类型和注册入口。
 
 这种设计让上层只需要依赖 `ggml_backend_t` 和 `ggml_backend_buffer_type_t`，无需知道底层究竟使用了 `cl_context` 还是 `cl_command_queue`。
 
-### 41.3.1 公共函数声明：后端的最小插座
+### 40.3.1 公共函数声明：后端的最小插座
 
 源码路径：`ggml/include/ggml-opencl.h`  
 核心类/接口名：`ggml_backend_t`、`ggml_backend_buffer_type_t`、`ggml_backend_reg_t`  
@@ -226,7 +226,7 @@ flowchart LR
     F --> K["返回主机端缓冲区类型"]
 ```
 
-### 41.3.2 `ggml_backend_opencl_init()`：组装后端对象
+### 40.3.2 `ggml_backend_opencl_init()`：组装后端对象
 
 源码路径：`ggml/src/ggml-opencl/ggml-opencl.cpp`（第4126-4134行）  
 核心类/接口名：`ggml_backend_opencl_context`  
@@ -256,7 +256,7 @@ ggml_backend_t ggml_backend_opencl_init(void) {
 
 这段代码明确执行了“注册表取设备（第4127行）→初始化设备上下文（第4128行）→组装后端对象（第4129-4133行）”的三步流程。其中，`ggml_cl2_init()` 承担真正的 OpenCL 设备准备，包括平台枚举后的具体设备上下文创建、FP16 兼容性检查和命令队列创建；而 `ggml_backend` 只是把 GUID、接口表、设备和上下文绑在一起。如果把后端比作汽车，这个函数并不负责制造发动机，而是把发动机、车架和方向盘安装到同一辆车上，交给上层驾驶。
 
-### 41.3.3 `ggml_backend_opencl_reg()`：线程安全的单例注册
+### 40.3.3 `ggml_backend_opencl_reg()`：线程安全的单例注册
 
 源码路径：`ggml/src/ggml-opencl/ggml-opencl.cpp`（第6046-6062行）  
 核心类/接口名：`ggml_backend_reg`  
@@ -304,11 +304,11 @@ ggml_backend_reg_t ggml_backend_opencl_reg(void) {
 
 这段代码背后隐藏着更深层次的设计意图：通过把“注册”和“初始化”两个阶段分离，GGML 允许上层在编译阶段就完成设备选择、多层后端并存和运行时动态加载。注册表就像酒店前台的登记簿，设备初始化则是入住后的房间整理，二者互不干扰。
 
-## 41.4 OpenCL 设备探测与初始化 —— 硬件侦察兵
+## 40.4 OpenCL 设备探测与初始化 —— 硬件侦察兵
 
 OpenCL 的设备信息不是一个统一的高级对象，而是由平台版本、设备版本、驱动字符串、扩展列表和硬件属性共同组成。因此 OpenCL 后端需要先把这些零散信息整理成 GGML 可以使用的设备能力。
 
-### 41.4.1 `parse_cl_version()`：从驱动字符串提取版本
+### 40.4.1 `parse_cl_version()`：从驱动字符串提取版本
 
 源码路径：`ggml/src/ggml-opencl/ggml-opencl.cpp`（第154-174行）  
 核心类/接口名：`ggml_cl_version`  
@@ -368,7 +368,7 @@ static ggml_cl_version parse_cl_version(std::string_view str) {
 
 这里没有使用 `sscanf()` 或字符串流，而是使用 `std::from_chars()`。这种实现避免了本地化环境影响，也不会产生临时流对象，适合设备初始化这类底层路径。解析结果会被后续逻辑用于判断 OpenCL C 版本是否足够，决定是否启用 FP16、特定内核或某些编译选项。例如，在 `ggml_cl2_init()` 中，如果 `parse_cl_version()` 返回的版本低于 1.2，则不会尝试启用某些依赖 OpenCL 1.2 特性的内核路径。
 
-### 41.4.2 `get_adreno_gpu_gen()`：通过名称识别 GPU 代际
+### 40.4.2 `get_adreno_gpu_gen()`：通过名称识别 GPU 代际
 
 源码路径：`ggml/src/ggml-opencl/ggml-opencl.cpp`（第229-243行）  
 核心类/接口名：`ADRENO_GPU_GEN`  
@@ -413,7 +413,7 @@ flowchart TD
     F -- 否 --> H["ADRENO_GPU_GEN::ADRENO_UNKNOWN"]
 ```
 
-### 41.4.3 `ggml_cl_compiler_version`：版本比较就是能力开关
+### 40.4.3 `ggml_cl_compiler_version`：版本比较就是能力开关
 
 源码路径：`ggml/src/ggml-opencl/ggml-opencl.cpp`（第132-140行）  
 核心类/接口名：`ggml_cl_compiler_version`  
@@ -442,7 +442,7 @@ bool newer_than_or_same(ADRENO_CL_COMPILER_TYPE t, int x, int y, int z) const {
 
 版本号被映射为 `major * 10000 + minor * 100 + patch`，因此 `38.11.0` 会变成 `381100`。这是一种简单的字典序比较技巧。它的价值体现在内核加载阶段：某些 Adreno 编译器版本无法编译特定内核（如 `mul_mv_q4_0_f32_1d_8x_flat`），后端会依据版本跳过这些内核，避免初始化整体失败。
 
-### 41.4.4 `ggml_cl2_init()`：完成设备上下文初始化
+### 40.4.4 `ggml_cl2_init()`：完成设备上下文初始化
 
 源码路径：`ggml/src/ggml-opencl/ggml-opencl.cpp`（第2780-3000行）  
 核心类/接口名：`ggml_backend_opencl_context`  
@@ -475,11 +475,11 @@ static ggml_backend_opencl_context * ggml_cl2_init(ggml_backend_dev_t dev) {
 }
 ```
 
-## 41.5 OpenCL 内核加载与编译 —— 着色器的“装配车间”
+## 40.5 OpenCL 内核加载与编译 —— 着色器的“装配车间”
 
 OpenCL 和 Vulkan 的一个重要区别是：OpenCL 通常在运行时从源码编译内核。于是后端必须同时处理源码来源、编译选项、程序对象和 kernel 对象。
 
-### 41.5.1 `read_file()`：外置内核源码入口
+### 40.5.1 `read_file()`：外置内核源码入口
 
 源码路径：`ggml/src/ggml-opencl/ggml-opencl.cpp`（第665-676行）  
 核心类/接口名：`std::string`  
@@ -518,7 +518,7 @@ inline std::string read_file(const std::string &path) {
 
 这个函数只负责外置源码模式。它不负责编译，也不负责错误处理，因此调用方必须检查返回的源码是否为空，或者通过后续 OpenCL API 发现错误。与嵌入模式相比，外置源码适合开发调试：修改 `.cl` 文件后不必重新生成 C++ 文件。但它依赖运行目录和文件部署，发布时更容易出现“找不到内核文件”的问题。
 
-### 41.5.2 `build_program_from_source()`：源码到程序对象
+### 40.5.2 `build_program_from_source()`：源码到程序对象
 
 源码路径：`ggml/src/ggml-opencl/ggml-opencl.cpp`（第678-701行）  
 核心类/接口名：`cl_program`  
@@ -585,7 +585,7 @@ static cl_program build_program_from_source(
 
 这段代码把 OpenCL 编译过程封装成一个函数：`clCreateProgramWithSource()` 负责创建程序，`clBuildProgram()` 负责编译，失败时通过编译日志帮助定位驱动或语法问题。这里采用“失败即终止”的策略，适用于模型运行时必需的核心内核。如果某个可选内核也采用相同策略，可能会降低兼容性，因此 `load_cl_kernels()` 对部分可选算子会单独做容错处理。
 
-### 41.5.3 `load_cl_kernels()`：批量编译与编译选项
+### 40.5.3 `load_cl_kernels()`：批量编译与编译选项
 
 源码路径：`ggml/src/ggml-opencl/ggml-opencl.cpp`（第703-1200行）  
 核心类/接口名：`ggml_backend_opencl_context`  
@@ -626,7 +626,7 @@ static void load_cl_kernels(
 
 编译选项体现了后端的性能取向：允许快速数学、融合乘加和有限浮点假设，从而给驱动更多优化空间。不同内核会进一步使用独立的源码文件和专用变体。例如矩阵乘法会根据 F16、F32、Q4_0、Q4_K、Q6_K 等类型创建不同 kernel；Flash Attention 则会根据 head dimension 和输入类型建立多个变体。
 
-### 41.5.4 `__main__` 全局初始化：数百个 `clCreateKernel` 调用的批量创建
+### 40.5.4 `__main__` 全局初始化：数百个 `clCreateKernel` 调用的批量创建
 
 源码路径：`ggml/src/ggml-opencl/ggml-opencl.cpp`（第924-1679行）  
 核心类/接口名：`GGML_OPENCL_EMBED_KERNELS`  
@@ -693,11 +693,11 @@ flowchart LR
     end
 ```
 
-## 41.6 OpenCL 量化张量管理 —— 压缩数据的“仓储系统”
+## 40.6 OpenCL 量化张量管理 —— 压缩数据的“仓储系统”
 
 量化张量不是一块普通的连续字节。以 Q4_K 为例，设备端可能需要分别访问量化值、块缩放、超块缩放和最小值。将这些对象放在不同的 `cl_mem` 中，可以让内核按照自己的访问模式读取数据。
 
-### 41.6.1 `ggml_tensor_extra_cl_q4_K`：量化布局就是数据结构
+### 40.6.1 `ggml_tensor_extra_cl_q4_K`：量化布局就是数据结构
 
 源码路径：`ggml/src/ggml-opencl/ggml-opencl.cpp`（第3619-3638行）  
 核心类/接口名：`ggml_tensor_extra_cl_q4_K`  
@@ -743,7 +743,7 @@ flowchart LR
     end
 ```
 
-### 41.6.2 Q4_1、MXFP4、Q8_0 和 Q6_K 的额外结构体
+### 40.6.2 Q4_1、MXFP4、Q8_0 和 Q6_K 的额外结构体
 
 源码路径：`ggml/src/ggml-opencl/ggml-opencl.cpp`（第3448-3474行、第3521-3546行、第3579-3598行、第3668-3692行）  
 核心类/接口名：`ggml_tensor_extra_cl_q4_1`、`ggml_tensor_extra_cl_mxfp4`、`ggml_tensor_extra_cl_q8_0`、`ggml_tensor_extra_cl_q6_K`  
@@ -868,7 +868,7 @@ void reset() {
 
 上述四种量化格式的 `reset()` 方法与 Q4_K 遵循相同的模式：每个 `cl_mem` 先判空再释放，随后将指针置空并重置大小字段。这些独立结构体虽然牺牲了一定的代码复用，却让每个量化格式的字段布局一目了然，也避免了通用结构体中大量无意义字段带来的检查开销。
 
-### 41.6.3 `ggml_opencl_alloc_temp_tensor_extra_q4_K()`：按类型复用对象
+### 40.6.3 `ggml_opencl_alloc_temp_tensor_extra_q4_K()`：按类型复用对象
 
 源码路径：`ggml/src/ggml-opencl/ggml-opencl.cpp`（第4360-4375行）  
 核心类/接口名：`ggml_backend_opencl_buffer_context`  
@@ -903,7 +903,7 @@ ggml_opencl_alloc_temp_tensor_extra_q4_K() {
 
 这里使用的是对象池模式。对象本身可以复用，但 `reset()` 必须先释放旧的 `cl_mem`，否则复用对象会覆盖旧句柄，造成设备内存泄漏。与每次 `new/delete` 相比，对象池减少了临时张量处理过程中的主机分配开销，也让同一计算图中的多个临时对象能够集中回收。
 
-### 41.6.4 `reset()`：批次结束后的统一回收
+### 40.6.4 `reset()`：批次结束后的统一回收
 
 源码路径：`ggml/src/ggml-opencl/ggml-opencl.cpp`（第4392-4430行）  
 核心类/接口名：`ggml_backend_opencl_buffer_context`  
@@ -958,11 +958,11 @@ void reset() {
 
 `reset()` 不负责删除对象，而是把正在使用的对象重新放回对应类型的空闲池。资源释放和对象生命周期因此被拆开：对象池负责复用对象，具体类型的 `reset()` 负责清理 OpenCL 句柄。这是一种适合计算图批处理的生命周期设计：图执行期间对象处于 `in_use`，图结束后整体回收到空闲池，下一轮计算可以直接复用。
 
-## 41.7 OpenCL 算子执行引擎 —— 计算图的“执行器”
+## 40.7 OpenCL 算子执行引擎 —— 计算图的“执行器”
 
 OpenCL 后端的图执行过程可以概括为三步：先跳过不需要真正计算的节点，再检查是否存在融合模式，最后将普通节点交给统一分发器。
 
-### 41.7.1 `ggml_opencl_can_fuse()`：融合前先验证契约
+### 40.7.1 `ggml_opencl_can_fuse()`：融合前先验证契约
 
 源码路径：`ggml/src/ggml-opencl/ggml-opencl.cpp`（第3781-3840行）  
 核心类/接口名：`ggml_cgraph`  
@@ -1087,7 +1087,7 @@ static bool ggml_opencl_can_fuse(
 
 算子融合不是简单地把几个枚举值拼起来。融合内核通常对输入类型、形状和步长有更强假设，因此 `can_fuse()` 必须把这些条件逐项验证。这里的“类型即契约”非常明显：F32、相同形状、连续行布局共同保证融合内核能够用一次读取完成归一化、缩放和写回。
 
-### 41.7.2 `ggml_backend_opencl_graph_compute()`：图执行主循环
+### 40.7.2 `ggml_backend_opencl_graph_compute()`：图执行主循环
 
 源码路径：`ggml/src/ggml-opencl/ggml-opencl.cpp`（第3847-3896行）  
 核心类/接口名：`ggml_backend_opencl_context`  
@@ -1197,7 +1197,7 @@ flowchart TD
     J --> A
 ```
 
-### 41.7.3 `ggml_cl_compute_forward()`：操作到函数指针
+### 40.7.3 `ggml_cl_compute_forward()`：操作到函数指针
 
 源码路径：`ggml/src/ggml-opencl/ggml-opencl.cpp`（第13712-14117行）  
 核心类/接口名：`ggml_cl_func_t`  
@@ -1667,11 +1667,11 @@ bool ggml_cl_compute_forward(
 
 `ggml_cl_compute_forward()` 的“先检查 `any_on_device` 再分派”模式非常关键。如果某个节点没有任何输入在设备上（例如纯 CPU 张量），后端直接返回 `false`，上层图调度器就会知道该节点不应由 OpenCL 执行。对于矩阵乘法，还会额外检查 `ggml_cl_can_mul_mat()`，该函数要求输入输出维度和类型都满足 GPU 内核的要求，因此避免了在设备端执行不兼容的矩阵乘法。
 
-## 41.8 OpenCL 矩阵运算核心 —— Adreno GPU 的“加速引擎”
+## 40.8 OpenCL 矩阵运算核心 —— Adreno GPU 的“加速引擎”
 
 矩阵乘法是大模型推理中最重要的算子之一。OpenCL 后端并不只实现一条矩阵乘路径，而是根据输入类型、输出列数、矩阵布局和 GPU 代际选择 GEMV、GEMM、转置和图像缓冲区组合。
 
-### 41.8.1 `use_adreno_kernels()`：尺寸决定是否上高速车道
+### 40.8.1 `use_adreno_kernels()`：尺寸决定是否上高速车道
 
 源码路径：`ggml/src/ggml-opencl/ggml-opencl.cpp`（第4492-4501行）  
 核心类/接口名：`ggml_backend_opencl_context`  
@@ -1705,7 +1705,7 @@ inline bool use_adreno_kernels(
 
 这段逻辑说明“专用内核并不总是更快”。对于小矩阵，启动图像对象、转置和专用 kernel 的成本可能超过收益，因此只有达到尺寸阈值时才切换。编译器版本会改变阈值，是因为不同 Adreno 编译器对同一内核的优化能力不同。后端没有假设所有驱动行为一致，而是将版本检测结果纳入运行时策略。与之配套的 `enable_adreno_trans_weight()`（第4509-4516行）则进一步判断“是否对权重做转置优化”——当元素总数低于 2^27（约 1.34 亿）且满足 Adreno 内核条件时才启用转置，因为超大权重的转置开销可能抵消计算收益。
 
-### 41.8.2 `ggml_cl_mul_mat_q4_k_f32_adreno()`：GEMV 与 GEMM 分治
+### 40.8.2 `ggml_cl_mul_mat_q4_k_f32_adreno()`：GEMV 与 GEMM 分治
 
 源码路径：`ggml/src/ggml-opencl/ggml-opencl.cpp`（第10001-10300行）  
 核心类/接口名：`ggml_tensor_extra_cl_q4_K`  
@@ -1854,7 +1854,7 @@ flowchart TD
     H --> I["工作组: {CEIL_DIV(ne1,8), CEIL_DIV(ne01,4), 1}"]
 ```
 
-### 41.8.3 `ggml_cl_mul_mat()`：统一路由器
+### 40.8.3 `ggml_cl_mul_mat()`：统一路由器
 
 源码路径：`ggml/src/ggml-opencl/ggml-opencl.cpp`（第10591-11200行）  
 核心类/接口名：`ggml_backend_opencl_context`  
@@ -1968,11 +1968,11 @@ static void ggml_cl_mul_mat(
 
 `ggml_cl_mul_mat()` 的职责不是完成全部乘法，而是根据硬件和数据形状选择“应该由谁完成”。这是后端中典型的策略路由器。它先尝试更专用、更高效的路径；只有专用路径条件不满足时，才退回通用内核。通用路径中，FP16 权重和 FP32 激活通常会选择分块平铺 GEMM（`ggml_cl_mul_mat_f16_f32_tiled()`），该函数通过 `OPWM=64`、`OPWN=64`、`TPWM=16`、`TPWN=8` 等分块参数，把输出矩阵划分成 64×64 的宏块，每个宏块由 16×8 的工作组负责，从而兼顾全局并行度和局部内存复用。这样既能利用 Adreno 的特殊能力，又不会因为某个设备或矩阵布局不适配而完全无法运行。
 
-## 41.9 Vulkan 公共 API —— 多厂商高速公路的“收费口”
+## 40.9 Vulkan 公共 API —— 多厂商高速公路的“收费口”
 
 Vulkan 公共接口比 OpenCL 更丰富，因为它需要支持多设备枚举、设备描述、显存查询和主机缓冲区类型。如果把三大 GPU 后端的整体比喻为高速公路系统，那么 41.3 节的 OpenCL 入口是“方程式赛道的调度台”，本节的 Vulkan 入口则是“多厂商高速公路网的通用收费口”——上游只拿一个 `size_t dev_num` 就能接入任意 Vulkan 设备。
 
-### 41.9.1 设备 API：从编号到实例
+### 40.9.1 设备 API：从编号到实例
 
 源码路径：`ggml/include/ggml-vulkan.h`  
 核心类/接口名：`ggml_backend_t`、`ggml_backend_reg_t`  
@@ -2011,7 +2011,7 @@ GGML_BACKEND_API ggml_backend_reg_t ggml_backend_vk_reg(void);
 
 与 OpenCL 的单一初始化入口相比，Vulkan 把设备编号暴露到公共 API。这是因为 Vulkan 天生支持多个物理设备，调用者可能希望指定独立 GPU、集成 GPU 或不同显卡。`ggml_backend_vk_host_buffer_type()` 的注释也说明其用途：提供与 CPU 后端配合使用的 pinned 主机内存，以便在 CPU 与 GPU 之间进行更快速的拷贝。
 
-### 41.9.2 `get_device_architecture()`：从扩展推断硬件 DNA
+### 40.9.2 `get_device_architecture()`：从扩展推断硬件 DNA
 
 源码路径：`ggml/src/ggml-vulkan/ggml-vulkan.cpp`（第201-292行）  
 核心类/接口名：`vk_device_architecture`  
@@ -2129,11 +2129,11 @@ flowchart TD
     R -- 否 --> Z
 ```
 
-## 41.10 Vulkan 管线创建与调度 —— GPU 计算的“指挥中心”
+## 40.10 Vulkan 管线创建与调度 —— GPU 计算的“指挥中心”
 
 Vulkan 不在运行时直接编译 GLSL，而是加载已经生成的 SPIR-V。运行时的主要任务变成：创建 shader module、创建 pipeline layout、绑定描述符和 push constants，然后分派工作组。
 
-### 41.10.1 `vk_pipeline_struct`：管线就是一份执行合同
+### 40.10.1 `vk_pipeline_struct`：管线就是一份执行合同
 
 源码路径：`ggml/src/ggml-vulkan/ggml-vulkan.cpp`（第120-170行）  
 核心类/接口名：`vk_pipeline_struct`、`vk_matmul_pipeline_struct`  
@@ -2182,7 +2182,7 @@ vk_matmul_pipeline2() {
 
 这些类型定义像建筑图纸：它们没有立刻执行计算，却规定了计算管线需要哪些资源、工作组如何计算、参数占多少字节以及是否支持不同精度。`vk_device_struct` 则是更大的容器，它封装了物理设备属性、逻辑设备句柄、计算/传输队列、管线缓存以及 `vk_memory_logger` 等核心对象，是整个 Vulkan 后端的“数据中心”。
 
-### 41.10.2 `ggml_vk_create_pipeline_func()`：从 SPIR-V 组装管线
+### 40.10.2 `ggml_vk_create_pipeline_func()`：从 SPIR-V 组装管线
 
 源码路径：`ggml/src/ggml-vulkan/ggml-vulkan.cpp`（第2142-2242行）  
 核心类/接口名：`vk_pipeline_struct`  
@@ -2338,7 +2338,7 @@ static void ggml_vk_create_pipeline_func(
 
 这个函数展示了 Vulkan 管线的多层配置：SPIR-V 是代码，descriptor set layout 是资源接口，push constants 是小参数通道，specialization constants 是编译时变体参数，subgroup 配置则决定并行执行形态。与 OpenCL 每次从源码编译 program 不同，Vulkan 把大量选择前移到着色器生成和管线创建阶段，运行时只需要选择已准备好的管线。
 
-### 41.10.3 `ggml_vk_dispatch_pipeline()`：绑定、推参、发车
+### 40.10.3 `ggml_vk_dispatch_pipeline()`：绑定、推参、发车
 
 源码路径：`ggml/src/ggml-vulkan/ggml-vulkan.cpp`（第6614-6652行）  
 核心类/接口名：`vk_pipeline_struct`  
@@ -2431,7 +2431,7 @@ static void ggml_vk_dispatch_pipeline(
 
 它的执行顺序非常固定：计算工作组数量、申请描述符集、更新资源描述、写入 push constants、绑定 pipeline、绑定 descriptor set，最后调用 `dispatch()`。模板函数 `push_constant_size()` 和 `push_constant_data()` 让结构体、`std::vector`、`std::array` 都能够以统一方式传给 Vulkan，减少了不同参数容器之间的重复代码。
 
-### 41.10.4 `init_pushconst_fastdiv()`：快速除法的预计算机制
+### 40.10.4 `init_pushconst_fastdiv()`：快速除法的预计算机制
 
 源码路径：`ggml/src/ggml-vulkan/ggml-vulkan.cpp`（第92-102行、第984-1010行）  
 核心类/接口名：`fastdiv_vals`  
@@ -2485,11 +2485,11 @@ template <> void init_pushconst_fastdiv(vk_op_unary_push_constants &p) {
 
 Vulkan 着色器中使用整数除法（如计算行列索引）的开销较高。通过将除法转换为“乘以魔数再移位”，可以显著降低计算成本。模板特化让每种 push constants 结构都拥有专属的快速除法字段初始化逻辑，其他结构的特化（如 `vk_op_sum_rows_push_constants`）也沿用相同模式。这种预计算机制的价值在于，着色器运行时只需要两次乘法、一次移位即可完成整数除法，无需调用昂贵的除法指令。
 
-## 41.11 Vulkan 内存与数据传输 —— 显存的“仓库管理员”
+## 40.11 Vulkan 内存与数据传输 —— 显存的“仓库管理员”
 
 Vulkan 的内存管理需要在设备本地内存、主机可见内存、统一内存架构和 staging buffer 之间做选择。
 
-### 41.11.1 `ggml_vk_create_buffer()`：多种内存属性的回退链
+### 40.11.1 `ggml_vk_create_buffer()`：多种内存属性的回退链
 
 源码路径：`ggml/src/ggml-vulkan/ggml-vulkan.cpp`（第2486-2592行）  
 核心类/接口名：`vk_buffer_struct`  
@@ -2583,7 +2583,7 @@ static vk_buffer ggml_vk_create_buffer(
 
 `req_flags_list` 是一个有序的首选列表。它允许调用者表达：“优先使用设备本地内存，如果失败可以退回主机可见内存”。这种回退机制特别适合跨设备运行。独立 GPU、集成 GPU 和 UMA 设备的内存拓扑不同，硬编码一种内存属性会导致大量设备无法运行。`ggml_vk_create_buffer_device()`（第2603-2628行）则在此基础上进一步根据设备特性（如 `prefer_host_memory`、`uma`、`disable_host_visible_vidmem`）构造具体的回退链。
 
-### 41.11.2 `ggml_vk_tensor_subbuffer()`：视图和对齐的统一入口
+### 40.11.2 `ggml_vk_tensor_subbuffer()`：视图和对齐的统一入口
 
 源码路径：`ggml/src/ggml-vulkan/ggml-vulkan.cpp`（第6542-6562行）  
 核心类/接口名：`vk_subbuffer`  
@@ -2648,7 +2648,7 @@ static vk_subbuffer ggml_vk_tensor_subbuffer(
 
 Vulkan 的 storage buffer offset 有严格对齐要求，因此不能简单地把 `tensor->data` 转成字节地址就直接绑定。该函数把错位处理集中到一个位置：向下调整绑定偏移，同时扩大绑定范围，让 shader 再通过 push constants 中的偏移量找到真正数据。这使得视图张量和非对齐张量仍然可以被统一调度。此外，该函数还会优先利用 UMA 设备的主机内存映射，从而在集成 GPU 上跳过显存拷贝，直接在主机内存中读写。
 
-### 41.11.3 `ggml_vk_host_malloc()`：让 CPU 内存成为 GPU 通道
+### 40.11.3 `ggml_vk_host_malloc()`：让 CPU 内存成为 GPU 通道
 
 源码路径：`ggml/src/ggml-vulkan/ggml-vulkan.cpp`（第6472-6496行）  
 核心类/接口名：`vk_device_struct`  
@@ -2705,11 +2705,11 @@ static void *ggml_vk_host_malloc(
 
 pinned memory 的价值在于：CPU 可以直接写入，GPU 也可以通过 Vulkan 传输路径读取。后端通过 `pinned_memory` 列表反向追踪任意主机指针属于哪个 Vulkan buffer。这使得异步写入可以在某些条件下跳过 staging buffer，直接记录设备内存复制命令。
 
-## 41.12 Vulkan Flash Attention —— 共享内存与 split-k 的“精密编队”
+## 40.12 Vulkan Flash Attention —— 共享内存与 split-k 的“精密编队”
 
 Flash Attention 需要同时考虑 Q、K、V 的 head dimension、KV 长度、GQA 比例、mask、logit softcap 和设备共享内存上限。
 
-### 41.12.1 `get_fa_tuning_params()`：选择标量还是矩阵核心
+### 40.12.1 `get_fa_tuning_params()`：选择标量还是矩阵核心
 
 源码路径：`ggml/src/ggml-vulkan/ggml-vulkan.cpp`（第3021-3060行）  
 核心类/接口名：`vk_fa_tuning_params`  
@@ -2798,7 +2798,7 @@ static vk_fa_tuning_params get_fa_tuning_params(
 
 这里体现了 Vulkan 后端的分层回退：先尝试最新矩阵核心能力，再验证形状和共享内存，最后必要时回退到标量实现。这比简单地“检测到扩展就使用”更安全。扩展存在不代表所有矩阵形状、累加类型和共享内存配置都可用。调优参数中，`subgroup_size`、`block_rows`、`block_cols` 等字段共同决定了 shader 的并行形态。
 
-### 41.12.2 `ggml_vk_flash_attn_coopmat_shmem_support()`：共享内存是硬边界
+### 40.12.2 `ggml_vk_flash_attn_coopmat_shmem_support()`：共享内存是硬边界
 
 源码路径：`ggml/src/ggml-vulkan/ggml-vulkan.cpp`（第1399-1425行）  
 核心类/接口名：`vk_device`  
@@ -2886,7 +2886,7 @@ static bool ggml_vk_flash_attn_coopmat_shmem_support(
 
 共享内存计算把 Q、K、V、mask、中间 softmax 值和输出暂存分别列出。任何一个维度变大，都可能让总量超过设备限制。因此 Flash Attention 的“高性能路径”不是无条件存在的，它必须通过共享内存预算检查。超过限制后，后端会降低块大小或切换到另一条实现。
 
-### 41.12.3 `ggml_vk_flash_attn()`：GQA、mask 与 split-k
+### 40.12.3 `ggml_vk_flash_attn()`：GQA、mask 与 split-k
 
 源码路径：`ggml/src/ggml-vulkan/ggml-vulkan.cpp`（第1427-1697行）  
 核心类/接口名：`vk_flash_attn_push_constants`  
@@ -3116,11 +3116,11 @@ flowchart TD
     G -- 否 --> J["单阶段 kernel"]
 ```
 
-## 41.13 WebGPU 着色器库 —— 可自适应检索的“自助图书馆”
+## 40.13 WebGPU 着色器库 —— 可自适应检索的“自助图书馆”
 
 WebGPU 的特殊之处在于，它需要在运行时根据当前设备限制和操作形态生成 WGSL 管线。着色器库将这一过程封装成“构造 key、查缓存、生成宏、预处理、创建管线、保存决策”的统一流程。
 
-### 41.13.1 `ggml_webgpu_shader_lib`：缓存的是完整执行方案
+### 40.13.1 `ggml_webgpu_shader_lib`：缓存的是完整执行方案
 
 源码路径：`ggml/src/ggml-webgpu/ggml-webgpu-shader-lib.hpp`（第886-899行）  
 核心类/接口名：`ggml_webgpu_shader_lib`  
@@ -3170,7 +3170,7 @@ webgpu_pipeline get_sum_rows_pipeline(
 
 缓存的并不只是一个 shader module，而是“针对某类操作和某组硬件参数可直接执行的完整管线”。因此 key 必须包含所有会影响着色器代码或绑定布局的因素。对于 `get_sum_rows_pipeline` 这类只有一个固定 key 的情况，缓存逻辑相对简单；但对于 Flash Attention 等复杂操作，key 会包含数据格式、head dimension、mask 配置等多个维度。
 
-### 41.13.2 `get_row_norm_pipeline()`：类型和原地模式进入 key
+### 40.13.2 `get_row_norm_pipeline()`：类型和原地模式进入 key
 
 源码路径：`ggml/src/ggml-webgpu/ggml-webgpu-shader-lib.hpp`（第900-931行）  
 核心类/接口名：`ggml_webgpu_row_norm_pipeline_key`  
@@ -3249,9 +3249,9 @@ webgpu_pipeline get_row_norm_pipeline(
 
 如果 `inplace` 不进入 key，那么原地和非原地操作可能错误地共享同一个管线。WebGPU 的绑定数量和读写关系可能不同，因此 key 必须覆盖这些语义差异。这一点在 WebGPU 后端中尤为重要，因为 WGSL 的存储缓冲区读写关系在管线创建时就被固化。对 `inplace` 模式来说，shader 可以直接在输入端上修改数据，而无需额外绑定独立的输出缓冲区，这不仅是管线绑定的差异，也是实际显存占用的差异。
 
-## 41.14 WebGPU Flash Attention —— 多维 key 与工作组内存预算
+## 40.14 WebGPU Flash Attention —— 多维 key 与工作组内存预算
 
-### 41.14.1 `get_flash_attn_pipeline()`：把所有变体编码进 key
+### 40.14.1 `get_flash_attn_pipeline()`：把所有变体编码进 key
 
 源码路径：`ggml/src/ggml-webgpu/ggml-webgpu-shader-lib.hpp`（第2035-2188行）  
 核心类/接口名：`ggml_webgpu_flash_attn_pipeline_key`  
@@ -3473,7 +3473,7 @@ webgpu_pipeline get_flash_attn_pipeline(
 
 Flash Attention 的 key 覆盖了 KV 类型、head dimension、mask、sinks、softcap、直接访问模式、向量路径等多个维度。只要其中一个因素改变，最终 WGSL 就可能不同。同时，`decisions` 保存了 shader 生成阶段计算出的 tile 和工作组大小，执行阶段无需再次推断，避免“生成逻辑”和“分派逻辑”出现不一致。在 tile 选择逻辑中，`kv_tile` 的确定同时受共享内存预算（`ggml_webgpu_flash_attn_max_kv_tile`）和偏好值（`GGML_WEBGPU_FLASH_ATTN_PREFERRED_KV_SG_TILES`）约束，而向量路径则把 Q tile 降至 1，以换取更小的共享内存占用。此外，`wg_size` 在向量路径下被限制为不超过 32，这样可以让每个工作组更轻量、更快地完成对 KV 的扫描。
 
-### 41.14.2 `ggml_webgpu_flash_attn_wg_mem_bytes()`：估算共享工作组内存
+### 40.14.2 `ggml_webgpu_flash_attn_wg_mem_bytes()`：估算共享工作组内存
 
 源码路径：`ggml/src/ggml-webgpu/ggml-webgpu-shader-lib.hpp`（第719-738行）  
 核心类/接口名：`ggml_webgpu_flash_attn_shader_lib_context`  
@@ -3529,7 +3529,7 @@ inline size_t ggml_webgpu_flash_attn_wg_mem_bytes(
 
 这个函数先按元素数量统计，再乘以 FP16/FP32 字节数。`kv_direct` 可以省去 K/V 的一大块共享内存，但要求底层访问满足更严格的布局和对齐条件。第一个 `f32_elems` 对应每行的最大值（row_max），第二个对应每行的指数和（exp_sum），二者是 Flash Attention 在线 softmax 算法所必需的统计量。
 
-### 41.14.3 `ggml_webgpu_flash_attn_max_kv_tile()`：由预算反推 tile
+### 40.14.3 `ggml_webgpu_flash_attn_max_kv_tile()`：由预算反推 tile
 
 源码路径：`ggml/src/ggml-webgpu/ggml-webgpu-shader-lib.hpp`（第2600-2630行）  
 核心类/接口名：`ggml_webgpu_flash_attn_shader_lib_context`  
@@ -3590,11 +3590,11 @@ static uint32_t ggml_webgpu_flash_attn_max_kv_tile(
 
 这是一种典型的“预算反推”策略：先扣除固定的 Q 和 softmax 开销，再根据每个 KV tile 的边际成本计算最大数量，最后对齐到硬件 tile。如果共享内存限制很小，计算出的 `max_kv_tile` 可能小于 `sg_mat_n`，此时会被对齐为 0；调用方需在 `get_flash_attn_pipeline()` 中通过 `std::max()` 保证最小值。
 
-## 41.15 WebGPU 参数与缓冲区管理 —— 数据通路的“交通管制”
+## 40.15 WebGPU 参数与缓冲区管理 —— 数据通路的“交通管制”
 
 WebGPU 的绑定偏移和 uniform buffer 有严格限制，因此后端需要同时管理参数槽位、张量偏移、错位量和重叠关系。
 
-### 41.15.1 `webgpu_param_arena`：槽位式 uniform 分配器
+### 40.15.1 `webgpu_param_arena`：槽位式 uniform 分配器
 
 源码路径：`ggml/src/ggml-webgpu/ggml-webgpu.cpp`（第170-196行）  
 核心类/接口名：`webgpu_param_arena`  
@@ -3655,7 +3655,7 @@ void reset() {
 
 参数竞技场避免了每个算子单独创建 uniform buffer。批次编码期间，每个内核拿到一个独立槽位；提交完成后只需要把游标归零即可复用整块 buffer。这是一种面向批处理的线性分配器，优点是简单、快速，缺点是槽位数量和槽位大小需要在初始化时预估。
 
-### 41.15.2 张量绑定：对齐偏移和绑定大小
+### 40.15.2 张量绑定：对齐偏移和绑定大小
 
 源码路径：`ggml/src/ggml-webgpu/ggml-webgpu.cpp`（第802-847行）  
 核心类/接口名：`ggml_tensor`  
@@ -3745,7 +3745,7 @@ static bool ggml_webgpu_tensor_overlap(
 
 这里把张量的“逻辑数据范围”和 WebGPU 的“绑定范围”分开处理。绑定从对齐后的偏移开始，实际数据通过错位参数定位。重叠检测则是为了避免二元操作覆盖仍在读取的数据。WebGPU shader library 会根据 `inplace`、`overlap` 和 `src_overlap` 选择不同的宏变体。
 
-### 41.15.3 `ggml_backend_webgpu_build_multi()`：一次编码多个内核
+### 40.15.3 `ggml_backend_webgpu_build_multi()`：一次编码多个内核
 
 源码路径：`ggml/src/ggml-webgpu/ggml-webgpu.cpp`（第628-701行）  
 核心类/接口名：`webgpu_encoded_op`  
@@ -3866,11 +3866,11 @@ static webgpu_encoded_op ggml_backend_webgpu_build_multi(
 
 `build_multi()` 把多个阶段的计算放入同一个 command encoder。例如 WebGPU 的 MoE 矩阵乘会先执行 gather，再执行主矩阵乘；Flash Attention 的分块路径也可能需要多个阶段。与每个阶段单独提交 command buffer 相比，一次批量编码可以减少 CPU 提交开销，也让参数竞技场和时间戳统计拥有统一边界。每个 pipeline 的参数都写入参数竞技场的独立槽位，在同一个 compute pass 中依次绑定和分派，从而避免了多次 encoder 创建和提交的额外开销。
 
-## 41.16 WGSL 预处理器 —— 着色器代码的“翻译官”
+## 40.16 WGSL 预处理器 —— 着色器代码的“翻译官”
 
 WGSL 本身没有 C 预处理器，因此 WebGPU 后端在 C++ 中实现了一个轻量级预处理器，支持宏、条件编译和 include。
 
-### 41.16.1 `ExprLexer::next()`：把条件表达式切成 token
+### 40.16.1 `ExprLexer::next()`：把条件表达式切成 token
 
 源码路径：`ggml/src/ggml-webgpu/pre_wgsl.hpp`（第140-172行）  
 核心类/接口名：`ExprLexer`  
@@ -3958,7 +3958,7 @@ Tok next() {
 
 词法分析器支持数字、标识符、括号以及 `==`、`&&`、`||`、`<<` 等运算符，为后续递归下降解析提供输入。它目前只处理十进制数字，不识别 `0x` 前缀、浮点数或负数，这是因为 `#if` 表达式在 WGSL 着色器的实际使用中几乎只用十进制整数和 `defined()` 检查，这种简化为实现换取了足够的覆盖度。如果遇到无法识别的字符，词法器会将其视为 `END` 并跳过，这意味着非法表达式不会立即报错，而是交给解析器在后续阶段发现逻辑问题。
 
-### 41.16.2 `ExprParser`：递归下降实现运算符优先级
+### 40.16.2 `ExprParser`：递归下降实现运算符优先级
 
 源码路径：`ggml/src/ggml-webgpu/pre_wgsl.hpp`（第275-450行）  
 核心类/接口名：`ExprParser`  
@@ -4169,7 +4169,7 @@ int evalMacroExpression(
 
 递归下降函数链按照运算符优先级分层：逻辑或调用逻辑与，逻辑与调用相等比较，再向下进入关系、位移、加法、乘法、一元和原子表达式。这使 `#if A || B && C` 能够按预期解释，而不是简单地从左到右计算。`parsePrimary()` 在遇到普通标识符时，如果宏值不为空，会递归调用 `evalMacroExpression()` 来解析宏值中的表达式，从而支持嵌套宏引用。同时，`evalMacroExpression()` 通过 `visiting` 集合检测递归宏，避免无限递归导致崩溃。
 
-### 41.16.3 `processString()`：逐行处理 WGSL
+### 40.16.3 `processString()`：逐行处理 WGSL
 
 源码路径：`ggml/src/ggml-webgpu/pre_wgsl.hpp`（第677-704行）  
 核心类/接口名：`Preprocessor`  
@@ -4234,7 +4234,7 @@ std::string processString(
 
 `processString()` 是整个预处理器的主循环。它不理解具体 WGSL 语义，只负责识别预处理行、维护条件栈、展开宏并输出普通代码。这种职责划分让 `#include` 展开、完整预处理和文件预处理都可以复用同一套逐行逻辑。在 IncludeOnly 模式下，所有非指令文本都被原样保留，便于 `embed_wgsl.py` 的递归 include 处理。该函数还会在 `All` 模式下检查条件栈是否为空，如果还有未闭合的 `#if` 会抛出异常，帮助开发者定位遗漏的 `#endif`。
 
-### 41.16.4 `handleDirective()`：宏、条件与 include 的统一入口
+### 40.16.4 `handleDirective()`：宏、条件与 include 的统一入口
 
 源码路径：`ggml/src/ggml-webgpu/pre_wgsl.hpp`（第709-824行）  
 核心类/接口名：`Preprocessor`  
@@ -4443,11 +4443,11 @@ bool handleDirective(
 
 `handleDirective()` 把预处理器的语言规则集中在一个入口中。值得注意的是，预定义宏不会被 shader 文件中的 `#define` 或 `#undef` 覆盖，这保证运行时根据硬件生成的配置具有更高优先级。`#elif` 分支通过 `Cond` 结构体中的 `parent_active` 和 `taken` 两个标志共同决定当前分支是否生效，从而正确处理多分支条件编译。具体来说，`parent_active` 表示父级条件是否激活，`taken` 表示之前是否已经有分支被命中；只有两者同时满足时，当前 `#elif` 分支才会生效，并在命中后立即标记 `taken`，避免后续分支继续生效。
 
-## 41.17 着色器嵌入工具 —— 源码的“打包器”
+## 40.17 着色器嵌入工具 —— 源码的“打包器”
 
 OpenCL 和 WebGPU 都需要把着色器源码打包进 C++，但两者的打包复杂度不同。
 
-### 41.17.1 `embed_kernel.py`：逐行包装 OpenCL
+### 40.17.1 `embed_kernel.py`：逐行包装 OpenCL
 
 源码路径：`ggml/src/ggml-opencl/kernels/embed_kernel.py`（第8-20行）  
 核心类/接口名：Python `main()`  
@@ -4486,7 +4486,7 @@ def main():
 
 OpenCL 工具的职责很简单：把每一行变成 `R"(...)"` 形式，生成的头文件可以直接被 `#include` 到 `std::string` 初始化中。它不需要处理 include 展开、分块或定界符冲突，因为 OpenCL 内核源码通常较短，与 C++ 字符串定界符发生冲突的概率极低。这种“一行一字符串”的做法虽然会产生大量字符串行，却保持了原始行号与 C++ 头文件行号的对应关系，让编译器报错时能相对容易地追溯到源码位置。
 
-### 41.17.2 `embed_wgsl.py`：递归 include、分块和安全定界符
+### 40.17.2 `embed_wgsl.py`：递归 include、分块和安全定界符
 
 源码路径：`ggml/src/ggml-webgpu/wgsl-shaders/embed_wgsl.py`（第4-67行）  
 核心类/接口名：Python 模块函数  
@@ -4617,7 +4617,7 @@ def write_shader(
 
 与 `embed_kernel.py` 相比，`embed_wgsl.py` 为 WGSL 源码的 C++ 嵌入提供了三种“装订方式”：递归展开 `#include`，避免运行时依赖多个 WGSL 文件；超过长度限制时分块（`chunk_shader()` 使用 60000 字节限制），规避编译器或字符串常量大小限制；自动选择原始字符串定界符（`raw_delim()`），避免 shader 内容恰好包含结束标记导致 C++ 语法损坏。递归展开的深度受 WGSL 文件依赖图的深度限制，实际工程中很少超过三层；脚本没有显式防护无限递归，这是因为 WGSL 依赖图由构建系统静态维护，不会出现用户动态引入循环依赖的情况。C++ 标准对字符串字面量的最小长度要求为 65535 字节，取 60000 作为安全阈值可以确保所有目标平台都能容纳。
 
-## 41.18 三大后端算子支持矩阵 —— 能力边界的“说明书”
+## 40.18 三大后端算子支持矩阵 —— 能力边界的“说明书”
 
 后端的 `supports_op()` 不是装饰性接口，它决定了 GGML 是否会把某个节点放到该设备上执行。三种后端的限制体现了各自硬件和实现成熟度。
 
@@ -4629,7 +4629,7 @@ def write_shader(
 | Vulkan | 受设备架构、子组、协作矩阵和 buffer 范围影响 | 检查 head dimension、mask、子组和共享内存 | 标量路径或其他管线 |
 | WebGPU | 通过量化白名单和 WGSL 变体选择 | 依赖 subgroup matrix 和工作组内存预算 | 传统矩阵乘或不支持 |
 
-### 41.18.1 OpenCL：量化类型和连续布局优先
+### 40.18.1 OpenCL：量化类型和连续布局优先
 
 源码路径：`ggml/src/ggml-opencl/ggml-opencl.cpp`（第3903-4099行）  
 核心类/接口名：`ggml_backend_opencl_device_context`  
@@ -4998,7 +4998,7 @@ static bool ggml_opencl_supports_op(
 
 OpenCL 的矩阵乘支持包括 F16、F32、Q4_0、Q4_1、MXFP4、Q4_K、Q6_K 和 Q8_0，但量化输入通常要求 F32 激活以及连续布局。Flash Attention 的支持则受限于 head dimension 白名单（40、64、80、96、112、128、192、256）和三种数据类型组合。从这段代码可以看出，OpenCL 的 `supports_op()` 更像一个“静态能力表”，它只根据张量的类型、形状和布局来判断可行性，不依赖设备架构差异化。这也是因为 OpenCL 内核通常在运行时编译，因此后端只需要确认存在对应内核即可。
 
-### 41.18.2 Vulkan：类型支持之外还要检查设备特性
+### 40.18.2 Vulkan：类型支持之外还要检查设备特性
 
 源码路径：`ggml/src/ggml-vulkan/ggml-vulkan.cpp`（第15360-15490行）  
 核心类/接口名：`vk_device`  
@@ -5213,7 +5213,7 @@ static bool ggml_backend_vk_device_supports_op(
 
 Vulkan 的检查维度更多：除了类型和布局，还需要考虑 storage buffer 最大范围、64 位索引、协作矩阵、子组操作和设备架构。当 `shader_64b_indexing` 为 false 时，所有超过 `maxStorageBufferRange` 的张量都不能在该设备上执行，因为 shader 无法安全地索引超出范围的存储缓冲。这种“先检查大小，再检查类型，最后检查能力”的层级结构，使得每个检查步骤都能快速失败并返回明确原因。
 
-### 41.18.3 WebGPU：量化白名单和绑定大小是硬限制
+### 40.18.3 WebGPU：量化白名单和绑定大小是硬限制
 
 源码路径：`ggml/src/ggml-webgpu/ggml-webgpu.cpp`（第3608-3631行、第3633-3783行）  
 核心类/接口名：`ggml_type`  
@@ -5259,33 +5259,33 @@ static bool ggml_webgpu_supported_qtype(
 
 `ggml_webgpu_supported_qtype()` 是 WebGPU 后端的量化类型白名单，它直接决定 `GET_ROWS` 和矩阵乘是否支持某种量化格式。该函数覆盖了传统 Q 系列、K 量化系列和 I 量化系列共 19 种格式。`ggml_backend_webgpu_device_supports_op()`（第3633-3783行）首先检查所有输入和输出张量是否超过 `maxStorageBufferBindingSize` 限制，然后按操作类型逐一检查。对于 `GGML_OP_FLASH_ATTN_EXT`，WebGPU 后端要求设备支持 subgroup matrix，并使用 `ggml_webgpu_flash_attn_wg_mem_bytes()` 计算最小共享内存需求；若超出 `maxComputeWorkgroupStorageSize`，即使管线缓存存在也无法执行。此外，`ggml_webgpu_supported_qtype()` 的作用是“白名单等于支持矩阵乘中该量化类型的权重”，但部分类型（如 IQ 系列）可能没有对应的 FLASH_ATTN 路径，此时并不属于该函数管辖范围——FLASH_ATTN 的 KV 类型支持由 `ggml_backend_webgpu_device_supports_op()` 中的 switch 单独控制（仅支持 F32/F16/Q4_0/Q8_0）。
 
-## 41.19 设计中的取舍
+## 40.19 设计中的取舍
 
-### 为什么 OpenCL 不把所有内核都预编译成二进制？
+### 40.19.1 为什么 OpenCL 不把所有内核都预编译成二进制？
 
 OpenCL 的设备和驱动差异很大，同一份源码需要由目标设备编译器生成适合当前 GPU 的机器代码。运行时编译虽然增加了启动成本，却换来了更好的跨设备适应能力。如果预编译成二进制，就必须为每一类设备架构分别生成镜像，这在移动 GPU 生态中几乎不可行。同时，OpenCL 编译选项（如 `-cl-fast-relaxed-math`）也能在运行时根据设备能力灵活调整。
 
 这种设计的 trade-off 在于：运行时编译增加了设备初始化时间，换取了跨设备兼容性和性能优化空间；但代价是如果某个内核在特定驱动上无法编译，后端必须提前通过版本检测跳过它，否则初始化阶段就会中断。
 
-### 为什么 Vulkan 要提前生成数百个 SPIR-V 变体？
+### 40.19.2 为什么 Vulkan 要提前生成数百个 SPIR-V 变体？
 
 Vulkan 的运行时编译能力不像 OpenCL 那样直接，因此项目把数据类型、tile、协作矩阵和精度等变化前移到构建阶段。代价是构建时间和生成文件体积增加，但运行时可以快速加载已经验证过的管线。`vulkan-shaders-gen` 通过 `acquire_compile_slot()` 控制并发编译数量，用有限的工作线程批量产出 SPIR-V，既保证了构建效率，又避免了一旦某个变体失败时难以定位的问题。
 
 这种设计的 trade-off 在于：构建期生成 SPIR-V 增加了构建时间和二进制体积，换取了运行时更低的开销和更高的可预测性；但代价是着色器变体数量成为固定规格，新增算子或量化格式时必须重新运行生成器。
 
-### 为什么 WebGPU 使用管线缓存而不是每次创建管线？
+### 40.19.3 为什么 WebGPU 使用管线缓存而不是每次创建管线？
 
 WebGPU 的 shader module 和 compute pipeline 创建都有明显成本。使用 key 缓存可以避免同一设备上重复编译相同变体，代价是缓存会占用主机内存，并且 key 设计必须足够完整，否则可能复用错误管线。例如 Flash Attention 的 key 如果缺少 `has_mask` 或 `use_vec`，就会让带 mask 和不带 mask 的 shader 错误共享，导致运行时绑定错误。
 
 这种设计的 trade-off 在于：缓存命中时大幅降低了延迟，但缓存 key 的设计直接决定了正确性；如果 key 缺少关键维度，不仅会错误复用管线，还会让 WGSL 中的条件编译逻辑无法正确展开，造成难以排查的渲染错误。
 
-### 为什么 OpenCL 和 Vulkan 都大量使用专用量化结构？
+### 40.19.4 为什么 OpenCL 和 Vulkan 都大量使用专用量化结构？
 
 不同量化格式的内部字段不同。Q4_0 需要量化值和缩放因子，Q4_K 还需要块级和超块级缩放，Q6_K 还要拆分高低位数据。独立结构体牺牲了一些代码复用，却让资源释放和内核参数绑定更加明确。此外，量化结构体直接映射到 OpenCL kernel 的参数列表（如 `q`、`d`、`s`、`dm`），避免了内核内部再进行复杂的偏移解码。
 
 这种设计的 trade-off 在于：结构体数量增加、代码复用度降低，但每个量化格式的内部布局一目了然，也方便在不同后端之间保持字段语义一致。
 
-### 为什么不用无脑把所有算子都强行融合？
+### 40.19.5 为什么不用无脑把所有算子都强行融合？
 
 融合要求更严格的类型、形状、步长和内存布局。过度融合会增加 shader 变体数量，也可能让小张量因复杂内核而变慢。例如 OpenCL 的 `ggml_opencl_can_fuse()` 要求所有输入为 F32 且连续行布局，Vulkan 的 `ggml_vk_can_fuse_rms_norm_mul_rope()` 还检查共享内存上限和 push constants 大小。因此后端只在收益明确且条件可验证时融合。
 
@@ -5307,9 +5307,9 @@ flowchart LR
     end
 ```
 
-## 41.20 动手练习
+## 40.20 动手练习
 
-### 练习 1：OpenCL 量化张量管理分析
+### 40.20.1 练习 1：OpenCL 量化张量管理分析
 
 - 阅读 `ggml/src/ggml-opencl/ggml-opencl.cpp` 第 3376-3692 行（ggml_tensor_extra_cl_q4_0/q4_1/mxfp4/q8_0/q4_K/q6_K 的 reset 方法）和第 4280-4391 行（ggml_backend_opencl_buffer_context 的分配函数）。
 
@@ -5321,7 +5321,7 @@ flowchart LR
 
   - 在 `ggml_backend_opencl_buffer_set_tensor` 中（第 4518-5060 行），Q4_0 和 Q4_K 的数据转换路径有何不同？
 
-### 练习 2：Vulkan 图优化机制深入解析
+### 40.20.2 练习 2：Vulkan 图优化机制深入解析
 
 - 阅读 `ggml/src/ggml-vulkan/ggml-vulkan.cpp` 第 14950-15150 行的 `ggml_vk_graph_optimize()` 函数。
 
@@ -5335,7 +5335,7 @@ flowchart LR
 
   - 在 `ggml_vk_graph_optimize` 中，为什么要跳过 empty 节点（GGML_OP_RESHAPE/VIEW/PERMUTE）？
 
-### 练习 3：WebGPU 着色器库缓存机制研究
+### 40.20.3 练习 3：WebGPU 着色器库缓存机制研究
 
 - 阅读 `ggml/src/ggml-webgpu/ggml-webgpu-shader-lib.hpp` 第 887-931 行（get_sum_rows_pipeline、get_row_norm_pipeline）和第 2035-2188 行（get_flash_attn_pipeline）。
 
@@ -5349,7 +5349,7 @@ flowchart LR
 
   - 为什么 WebGPU 后端需要 `embed_wgsl.py` 的 `chunk_shader()` 功能？它与 OpenCL 的 `embed_kernel.py` 有何异同？
 
-### 练习 4：跨后端算子支持性检查对比
+### 40.20.4 练习 4：跨后端算子支持性检查对比
 
 - 对比阅读以下三个文件中的算子支持检查逻辑：
 
@@ -5369,7 +5369,7 @@ flowchart LR
 
   - 如果要添加一个新的激活函数（如 GELU_QUICK），需要在三个后端的哪些位置进行修改？
 
-### 练习 5：Vulkan 内存管理与预分配策略
+### 40.20.5 练习 5：Vulkan 内存管理与预分配策略
 
 - 阅读 `ggml/src/ggml-vulkan/ggml-vulkan.cpp` 第 12533-12642 行的 `ggml_vk_preallocate_buffers()` 和第 2100-2300 行的缓冲区管理函数。
 
@@ -5383,7 +5383,7 @@ flowchart LR
 
   - `ggml_vk_ensure_sync_staging_buffer()` 的作用是什么？它与异步传输有何关系？
 
-### 练习 6：Vulkan Push Constants 与快速除法机制
+### 40.20.6 练习 6：Vulkan Push Constants 与快速除法机制
 
 - 阅读 `ggml/src/ggml-vulkan/ggml-vulkan.cpp` 第 984-1010 行（init_pushconst_fastdiv）和第 1146-2001 行（init_pushconst_tensor_offsets 系列模板特化）。
 
@@ -5397,7 +5397,7 @@ flowchart LR
 
   - 在 `ggml_vk_rms_norm()`（第 11099-11188 行）中，如何利用 push constants 实现算子融合？
 
-## 41.21 本章小结
+## 40.21 本章小结
 
 这一章中，我们学习了 OpenCL、Vulkan 和 WebGPU 三大通用 GPU 后端的初始化流程、设备管理、内核编译、内存管理和计算图执行机制。首先，我们解析了 OpenCL 后端的公共 API、设备探测（如 Adreno 代际识别）和运行时内核加载流程，理解了量化张量专用结构体和对象池管理如何支撑量化推理；其次，我们深入 Vulkan 后端的物理设备架构识别、SPIR-V 管线创建和 push constants 设计，分析了快速除法预计算和 Flash Attention 的共享内存预算如何共同决定 GPU 上的执行路径；接着，我们研究了 WebGPU 后端的参数竞技场、WGSL 管线缓存和预处理机制，理解了 `embed_wgsl.py` 如何把多个 WGSL 文件打包为 C++ 源码；然后，我们通过对三大后端算子支持矩阵的对比，看到高性能后端的核心并不是“支持更多 API”，而是根据数据类型、形状、布局和硬件能力选择正确路径；最后，我们讨论了设计中“运行时编译 vs 构建期生成 vs 运行时缓存”的取舍，理解了为什么三大后端在性能、兼容性和复杂度之间选择了不同的平衡点。
 

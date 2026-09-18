@@ -1,5 +1,5 @@
 
-# 65 命令行工具集 —— GGUF 文件的"运维百宝箱"
+# 第64章 65 命令行工具集 —— GGUF 文件的"运维百宝箱"
 
 ## 学习目标
 
@@ -10,11 +10,11 @@
 - 学会使用内存映射（mmap）高效处理本地大型safetensors文件
 - 理解远程与本地张量读取的统一抽象与差异化实现
 
-## 65.1 生活类比
+## 64.1 生活类比
 
 在 GGUF 工具集的智能快递分拣中心里，命名规范工具就像快递面单打印机，自动填充面单模板，将庞大的参数量转换为易读的重量单位，为特殊包裹标记，生成品牌、规格、版本、包装类型齐全的完整面单。远程 safetensors 读取则像跨境电商的按需采购，通过 HTTP Range 请求只下载需要的零件，先查看商品目录，提前确认库存，使用 HF Token 海关通行证。本地 safetensors 读取如同自家仓库的货架管理，利用内存映射按需取货，只在需要时才把货物从货架搬到工作台，通过透明玻璃墙看得见货物却不过度占用过道空间。
 
-## 65.2 源码地图
+## 64.2 源码地图
 
 ```
 gguf-py/gguf/utility.py
@@ -60,11 +60,11 @@ gguf-py/gguf/utility.py
         └── __exit__()  # 简单的上下文管理
 ```
 
-## 65.3 文件命名与格式化 —— GGUF的"标准快递员"
+## 64.3 文件命名与格式化 —— GGUF的"标准快递员"
 
 在 GGUF 生态中，模型文件的命名就像快递包裹的面单，需要统一、易读、包含关键信息。`utility.py` 中的命名与格式化工具函数集充当了标准快递员的角色，确保每一个生成的 GGUF 文件都能被准确识别和分类。无论是单参数模型还是混合专家模型，这些函数都能自动提取关键信息，生成符合规范的文件名。
 
-### 65.3.1 fill_templated_filename()：文件名模板填充
+### 64.3.1 fill_templated_filename()：文件名模板填充
 
 源码路径：`gguf-py/gguf/utility.py` - `fill_templated_filename()`（9-15行）
 
@@ -82,7 +82,7 @@ def fill_templated_filename(filename: str, output_type: str | None) -> str:
 
 这段代码定义了 fill_templated_filename 函数，它接收用户提供的文件名模板和输出类型，自动将模板中的 {ftype}、{outtype} 等占位符替换为实际的量化类型大小写形式，从而生成最终的 GGUF 文件名。
 
-### 65.3.2 model_weight_count_rounded_notation()：参数量格式化
+### 64.3.2 model_weight_count_rounded_notation()：参数量格式化
 
 源码路径：`gguf-py/gguf/utility.py` - `model_weight_count_rounded_notation()`（18-35行）
 
@@ -112,7 +112,7 @@ def model_weight_count_rounded_notation(model_params_count: int, min_digits: int
 
 这段代码实现了 model_weight_count_rounded_notation 函数，它将庞大的模型参数数量转换为人类友好的字符串表示，自动选择合适的量级后缀，并通过 min_digits 参数控制显示的一致性。
 
-### 65.3.3 size_label()：MoE模型命名
+### 64.3.3 size_label()：MoE模型命名
 
 源码路径：`gguf-py/gguf/utility.py` - `size_label()`（38-45行）
 
@@ -130,7 +130,7 @@ def size_label(total_params: int, shared_params: int, expert_params: int, expert
 
 这段代码定义了 size_label 函数，专门用于生成混合专家（MoE）模型的尺寸标签，当专家数量大于 0 时，它会组合共享参数和专家参数，并以“专家数x尺寸”的格式输出，例如“8x7B”。
 
-### 65.3.4 naming_convention()：GGUF命名规范
+### 64.3.4 naming_convention()：GGUF命名规范
 
 源码路径：`gguf-py/gguf/utility.py` - `naming_convention()`（48-66行）
 
@@ -155,7 +155,7 @@ def naming_convention(model_name: str | None, base_name: str | None, finetune_st
 
 这段代码实现了 naming_convention 函数，它根据基础名称、尺寸标签、微调信息、版本号、输出类型和模型类型，组装成符合 GGUF 规范的完整文件名，同时自动清理特殊字符，确保生成的名称在文件系统中安全可用。
 
-### 65.3.5 模块依赖图：命名工具链的协作
+### 64.3.5 模块依赖图：命名工具链的协作
 
 ```mermaid
 graph TD
@@ -167,11 +167,11 @@ graph TD
 
 从模块依赖图可以看出，`naming_convention` 是整个命名流程的组装核心，它接收 `fill_templated_filename` 处理后的模板、`size_label` 生成的尺寸标签以及其他元数据信息，最终拼接成完整的 GGUF 文件名。
 
-## 65.4 远程Safetensors读取 —— 从HuggingFace"按需取件"
+## 64.4 远程Safetensors读取 —— 从HuggingFace"按需取件"
 
 远程 safetensors 读取是 GGUF 转换流程中的关键环节，它允许工具在不下载整个模型文件的情况下，直接从 Hugging Face 仓库按需获取张量数据。`SafetensorRemote` 类通过 HTTP Range 请求实现了真正的懒加载，极大地节省了带宽和时间。
 
-### 65.4.1 RemoteTensor：远程张量的"身份证"
+### 64.4.1 RemoteTensor：远程张量的"身份证"
 
 源码路径：`gguf-py/gguf/utility.py` - `RemoteTensor`（数据类，约第60-73行）
 
@@ -193,7 +193,7 @@ class RemoteTensor:
 
 这段代码定义了 RemoteTensor 数据类，它封装了远程张量的元数据，并提供 data() 方法，通过调用 SafetensorRemote.get_data_by_range 实时下载张量的原始字节数据。
 
-### 65.4.2 get_list_tensors_hf_model()：自动识别单文件与多分片
+### 64.4.2 get_list_tensors_hf_model()：自动识别单文件与多分片
 
 源码路径：`gguf-py/gguf/utility.py` - `SafetensorRemote.get_list_tensors_hf_model()`（95-129行）
 
@@ -237,7 +237,7 @@ def get_list_tensors_hf_model(cls, model_id: str) -> dict[str, RemoteTensor]:
 
 这段代码定义了 get_list_tensors_hf_model 方法，它能够自动识别 Hugging Face 模型仓库是单文件还是多分片结构，并返回所有张量的元数据字典，屏蔽了底层文件组织的差异。
 
-### 65.4.3 get_list_tensors()：单文件张量解析
+### 64.4.3 get_list_tensors()：单文件张量解析
 
 源码路径：`gguf-py/gguf/utility.py` - `SafetensorRemote.get_list_tensors()`（132-151行）
 
@@ -270,7 +270,7 @@ def get_list_tensors(cls, url: str) -> dict[str, RemoteTensor]:
 
 这段代码实现了 get_list_tensors 方法，它从单个远程 safetensors 文件中解析所有张量的元数据，计算每个张量的绝对偏移量，并按名称排序后返回。
 
-### 65.4.4 get_metadata()：远程元数据头解析
+### 64.4.4 get_metadata()：远程元数据头解析
 
 源码路径：`gguf-py/gguf/utility.py` - `SafetensorRemote.get_metadata()`（154-175行）
 
@@ -305,7 +305,7 @@ def get_metadata(cls, url: str) -> tuple[dict, int]:
 
 这段代码定义了 get_metadata 方法，它通过 HTTP Range 请求获取远程文件的前 5MB 数据，解析 safetensors 格式的文件头，提取 JSON 元数据和数据起始偏移量，为后续张量定位提供基础。
 
-### 65.4.5 get_data_by_range()：HTTP Range 按需下载
+### 64.4.5 get_data_by_range()：HTTP Range 按需下载
 
 源码路径：`gguf-py/gguf/utility.py` - `SafetensorRemote.get_data_by_range()`（178-190行）
 
@@ -332,7 +332,7 @@ def get_data_by_range(cls, url: str, start: int, size: int = -1) -> bytes:
 
 这段代码实现了 get_data_by_range 方法，它通过 HTTP Range 请求从远程文件获取指定字节范围的原始数据，支持任意范围的按需下载，是远程懒加载的核心。
 
-### 65.4.6 check_file_exist() 与 _get_request_headers()：存在性验证与认证
+### 64.4.6 check_file_exist() 与 _get_request_headers()：存在性验证与认证
 
 源码路径：`gguf-py/gguf/utility.py` - `SafetensorRemote.check_file_exist()`（193-205行）、`_get_request_headers()`（208-211行）
 
@@ -365,7 +365,7 @@ def _get_request_headers(cls) -> dict[str, str]:
 
 check_file_exist 方法通过发送 HEAD 请求快速验证远程文件是否存在，避免在不存在的文件上浪费下载流量。_get_request_headers 方法构造通用的 HTTP 请求头，自动附加 Hugging Face 认证令牌（如果环境变量 HF_TOKEN 存在），确保能够访问私有模型仓库。
 
-### 65.4.7 模块依赖图：远程读取流程
+### 64.4.7 模块依赖图：远程读取流程
 
 ```mermaid
 graph TD
@@ -381,11 +381,11 @@ graph TD
 
 从模块依赖图可以看出，远程读取的入口是 `get_list_tensors_hf_model`，它根据仓库结构选择单文件或多分片路径，最终都收敛到 `get_list_tensors` 和 `get_metadata`，而 `get_data_by_range` 是所有实际数据下载的底层原语。
 
-## 65.5 本地Safetensors读取 —— 内存映射的"轻量管家"
+## 64.5 本地Safetensors读取 —— 内存映射的"轻量管家"
 
 与远程读取相对应，本地 safetensors 读取专注于从文件系统高效访问模型权重。`SafetensorsLocal` 类利用 numpy 内存映射技术，避免将整个大文件加载到内存中，从而在有限的内存资源下流畅处理数十 GB 的模型文件。
 
-### 65.5.1 LocalTensorRange 与 LocalTensor：本地张量的"货架坐标"
+### 64.5.1 LocalTensorRange 与 LocalTensor：本地张量的"货架坐标"
 
 源码路径：`gguf-py/gguf/utility.py` - `LocalTensorRange`、`LocalTensor`（数据类，约第210-224行）
 
@@ -409,7 +409,7 @@ class LocalTensor:
 
 这段代码定义了 LocalTensorRange 和 LocalTensor 数据类，它们封装了本地张量的物理位置和元数据，并提供 mmap_bytes 方法，利用 numpy 内存映射按需读取张量数据，避免一次性加载大文件。
 
-### 65.5.2 SafetensorsLocal：本地读取的"仓库管理员"
+### 64.5.2 SafetensorsLocal：本地读取的"仓库管理员"
 
 源码路径：`gguf-py/gguf/utility.py` - `SafetensorsLocal.__init__()`（228-255行）
 
@@ -455,7 +455,7 @@ def __init__(self, filename: Path):
 
 这段代码定义了 SafetensorsLocal 类的初始化方法，它解析本地 safetensors 文件的二进制结构，提取元数据并构建张量字典，每个张量都记录了其在文件中的精确位置和大小。
 
-### 65.5.3 上下文管理器：with 语句的安全保证
+### 64.5.3 上下文管理器：with 语句的安全保证
 
 源码路径：`gguf-py/gguf/utility.py` - `SafetensorsLocal.__enter__()`（257-259行）、`__exit__()`（261-262行）
 
@@ -470,7 +470,7 @@ def __exit__(self, *args, **kwargs):
 
 这段代码实现了上下文管理器协议，使得 SafetensorsLocal 可以与 with 语句配合使用，直接返回张量字典，无需特殊清理操作。
 
-### 65.5.4 模块依赖图：本地读取流程
+### 64.5.4 模块依赖图：本地读取流程
 
 ```mermaid
 graph TD
@@ -484,7 +484,7 @@ graph TD
 
 从模块依赖图可以看出，本地读取的流程是线性的：先解析文件头，再解析元数据，接着构建张量字典，最后通过上下文管理器向外提供统一的访问接口，而实际的数据读取则通过 mmap_bytes 延迟触发。
 
-## 65.6 设计中的取舍
+## 64.6 设计中的取舍
 
 - **为什么使用 HTTP Range 而不是直接下载整个 safetensors 文件？**  
   HTTP Range 请求允许只下载文件的一部分，这对于大型模型文件尤其重要，因为元数据通常只占文件的前几 MB。如果直接下载整个文件，会浪费大量的带宽和时间。通过只请求前 5MB，可以快速解析元数据，然后按需下载特定的张量数据，实现真正的懒加载。
@@ -498,7 +498,7 @@ graph TD
 - **远程和本地读取的统一抽象有什么好处？**  
   尽管远程和本地读取的实现细节不同，但它们都返回张量元数据和数据访问接口，上层代码可以使用统一的方式处理，无需关心数据来源，提高了代码的可移植性和可维护性。
 
-## 65.7 动手练习
+## 64.7 动手练习
 
 - 分析safetensors文件结构：
   编写Python代码解析一个本地safetensors文件：
@@ -542,7 +542,7 @@ graph TD
   - 在什么场景下远程读取比本地读取更有优势？
   - 如何设计混合策略，对小文件用远程、大文件先下载后本地？
 
-## 65.8 本章小结
+## 64.8 本章小结
 
 这一章中，我们深入探讨了 GGUF 工具集中的命名与格式化工具以及远程、本地 safetensors 读取机制。首先，我们学习了 `fill_templated_filename`、`model_weight_count_rounded_notation`、`size_label` 和 `naming_convention` 四个核心函数，它们共同构成了 GGUF 文件命名的自动化流水线；接着，我们剖析了 `SafetensorRemote` 如何利用 HTTP Range 请求从 Hugging Face 按需下载张量数据，以及 `SafetensorsLocal` 如何通过内存映射高效访问本地大文件；最后，我们通过设计取舍问题，理解了这些技术方案背后的工程权衡。
 

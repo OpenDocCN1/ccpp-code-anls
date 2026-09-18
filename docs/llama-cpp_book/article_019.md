@@ -1,6 +1,6 @@
 
 
-# 18 图构建总指挥与原料调度站 —— LLM 推理计算图的"建筑工程"隐喻
+# 第19章 18 图构建总指挥与原料调度站 —— LLM 推理计算图的"建筑工程"隐喻
 
 ## 学习目标
 
@@ -11,11 +11,11 @@
 - 了解相对位置桶 `llama_relative_position_bucket` 与注意力软上限 `attn_soft_cap` 的数学原理与工程落地
 - 能够分析 Flash Attention、LoRA 适配、专家并行等高级特性在图构建阶段的集成方式
 
-## 18.1 生活类比
+## 19.1 生活类比
 
 如果把 LLM 推理比作一座精密的化工厂，`llm_graph_context` 就是总工程师，手持蓝图（模型架构）指挥施工；`llm_graph_input_i` 及其子类则是一个个原材料调度站——嵌入站输送词向量钢材，位置站标记工序序号，注意力掩码站拉起安全隔离带，KV 缓存站管理半成品仓库，循环状态站维护流水线记忆，采样站把关最终成品质量。`llm_graph_params::allow_reuse` 就像换班检查表：只有当原料批次（`ubatch`）、工艺配方（`cparams`/`hparams`）、质检员（`samplers`）完全一致时，才允许复用上一班次搭建好的管道（计算图），避免拆装损耗。`build_attn_mha` 是核心反应器，将 Query、Key、Value 三股原料在高温高压（矩阵乘法+Softmax）下合成注意力输出；`build_ffn`/`build_moe_ffn` 则是下游精炼塔，通过门控与专家混合提纯特征。整个图构建过程，就是将散落的张量原料，按拓扑顺序铸造成可执行的 `ggml_cgraph` 成品。
 
-## 18.2 源码地图
+## 19.2 源码地图
 
 ```
 src/llama-graph.h
@@ -81,9 +81,9 @@ src/llama-graph.cpp
 └── 静态工厂函数：build_attn_inp_kv_impl、build_attn_inp_k_impl、build_rs_inp_impl
 ```
 
-## 18.3 源码解析单元1：llm_graph_input_i —— 输入家族的"统一身份证"与生命周期
+## 19.3 源码解析单元1：llm_graph_input_i —— 输入家族的"统一身份证"与生命周期
 
-### 18.3.1 接口定义与调试开关
+### 19.3.1 接口定义与调试开关
 
 **源码路径：`src/llama-graph.h` - `llm_graph_input_i`（第 99-117 行）**
 
@@ -113,7 +113,7 @@ struct llm_graph_input_i {
 **代码作用概述**：  
 此代码定义了 `llm_graph_input_i` 基类，它是所有输入家族（嵌入、位置、注意力掩码等）的统一抽象接口。构造函数读取环境变量 `LLAMA_GRAPH_INPUT_DEBUG` 初始化 `debug` 标志，支持运行时无需重编译即可开启逐输入级的调试日志。纯虚函数 `set_input` 强制子类实现从 `llama_ubatch` 拷贝数据到预分配 `ggml_tensor` 的逻辑；虚函数 `can_reuse` 默认返回 `false`，子类可重写以参与计算图复用判定。虚析构函数保证多态删除安全。
 
-### 18.3.2 协作流程图：从推理循环到图复用决策
+### 19.3.2 协作流程图：从推理循环到图复用决策
 
 ```mermaid
 flowchart TD
@@ -129,9 +129,9 @@ flowchart TD
     I --> A
 ```
 
-## 18.4 源码解析单元2：基础输入家族 —— 嵌入、位置、输出 ID
+## 19.4 源码解析单元2：基础输入家族 —— 嵌入、位置、输出 ID
 
-### 18.4.1 llm_graph_input_embd：Token 与向量的双轨制
+### 19.4.1 llm_graph_input_embd：Token 与向量的双轨制
 
 **源码路径：`src/llama-graph.cpp` - `llm_graph_input_embd::set_input`（第 69-82 行）**
 
@@ -171,7 +171,7 @@ bool llm_graph_input_embd::can_reuse(const llm_graph_params & params) {
 **代码作用概述**：  
 此函数判定嵌入输入张量能否复用。核心逻辑：若当前批次提供 `token`，则 `tokens` 张量首维必须等于新批次 `n_tokens`；若提供 `embd`，则 `embd` 张量第二维必须等于新批次 `n_tokens`。若对应输入不存在（指针为空），则跳过该项检查。此设计确保张量形状兼容时复用内存分配。
 
-### 18.4.2 架构解析：build_inp_embd 的选择子图设计
+### 19.4.2 架构解析：build_inp_embd 的选择子图设计
 
 **源码路径：`src/llama-graph.cpp` - `llm_graph_context::build_inp_embd`（第 348-421 行）**
 
@@ -264,7 +264,7 @@ ggml_tensor * llm_graph_context::build_inp_embd(ggml_tensor * tok_embd) const {
 **代码作用概述**：  
 此函数构建嵌入层的计算子图，核心是“双分支 + 运行时选择”设计。首先分配 `tokens` (I32, `[n_tokens]`) 与 `embd` (F32, `[n_embd_inp, n_tokens]`) 两个输入张量。分支 0：`ggml_get_rows(tok_embd, tokens)` 查表得到嵌入，随后遍历 LoRA 适配器应用增量（`lw->b @ lw->a @ rows`），若 `n_embd_inp > n_embd` 则 `ggml_pad` 补零。分支 1：直接使用外部传入的 `embd` 张量。最后 `ggml_build_forward_select` 根据 `ubatch->token` 是否存在动态选择分支（0 为 token 模式，1 为嵌入模式）。此设计保证图拓扑固定，仅运行时数据流切换，满足 pipeline 并行对拓扑不变性的要求。输出张量若维度不匹配则切片取前 `n_embd` 维，并可选应用 `embedding_scale` 缩放。
 
-### 18.4.3 llm_graph_input_pos：位置编码与 M-RoPE 4D 扩展
+### 19.4.3 llm_graph_input_pos：位置编码与 M-RoPE 4D 扩展
 
 **源码路径：`src/llama-graph.cpp` - `llm_graph_input_pos::set_input`（第 93-118 行）**
 
@@ -310,7 +310,7 @@ ggml_tensor * llm_graph_context::build_inp_pos() const {
 **代码作用概述**：  
 此函数创建位置输入张量，形状为 `[n_tokens * n_pos_per_embd]`（I32），`n_pos_per_embd()` 由架构决定：普通模型为 1，启用 M-RoPE 时为 4。张量标记为输入节点并注册到结果容器。
 
-### 18.4.4 llm_graph_input_out_ids：输出 Token 的"取货单"
+### 19.4.4 llm_graph_input_out_ids：输出 Token 的"取货单"
 
 **源码路径：`src/llama-graph.cpp` - `llm_graph_input_out_ids::set_input`（第 170-193 行）**
 
@@ -364,9 +364,9 @@ ggml_tensor * llm_graph_context::build_inp_out_ids() const {
 **代码作用概述**：  
 此函数创建输出 ID 张量，形状 `[n_outputs]` (I32)。注释明确指出：即使全 token 输出也保留此张量，以维持图拓扑不变，支持 pipeline 并行。
 
-## 18.5 源码解析单元3：注意力输入家族 —— 掩码、KV 索引、位置桶
+## 19.5 源码解析单元3：注意力输入家族 —— 掩码、KV 索引、位置桶
 
-### 18.5.1 llm_graph_input_attn_no_cache：无缓存自注意力掩码
+### 19.5.1 llm_graph_input_attn_no_cache：无缓存自注意力掩码
 
 **源码路径：`src/llama-graph.cpp` - `llm_graph_input_attn_no_cache::set_input`（第 368-430 行）**
 
@@ -434,7 +434,7 @@ llm_graph_input_attn_no_cache * llm_graph_context::build_attn_inp_no_cache() con
 **代码作用概述**：  
 此函数分配无缓存注意力掩码张量：4D 形状 `[n_kv, n_q, 1, n_stream]` 兼容 `ggml_soft_max_ext` 与 Flash Attention 广播语义。若启用 Flash Attention 则额外创建 F16 转换张量；若启用 SWA 则再分配一套 SWA 掩码张量。
 
-### 18.5.2 模块依赖图：标准 KV 缓存注意力输入家族协作
+### 19.5.2 模块依赖图：标准 KV 缓存注意力输入家族协作
 
 ```mermaid
 sequenceDiagram
@@ -453,7 +453,7 @@ sequenceDiagram
     end
 ```
 
-### 18.5.3 llm_graph_input_attn_kv：标准 KV 缓存注意力输入
+### 19.5.3 llm_graph_input_attn_kv：标准 KV 缓存注意力输入
 
 **源码路径：`src/llama-graph.h` - `llm_graph_input_attn_kv` 成员（第 317-335 行）**
 
@@ -514,7 +514,7 @@ static std::unique_ptr<llm_graph_input_attn_kv> build_attn_inp_kv_impl(
 **代码作用概述**：  
 工厂函数创建标准 KV 注意力输入对象。断言非 SWA 模式。调用 KV Cache 上下文方法构建 `k_idxs`、`v_idxs`（写入索引）、`kq_mask`（注意力掩码，形状 `[n_kv, n_tokens/n_stream, 1, n_stream]`）、`k_rot`/`v_rot`（RoPE 旋转矩阵）。Flash Attention 时掩码转 F16。
 
-### 18.5.4 llama_relative_position_bucket：相对位置桶计算函数
+### 19.5.4 llama_relative_position_bucket：相对位置桶计算函数
 
 **源码路径：`src/llama-graph.cpp` - `llama_relative_position_bucket`（第 2743-2771 行）**
 
@@ -588,9 +588,9 @@ ggml_tensor * llm_graph_context::build_pos_bias(ggml_tensor * pos_bucket, ggml_t
 **代码作用概述**：  
 此函数将位置桶索引转换为位置偏置张量。步骤：`pos_bucket` 展平为 1D 索引 -> `ggml_get_rows` 从 `attn_rel_b` (`[n_buckets, n_head]`) 取行得到 `[n_tokens*n_tokens, n_head]` -> 重塑为 3D -> `permute(2,0,1,3)` 调整维度顺序为 `[n_tokens, n_tokens, n_head]` -> `cont` 确保内存连续。最终张量可直接加到注意力分数 `KQ` 上。
 
-## 18.6 源码解析单元4：循环与混合内存家族 —— RWKV 与 Hybrid 架构的"记忆磁带"
+## 19.6 源码解析单元4：循环与混合内存家族 —— RWKV 与 Hybrid 架构的"记忆磁带"
 
-### 18.6.1 llm_graph_input_rs：循环状态拷贝索引
+### 19.6.1 llm_graph_input_rs：循环状态拷贝索引
 
 **源码路径：`src/llama-graph.cpp` - `llm_graph_input_rs::set_input`（第 296-314 行）**
 
@@ -667,7 +667,7 @@ ggml_tensor * llm_graph_context::build_rs(
 **代码作用概述**：  
 此函数构建循环状态更新子图，三步走：1) `ggml_view_1d` 定位 `rs_zero` 槽位并 `ggml_scale_inplace(..., 0)` 清零；2) 调用回调 `get_state_rows`（默认 `ggml_get_rows`）按 `state_copy_main` 索引聚集主序列状态，`ggml_build_forward_expand` 立即执行；3) `ggml_get_rows` 取 `state_copy_extra` 对应行，`ggml_cpy` 从 `head+n_seqs` 处连续内存拷贝 `n_rs-n_seqs` 个槽位。此设计实现类环形缓冲区的状态更新，`get_state_rows` 回调允许自定义聚集逻辑。
 
-### 18.6.2 llm_graph_input_mem_hybrid：混合内存输入家族（组合模式）
+### 19.6.2 llm_graph_input_mem_hybrid：混合内存输入家族（组合模式）
 
 **源码路径：`src/llama-graph.h` - `llm_graph_input_mem_hybrid`（第 449-469 行）**
 
@@ -697,9 +697,9 @@ llm_graph_input_mem_hybrid * llm_graph_context::build_inp_mem_hybrid() const {
 **代码作用概述**：  
 此函数构建混合内存输入对象，采用**组合模式**复用 `attn_kv` 与 `rs` 两个成熟输入家族。`build_rs_inp_impl` 构建循环状态输入，`build_attn_inp_kv_impl` 构建标准注意力输入，二者移动语义移入 `mem_hybrid`。`set_input` 一次性驱动注意力索引/掩码/旋转矩阵与循环拷贝索引更新；`can_reuse` 联合校验两侧张量形状与上下文状态（`head`、`rs_z`），保证混合架构图复用安全。
 
-## 18.7 源码解析单元5：核心算子构建 —— FFN、MoE、Attention MHA
+## 19.7 源码解析单元5：核心算子构建 —— FFN、MoE、Attention MHA
 
-### 18.7.1 llm_graph_context::build_lora_mm：LoRA 增强矩阵乘法
+### 19.7.1 llm_graph_context::build_lora_mm：LoRA 增强矩阵乘法
 
 **源码路径：`src/llama-graph.cpp` - `llm_graph_context::build_lora_mm`（第 935-965 行）**
 
@@ -733,7 +733,7 @@ ggml_tensor * llm_graph_context::build_lora_mm(
 **代码作用概述**：  
 此函数实现基础矩阵乘法 `w @ cur` 并融合 LoRA 适配器。遍历所有激活的 LoRA，获取对应权重 `lw`（包含低秩矩阵 `a`、`b`），计算 `scale = alpha * adapter_scale / rank`，构建 `lw->b @ (lw->a @ cur)` 增量，缩放后加到主路径结果上。最后若提供 `w_s` 则逐元素缩放。此函数被 `build_ffn`、`build_attn` 等广泛调用，实现 LoRA 无侵入集成。
 
-### 18.7.2 llm_graph_context::build_ffn：标准 FFN 子图（Seq/Par 门控统一分发）
+### 19.7.2 llm_graph_context::build_ffn：标准 FFN 子图（Seq/Par 门控统一分发）
 
 **源码路径：`src/llama-graph.cpp` - `llm_graph_context::build_ffn`（第 1024-1065 行）**
 
@@ -784,7 +784,7 @@ ggml_tensor * llm_graph_context::build_ffn(
 **代码作用概述**：  
 此函数构建标准前馈网络子图。流程：1) UP 投影（含 LoRA）、偏置、缩放，结果暂存 `tmp`；2) GATE 分支：`LLM_FFN_SEQ`（Llama/DeepSeek 等）输入 `tmp`，`LLM_FFN_PAR`（Gemma/GLM 等）输入原 `cur`，均含 LoRA/偏置/缩放；3) 激活函数分发：覆盖 SILU、GELU、RELU、SWIGLU 等 8 种变体，SWIGLU 直接 `silu(gate) * up` 复用 `tmp` 避免额外矩阵乘；4) DOWN 投影（含 LoRA）、偏置、缩放。`cb` 回调用于张量命名与调试。
 
-### 18.7.3 llm_graph_context::build_moe_ffn：MoE FFN 子图（专家并行与门控归一化）
+### 19.7.3 llm_graph_context::build_moe_ffn：MoE FFN 子图（专家并行与门控归一化）
 
 **源码路径：`src/llama-graph.cpp` - `llm_graph_context::build_moe_ffn` 重载（第 218-242 行）**
 
@@ -807,7 +807,7 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
 **代码作用概述**：  
 此重载为无偏置版本提供兼容接口，将偏置参数置 `nullptr` 委托给完整版本（声明见头文件第 923-944 行）。核心流程（实现见上下文续篇）：1) 门控计算 `gate_inp @ cur -> [n_expert, n_tokens]` -> `ggml_soft_max` 得专家概率；2) `gating_op`（如 `top_k`、`top_p`）选出 `n_expert_used` 个专家，生成 `expert_ids` 与 `expert_weights`；3) `ggml_mul_mat_id` 以 `expert_ids` 批量执行专家 `up_exps[expert] @ x` 等；4) `expert_weights` 广播乘专家输出，`ggml_sum` 归约；5) `norm_w=true` 时对专家权重应用 `w_scale / sqrt(n_embd)` 归一化。
 
-### 18.7.4 llm_graph_context::build_attn_mha：核心多头注意力子图（Flash/标准双路径）
+### 19.7.4 llm_graph_context::build_attn_mha：核心多头注意力子图（Flash/标准双路径）
 
 **源码路径：`src/llama-graph.cpp` - `llm_graph_context::build_attn_mha`（第 563-653 行，关键片段）**
 
@@ -881,7 +881,7 @@ ggml_tensor * llm_graph_context::build_attn_mha(
 **代码作用概述**：  
 此函数构建多头注意力核心子图，支持 Flash Attention 与标准路径双模式。前置统一 `permute` 将 Q/K/V 调整为 `[head_dim, n_tokens/n_stream, n_head, n_stream]`。Flash 路径：`v_trans` 时转置 V，K/V 强制 F16，调用融合算子 `ggml_flash_attn_ext`（内部 FP16 计算、FP32 累加），添加 Sinks、设置输出精度 FP32，可选 MLA 吸收优化（`v_mla @ cur`），最后合并流维度。标准路径：`ggml_mul_mat` 计算 KQ（强制 FP32 累加），Grok 模型专用 `tanh` 缩放，通用 `attn_soft_cap` 通过 `scale -> tanh -> scale_back` 实现 logit 约束，加 KQ bias，`ggml_soft_max_ext` 融合掩码与 ALiBi 并 Softmax，添加 Sinks，V 若非转置则转置并连续化，`mul_mat(V, KQ)` 得输出，可选 MLA 吸收，`permute+cont_2d` 合并流，非 `offload_kqv` 时指定 CPU 后端。最终 `ggml_build_forward_expand` 立即物化。
 
-### 18.7.5 注意力双路径选择流程图
+### 19.7.5 注意力双路径选择流程图
 
 ```mermaid
 flowchart TD
@@ -916,9 +916,9 @@ flowchart TD
     Z --> Ret[返回 cur]
 ```
 
-## 18.8 源码解析单元6：池化、采样与密集输出
+## 19.8 源码解析单元6：池化、采样与密集输出
 
-### 18.8.1 llm_graph_context::build_pooling：池化层（五大策略统一入口）
+### 19.8.1 llm_graph_context::build_pooling：池化层（五大策略统一入口）
 
 **源码路径：`src/llama-graph.cpp` - `llm_graph_context::build_pooling`（第 2613-2676 行）**
 
@@ -984,7 +984,7 @@ void llm_graph_context::build_pooling(
 | CLS/LAST | BERT、Llama 微调 | `get_rows(cls_token_idx)` | 分类、回归 |
 | RANK | ModernBERT、Qwen3 | MEAN/CLS + 分类头 + 可选 Softmax | 重排序、配对分类 |
 
-### 18.8.2 llm_graph_context::build_sampling：后端采样图构建（原生 GPU 采样）
+### 19.8.2 llm_graph_context::build_sampling：后端采样图构建（原生 GPU 采样）
 
 **源码路径：`src/llama-graph.cpp` - `llm_graph_context::build_sampling`（第 2678-2741 行）**
 
@@ -1037,7 +1037,7 @@ void llm_graph_context::build_sampling() const {
 **代码作用概述**：  
 此函数构建采样计算图。1) 注册 `llm_graph_input_sampling` 管理采样器后端输入；2) 遍历 `ubatch` 建立 `seq_id -> logit行索引` 映射；3) 对每个序列采样器：`ggml_pad(logits, 0, 1, 0, 0)` 补一行防越界，`ggml_view_1d` 切片得 `[n_vocab]` logits，调用 `sampler->iface->backend_apply` 让采样器后端（CPU/GPU）在图中构建 Top-K、Temperature、Mirostat 等采样算子；4) 采样产物（`sampled`/`probs`/`logits`/`candidates`）注册为图输出，`ggml_build_forward_select(gf, outs, 2, i_out)` 仅当 `i_out==1`（该序列当前步有输出 token）时计算采样子图，零开销跳过非输出序列。
 
-### 18.8.3 llm_graph_context::build_dense_out：密集输出层
+### 19.8.3 llm_graph_context::build_dense_out：密集输出层
 
 **源码路径：`src/llama-graph.cpp` - `llm_graph_context::build_dense_out`（第 2588-2611 行）**
 
@@ -1070,9 +1070,9 @@ void llm_graph_context::build_dense_out(
 **代码作用概述**：  
 此函数在嵌入模式下对池化结果（或原始嵌入）应用额外的密集层变换：`dense_2 @ x + dense_2_b` -> `dense_3 @ x`。用于某些嵌入模型的输出投影头。
 
-## 18.9 源码解析单元7：计算图复用判定 —— llm_graph_params::allow_reuse
+## 19.9 源码解析单元7：计算图复用判定 —— llm_graph_params::allow_reuse
 
-### 18.9.1 完整校验逻辑
+### 19.9.1 完整校验逻辑
 
 **源码路径：`src/llama-graph.h` - `llm_graph_params::allow_reuse`（第 642-692 行）**
 
@@ -1123,7 +1123,7 @@ bool llm_graph_params::allow_reuse(const llm_graph_params & other) const {
 **代码作用概述**：  
 此函数实现计算图复用的“换班检查表”，六重校验：1) Ubatch 拓扑（token 数、序列数、equal_seqs 模式、token/embd 互斥）；2) 序列身份（equal_seqs 时逐元素比对 `seq_id_unq`）；3) 输出数量 `n_outputs`；4) 采样器映射指针地址；5) 有采样器时 `output` 与 `seq_id` 逐 token 比对；6) 模型超参（`embeddings`、`causal_attn`、`arch`、`gtype`、`cvec`、`loras`、`cross`）。全通过才允许复用上一轮 `ggml_cgraph`。
 
-### 18.9.2 复用判定决策树
+### 19.9.2 复用判定决策树
 
 ```mermaid
 flowchart TD
@@ -1142,9 +1142,9 @@ flowchart TD
     H -->|是| I[返回 true]
 ```
 
-## 18.10 源码解析单元8：归一化与辅助构建块
+## 19.10 源码解析单元8：归一化与辅助构建块
 
-### 18.10.1 llm_graph_context::build_norm：统一归一化层
+### 19.10.1 llm_graph_context::build_norm：统一归一化层
 
 **源码路径：`src/llama-graph.cpp` - `llm_graph_context::build_norm`（第 992-1022 行）**
 
@@ -1184,7 +1184,7 @@ ggml_tensor * llm_graph_context::build_norm(
 **代码作用概述**：  
 此函数统一构建三类归一化：LayerNorm (`ggml_norm`)、RMSNorm (`ggml_rms_norm`)、GroupNorm（重塑为 3D -> `ggml_group_norm` -> 重塑回 2D）。归一化后可选应用权重 `mw`（乘法）与偏置 `mb`（加法），中间插入 `cb` 命名便于调试。
 
-### 18.10.2 llm_graph_context::build_cvec：控制向量注入
+### 19.10.2 llm_graph_context::build_cvec：控制向量注入
 
 **源码路径：`src/llama-graph.cpp` - `llm_graph_context::build_cvec`（第 927-933 行）**
 
@@ -1199,7 +1199,7 @@ ggml_tensor * llm_graph_context::build_cvec(
 **代码作用概述**：  
 此函数委托 `cvec` 对象将控制向量（Control Vector）应用到张量 `cur`，用于推理时的隐空间操控（如风格迁移、安全对齐）。
 
-### 18.10.3 llm_graph_context::build_lora_mm_id：MoE 专家级 LoRA
+### 19.10.3 llm_graph_context::build_lora_mm_id：MoE 专家级 LoRA
 
 **源码路径：`src/llama-graph.cpp` - `llm_graph_context::build_lora_mm_id`（第 967-990 行）**
 
@@ -1232,9 +1232,9 @@ ggml_tensor * llm_graph_context::build_lora_mm_id(
 **代码作用概述**：  
 此函数为 MoE 专家并行场景定制：`ggml_mul_mat_id` 按 `ids` 选择专家权重行执行矩阵乘法。LoRA 增量同样用 `mul_mat_id` 保持专家索引一致，缩放公式 `scale = alpha * adapter_scale / rank`（无 alpha 时退化为 `adapter_scale`）。
 
-## 18.11 源码解析单元9：RWKV Token Shift 与交叉注意力输入
+## 19.11 源码解析单元9：RWKV Token Shift 与交叉注意力输入
 
-### 18.11.1 llm_graph_context::build_rwkv_token_shift_load/store
+### 19.11.1 llm_graph_context::build_rwkv_token_shift_load/store
 
 **源码路径：`src/llama-graph.cpp` - `build_rwkv_token_shift_load`（第 2486-2505 行）**
 
@@ -1291,7 +1291,7 @@ ggml_tensor * llm_graph_context::build_rwkv_token_shift_store(
 **代码作用概述**：  
 将计算更新后的 Token Shift 数据（展平为 1D）拷贝回循环状态 `r_l[il]` 的当前 `head` 位置，完成状态持久化。
 
-### 18.11.2 llm_graph_input_attn_cross：交叉注意力掩码
+### 19.11.2 llm_graph_input_attn_cross：交叉注意力掩码
 
 **源码路径：`src/llama-graph.cpp` - `llm_graph_input_attn_cross::set_input`（第 520-541 行）**
 
@@ -1322,9 +1322,9 @@ void llm_graph_input_attn_cross::set_input(const llama_ubatch * ubatch) {
 **代码作用概述**：  
 构建交叉注意力掩码：`cross_kq_mask` 形状 `[n_enc, n_tokens]`。双重循环遍历解码 token 与编码位置，若解码 token 所属序列 ID 在编码位置 `seq_ids_enc[j]` 集合中，则允许注意（0），否则屏蔽（`-INFINITY`）。要求编码器已先运行（`seq_ids_enc` 非空）。
 
-## 18.12 源码解析单元10：ISWA 与 V-less 变体
+## 19.12 源码解析单元10：ISWA 与 V-less 变体
 
-### 18.12.1 llm_graph_input_attn_kv_iswa：滑窗注意力双缓存输入
+### 19.12.1 llm_graph_input_attn_kv_iswa：滑窗注意力双缓存输入
 
 **源码路径：`src/llama-graph.cpp` - `llm_graph_input_attn_kv_iswa::set_input`（第 481-502 行）**
 
@@ -1348,7 +1348,7 @@ void llm_graph_input_attn_kv_iswa::set_input(const llama_ubatch * ubatch) {
 **代码作用概述**：  
 ISWA（Independent Sliding Window Attention）维护两套独立 KV Cache：`base`（标准全局注意力）与 `swa`（滑窗注意力）。`set_input` 同步驱动两套缓存的 K/V 索引、掩码更新，RoPE 旋转矩阵仅来自 `base` 缓存（共享位置编码）。
 
-### 18.12.2 llm_graph_input_attn_k：V-less 注意力输入
+### 19.12.2 llm_graph_input_attn_k：V-less 注意力输入
 
 **源码路径：`src/llama-graph.cpp` - `llm_graph_input_attn_k::set_input`（第 463-468 行）**
 
@@ -1362,7 +1362,7 @@ void llm_graph_input_attn_k::set_input(const llama_ubatch * ubatch) {
 **代码作用概述**：  
 仅设置 Key 索引与掩码，省去 Value 索引与拷贝。适用于不需要 Value 写入 KV Cache 的场景（如部分交叉注意力、稀疏注意力变体），节省带宽与内存。
 
-## 18.13 设计中的取舍
+## 19.13 设计中的取舍
 
 **问：为什么 `llm_graph_input_i` 采用纯虚接口 + 独占指针管理，而不使用 CRTP 或变体？**  
 答：运行时多态开销极低（仅一次虚函数调用/帧），换取极大的扩展灵活性——新增输入家族（如多模态投影、推测解码草稿 token）无需修改 `llm_graph_result`，仅需继承接口并注册。CRTP 会导致模板代码膨胀，编译期依赖加重。
@@ -1388,7 +1388,7 @@ void llm_graph_input_attn_k::set_input(const llama_ubatch * ubatch) {
 **问：`allow_reuse` 校验维度的取舍：为何不校验 `ubatch.pos` 具体数值？**  
 答：`pos` 数值仅影响掩码内容与 RoPE 相位，**不改变张量形状、步长、图拓扑**。只要拓扑不变，`set_input` 会用新 `pos` 覆盖掩码/位置张量，复用安全。若校验 `pos` 值，任何位置偏移（如长上下文滑窗）都会触发重建，严重损害复用率。
 
-## 18.14 动手练习
+## 19.14 动手练习
 
 1. **追踪数据流**：在 `llm_graph_context::build_inp_embd` 中打印 `inps[0]` 与 `inps[1]` 的形状、步长、设备，验证 `ggml_build_forward_select` 选择逻辑。  
 2. **掩码可视化**：设置 `LLAMA_GRAPH_INPUT_DEBUG=1` 运行嵌入模型，观察 `print_mask` 输出的注意力掩码模式，对比 `causal_attn=true/false` 与 `swa_type` 的差异。  
@@ -1396,7 +1396,7 @@ void llm_graph_input_attn_k::set_input(const llama_ubatch * ubatch) {
 4. **MoE 门控替换**：将 `llama_expert_gating_func_type` 从 `top_k` 改为自定义 `entropy_gate`（选择熵最高的专家），在 `build_moe_ffn` 注入并对比吞吐。  
 5. **Flash Attention 回退**：在支持 Flash Attention 的 GPU 上设置 `cparams.flash_attn=false`，对比 `build_attn_mha` 两条路径的算子数量与执行时间。
 
-## 18.15 本章小结
+## 19.15 本章小结
 
 首先，本章确立了以 `llm_graph_input_i` 为统一身份证的输入家族多态体系，阐述了 `set_input` 与 `can_reuse` 双契约如何支撑张量数据的动态填充与计算图的安全复用。其次，详细剖析了嵌入、位置、输出 ID 等基础输入家族的张量形态与数据流，重点展示了 `build_inp_embd` 通过 `ggml_build_forward_select` 实现的双分支固定拓扑设计。接着，深入解析了注意力输入家族的三大变体：无缓存掩码的宿主侧三层过滤逻辑、标准 KV 缓存输入对 KV Cache 上下文的委托模式、相对位置桶的 T5 风格对数分桶数学原理与 `build_pos_bias` 的张量变换流程。随后，介绍了循环状态与混合内存家族如何通过组合模式复用现有组件，以及 `build_rs` 三阶段状态更新机制。然后，重点拆解了核心算子构建器：`build_lora_mm` 无侵入融合 LoRA、`build_ffn` 统一分发 Seq/Par 门控与 8 种激活、`build_moe_ffn` 专家并行门控聚合流程、`build_attn_mha` Flash/标准双路径融合与软上限/Sink/MLA 吸收等高级特性集成。再然后，覆盖了池化层五大策略统一入口、后端采样图原生化构建（条件执行、多产物）、密集输出层等尾部处理。最后，完整呈现了 `allow_reuse` 六重校验决策树与复用判定矩阵，并通过八问八答形式总结了关键工程取舍。掌握这些机制，即掌握了将模型数学定义转化为可执行计算图的完整工程路径。
 

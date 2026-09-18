@@ -1,6 +1,6 @@
 
 
-# 预设数据结构与接口 —— 参数配置的「乐高积木」
+# 第45章 预设数据结构与接口 —— 参数配置的「乐高积木」
 
 ## 学习目标
 
@@ -9,11 +9,11 @@
 - 学习 `to_args`、`to_ini`、`set_option`、`merge`、`apply_to_params` 等方法，掌握预设的转换与应用
 - 理解 `cascade` 的级联机制，掌握多预设的合并与继承
 
-## 生活类比
+## 45.1 生活类比
 
 想象你正在经营一家连锁餐厅。`common_preset` 就是一份**标准化菜谱卡（SOP）**，它精确记录了某道菜的食材配比、烹饪温度、出品标准等所有关键参数；而 `common_preset_context` 则是**总部运营中心**，它手握《食材供应商名录》（参数定义表）、《过敏原管控清单》（远程白名单）、以及《分店点单系统》（键到选项映射表），负责将总部下发的标准菜谱、分店自研的特色菜、以及中央厨房预制的半成品，统一转换为后厨能直接执行的标准化指令。当分店经理（上层应用）喊出“来份招牌牛肉面”时，运营中心会查阅菜谱卡，核对食材是否在白名单内，再指挥后厨（`common_params`）按标准流程出品。这种分层设计让“菜谱定义”与“出品执行”彻底解耦，无论分店怎么增加新菜品、总部怎么更新标准，后厨只需认识这一套标准指令即可。
 
-## 源码地图
+## 45.2 源码地图
 
 ```text
 common/preset.h
@@ -50,7 +50,7 @@ common/preset.cpp
 └── common_preset_context 方法实现
 ```
 
-## 模块依赖图
+## 45.3 模块依赖图
 
 ```mermaid
 graph TD
@@ -75,7 +75,7 @@ graph TD
 
 ---
 
-### common_preset —— 标准化「菜谱卡」的数据结构
+### 45.3.1 common_preset —— 标准化「菜谱卡」的数据结构
 
 **源码路径：`common/preset.h` (第 20-40 行)**
 
@@ -106,7 +106,7 @@ struct common_preset {
 
 ---
 
-### common_preset_context —— 总部「运营中心」的上下文环境
+### 45.3.2 common_preset_context —— 总部「运营中心」的上下文环境
 
 **源码路径：`common/preset.h` (第 56-77 行)**
 
@@ -139,7 +139,7 @@ struct common_preset_context {
 
 ---
 
-### common_presets —— 菜谱库的类型别名
+### 45.3.3 common_presets —— 菜谱库的类型别名
 
 **源码路径：`common/preset.h` (隐含定义)**
 
@@ -151,9 +151,9 @@ using common_presets = std::map<std::string, common_preset>;
 
 ---
 
-## 预设上下文初始化与安全白名单 —— 运营中心的「开业备案与食安体系」
+## 45.4 预设上下文初始化与安全白名单 —— 运营中心的「开业备案与食安体系」
 
-### common_preset_context 构造函数 —— 初始化运营中心档案库
+### 45.4.1 common_preset_context 构造函数 —— 初始化运营中心档案库
 
 **源码路径：`common/preset.cpp` (第 255-264 行)**
 
@@ -178,7 +178,7 @@ common_preset_context::common_preset_context(llama_example ex, bool only_remote_
 
 ---
 
-### get_map_key_opt —— 建立「菜品编号对照表」
+### 45.4.2 get_map_key_opt —— 建立「菜品编号对照表」
 
 **源码路径：`common/preset.cpp` (第 236-247 行)**
 
@@ -206,7 +206,7 @@ static std::map<std::string, common_arg> get_map_key_opt(common_params_context &
 
 ---
 
-### get_remote_preset_whitelist —— 生成「过敏原管控白名单」
+### 45.4.3 get_remote_preset_whitelist —— 生成「过敏原管控白名单」
 
 **源码路径：`common/preset.cpp` (第 20-41 行)**
 
@@ -246,9 +246,9 @@ static std::set<std::string> get_remote_preset_whitelist(const std::map<std::str
 
 ---
 
-## 预设的增删改查 —— 菜谱卡的「现场改单与查阅」
+## 45.5 预设的增删改查 —— 菜谱卡的「现场改单与查阅」
 
-### rm_leading_dashes —— 统一键名格式的「去修饰器」
+### 45.5.1 rm_leading_dashes —— 统一键名格式的「去修饰器」
 
 **源码路径：`common/preset.cpp` (第 8-14 行)**
 
@@ -270,7 +270,7 @@ static std::string rm_leading_dashes(const std::string & str) {
 
 ---
 
-### is_bool_arg —— 判断「是否为开关型参数」
+### 45.5.2 is_bool_arg —— 判断「是否为开关型参数」
 
 **源码路径：`common/preset.cpp` (第 249-251 行)**
 
@@ -286,7 +286,7 @@ static bool is_bool_arg(const common_arg & arg) {
 
 ---
 
-### parse_bool_arg —— 解析「开关型参数的取反逻辑」
+### 45.5.3 parse_bool_arg —— 解析「开关型参数的取反逻辑」
 
 **源码路径：`common/preset.cpp` (第 253-263 行)**
 
@@ -309,7 +309,7 @@ static std::string parse_bool_arg(const common_arg & arg, const std::string & ke
 
 ---
 
-### common_preset::set_option —— 「现场改单」：按环境变量名增改选项
+### 45.5.4 common_preset::set_option —— 「现场改单」：按环境变量名增改选项
 
 **源码路径：`common/preset.cpp` (第 102-119 行)**
 
@@ -338,7 +338,7 @@ void common_preset::set_option(const common_preset_context & ctx, const std::str
 
 ---
 
-### common_preset::unset_option —— 「退菜」：按环境变量名删除选项
+### 45.5.5 common_preset::unset_option —— 「退菜」：按环境变量名删除选项
 
 **源码路径：`common/preset.cpp` (第 121-133 行)**
 
@@ -362,7 +362,7 @@ void common_preset::unset_option(const std::string & env) {
 
 ---
 
-### common_preset::get_option —— 「查阅菜谱」：按环境变量名读取选项值
+### 45.5.6 common_preset::get_option —— 「查阅菜谱」：按环境变量名读取选项值
 
 **源码路径：`common/preset.cpp` (第 135-144 行)**
 
@@ -384,9 +384,9 @@ bool common_preset::get_option(const std::string & env, std::string & value) con
 
 ---
 
-## 预设的加载与级联 —— 从「中央厨房/供应商/分店」汇聚菜谱库
+## 45.6 预设的加载与级联 —— 从「中央厨房/供应商/分店」汇聚菜谱库
 
-### parse_ini_from_file —— 「标准菜谱文档」解析器
+### 45.6.1 parse_ini_from_file —— 「标准菜谱文档」解析器
 
 **源码路径：`common/preset.cpp` (第 180-253 行)**
 
@@ -469,7 +469,7 @@ static std::map<std::string, std::map<std::string, std::string>> parse_ini_from_
 
 ---
 
-### load_from_ini —— 从「总部标准菜谱手册」批量生成预设
+### 45.6.2 load_from_ini —— 从「总部标准菜谱手册」批量生成预设
 
 **源码路径：`common/preset.cpp` (第 266-315 行)**
 
@@ -534,7 +534,7 @@ common_presets common_preset_context::load_from_ini(const std::string & path, co
 
 ---
 
-### load_from_cache —— 从「中央厨房预制库」生成预设
+### 45.6.3 load_from_cache —— 从「中央厨房预制库」生成预设
 
 **源码路径：`common/preset.cpp` (第 317-329 行)**
 
@@ -563,7 +563,7 @@ common_presets common_preset_context::load_from_cache() const {
 
 ---
 
-### load_from_models_dir —— 从「分店本地食材库」扫描生成预设
+### 45.6.4 load_from_models_dir —— 从「分店本地食材库」扫描生成预设
 
 **源码路径：`common/preset.cpp` (第 338-394 行)**
 
@@ -639,7 +639,7 @@ common_presets common_preset_context::load_from_models_dir(const std::string & m
 
 ---
 
-### load_from_args —— 从「分店临时点单」生成预设
+### 45.6.5 load_from_args —— 从「分店临时点单」生成预设
 
 **源码路径：`common/preset.cpp` (第 396-406 行)**
 
@@ -663,7 +663,7 @@ common_preset common_preset_context::load_from_args(int argc, char ** argv) cons
 
 ---
 
-### cascade（重载一：集合级联）—— 「菜谱版本合并」：同名覆盖、异名新增
+### 45.6.6 cascade（重载一：集合级联）—— 「菜谱版本合并」：同名覆盖、异名新增
 
 **源码路径：`common/preset.cpp` (第 408-421 行)**
 
@@ -691,7 +691,7 @@ common_presets common_preset_context::cascade(const common_presets & base, const
 
 ---
 
-### cascade（重载二：单预设广播）—— 「基础菜谱+差异菜谱」批量生成最终菜单
+### 45.6.7 cascade（重载二：单预设广播）—— 「基础菜谱+差异菜谱」批量生成最终菜单
 
 **源码路径：`common/preset.cpp` (第 423-434 行)**
 
@@ -715,9 +715,9 @@ common_presets common_preset_context::cascade(const common_preset & base, const 
 
 ---
 
-## 预设的转换与应用 —— 从「菜谱卡」到「后厨指令」与「存档文档」
+## 45.7 预设的转换与应用 —— 从「菜谱卡」到「后厨指令」与「存档文档」
 
-### common_preset::to_args —— 生成「后厨执行指令单」（命令行参数列表）
+### 45.7.1 common_preset::to_args —— 生成「后厨执行指令单」（命令行参数列表）
 
 **源码路径：`common/preset.cpp` (第 43-83 行)**
 
@@ -771,7 +771,7 @@ std::vector<std::string> common_preset::to_args(const std::string & bin_path) co
 
 ---
 
-### common_preset::to_ini —— 生成「标准存档菜谱文档」（INI 文本）
+### 45.7.2 common_preset::to_ini —— 生成「标准存档菜谱文档」（INI 文本）
 
 **源码路径：`common/preset.cpp` (第 85-100 行)**
 
@@ -802,7 +802,7 @@ std::string common_preset::to_ini() const {
 
 ---
 
-### common_preset::merge —— 「菜谱融合」：以另一预设覆盖当前同名选项
+### 45.7.3 common_preset::merge —— 「菜谱融合」：以另一预设覆盖当前同名选项
 
 **源码路径：`common/preset.cpp` (第 146-151 行)**
 
@@ -820,7 +820,7 @@ void common_preset::merge(const common_preset & other) {
 
 ---
 
-### common_preset::apply_to_params —— 「下达出品指令」：将菜谱参数应用到运行时对象
+### 45.7.4 common_preset::apply_to_params —— 「下达出品指令」：将菜谱参数应用到运行时对象
 
 **源码路径：`common/preset.cpp` (第 153-178 行)**
 
@@ -854,7 +854,7 @@ void common_preset::apply_to_params(common_params & params) const {
 
 ---
 
-## 设计中的取舍
+## 45.8 设计中的取舍
 
 **Q: 为什么选择 PEG 解析器而非现成的 INI 库（如 inih）解析配置文件？**  
 A: PEG 解析器以 Header-only 形式内嵌于代码库，零外部依赖，且语法规则可在 C++ 代码中以 DSL 形式声明，便于针对 llama.cpp 的特殊需求（如键名允许点号/连字符、值支持多行转义、注释风格兼容 `;` 和 `#`）精确定制。引入第三方库会增加构建复杂度和依赖风险，且难以精确控制错误报告的行列信息。
@@ -873,7 +873,7 @@ A: 分片模型只有首分片包含完整元数据，后续分片不可单独�
 
 ---
 
-## 动手练习
+## 45.9 动手练习
 
 - 创建一个包含模型路径、批处理大小和聊天模板参数的预设，使用 `to_ini` 将其序列化为 INI 字符串，然后使用 `load_from_ini` 重新加载，验证序列化和反序列化的正确性。
 - 为一个新的模型源“my-model”编写专用预设加载函数，并将其集成到 `common_preset_context` 中，然后测试加载和级联流程。
@@ -883,7 +883,7 @@ A: 分片模型只有首分片包含完整元数据，后续分片不可单独�
 
 ---
 
-## 本章小结
+## 45.10 本章小结
 
 本章我们一起学习了以下概念：
 

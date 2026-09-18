@@ -1,5 +1,5 @@
 
-# 第96章 模型文件工具链 —— 集装箱工厂的质检与精炼流水线
+# 第95章 模型文件工具链 —— 集装箱工厂的质检与精炼流水线
 
 ## 学习目标
 
@@ -14,7 +14,7 @@
 - 理解 GGUF 词表双源加载与 SentencePiece 空白转义策略
 - 了解 deprecation-warning 与 gen-docs 工具在项目生态中的辅助作用
 
-## 96.1 生活类比：从集装箱与质检工厂看模型文件工具链
+## 95.1 生活类比：从集装箱与质检工厂看模型文件工具链
 
 在深入本章源码之前，让我们先建立一幅完整的意象图，它将贯穿整个章节，帮助你把抽象的系统调用与具体的工程概念联系起来。请注意，这一章的核心不是模型推理本身，而是围绕模型文件建立一套“可写、可读、可校验、可迁移、可维护”的基础工具链。为了便于你理解，我们将这套工具链比喻为一座“集装箱与质检工厂”。
 
@@ -30,7 +30,7 @@ gguf-hash 是工厂的指纹识别中心，它的职责是给每个集装箱和�
 
 本章将沿着“集装箱——质检——精炼——维护”这条流水线，逐一剖析每台设备（源码文件）的内部构造与工作原理。
 
-## 96.2 源码地图
+## 95.2 源码地图
 
 ```
 examples/gguf/gguf.cpp
@@ -153,7 +153,7 @@ examples/gen-docs/gen-docs.cpp
 └── main()                      # 批量替换 README 中的帮助区块
 ```
 
-## 96.3 GGUF 读写示例 —— 集装箱的“装箱与拆箱演练”
+## 95.3 GGUF 读写示例 —— 集装箱的“装箱与拆箱演练”
 
 **为什么需要 `gguf_ex_write`？** 它演示了如何从零创建一个 GGUF 文件，就像学习如何打包一个标准集装箱。通过这个示例，你可以掌握 GGUF 文件格式的完整写入流程：从基础标量元数据（uint8/int8/float32/bool/string）到数组元数据（int16 数组、float32 数组、字符串数组），再到创建随机维度的 F32 张量并填充数据后写入文件。随后，`gguf_ex_read_0` 和 `gguf_ex_read_1` 展示了 GGUF 的两种读取模式：`gguf_ex_read_0` 只加载元数据而不加载张量数据，适合快速浏览文件内容；`gguf_ex_read_1` 则同时创建 GGML 上下文并加载张量数据，适合实际推理前的完整加载。
 
@@ -161,7 +161,7 @@ examples/gen-docs/gen-docs.cpp
 
 `to_string()` 模板工具是一个通用模板函数，用 stringstream 将任意类型值转为字符串。它在 `gguf_ex_write` 中为张量生成序号化名称（tensor_0、tensor_1、...），展示了 C++ 模板在实际代码中的简洁应用。
 
-### `to_string()`：通用类型转字符串工具
+### 95.3.1 `to_string()`：通用类型转字符串工具
 
 源码路径：`examples/gguf/gguf.cpp` - `to_string()`（16-21行）
 
@@ -180,7 +180,7 @@ static std::string to_string(const T & val) {
 
 这段代码定义了一个泛型字符串转换函数，利用 `std::stringstream` 的流插入运算符，将任意可流式输出的类型转换为字符串。它避免了 C 风格的 `snprintf` 带来的类型不安全问题，是 C++ 中类型安全的通用转换工具。
 
-### `gguf_ex_write()`：从零创建 GGUF 文件的完整流程
+### 95.3.2 `gguf_ex_write()`：从零创建 GGUF 文件的完整流程
 
 源码路径：`examples/gguf/gguf.cpp` - `gguf_ex_write()`（23-93行）
 
@@ -253,7 +253,7 @@ static bool gguf_ex_write(const std::string & fname) {
 
 这段代码完整演示了 GGUF 文件的写入流程：先创建空的 GGUF 上下文，通过 `gguf_set_val_*` 系列函数写入标量元数据，通过 `gguf_set_arr_data` 和 `gguf_set_arr_str` 写入数组元数据；然后在 GGML 上下文中创建随机维度的张量并填充数据，通过 `gguf_add_tensor` 注册张量，最后通过 `gguf_write_to_file` 一次写盘。整个流程就像打包一个集装箱：先写箱单（元数据），再装货物（张量数据），最后封箱（写盘）。`gguf_write_to_file` 的第三个参数为 `false`，表示写入时不启用额外的数据对齐，文件布局按“元数据区 + 张量数据区”的顺序依次写出：函数内部首先序列化文件头、元数据键值对和所有张量信息，随后将所有张量的原始数据按注册顺序连续写入文件的数据区。
 
-### `gguf_ex_read_0()`：只读元数据模式
+### 95.3.3 `gguf_ex_read_0()`：只读元数据模式
 
 源码路径：`examples/gguf/gguf.cpp` - `gguf_ex_read_0()`（96-160行）
 
@@ -316,7 +316,7 @@ static bool gguf_ex_read_0(const std::string & fname) {
 
 这段代码演示了 GGUF 的只读元数据模式。通过 `gguf_init_from_file` 并在参数中设置 `ctx=NULL`，可以仅加载文件的元数据部分而不触及张量数据。这种模式非常适合快速浏览文件内容、检查元数据键值对和张量信息，就像只读取集装箱的箱单而不拆箱查看货物。在读取文件级元信息时，`version` 表示 GGUF 格式的版本号，`alignment` 表示数据对齐的字节数，`data offset` 表示张量数据区在文件中的起始字节偏移。
 
-### `gguf_ex_read_1()`：完整加载模式与数据校验
+### 95.3.4 `gguf_ex_read_1()`：完整加载模式与数据校验
 
 源码路径：`examples/gguf/gguf.cpp` - `gguf_ex_read_1()`（163-270行）
 
@@ -399,7 +399,7 @@ static bool gguf_ex_read_1(const std::string & fname, bool check_data) {
 
 这段代码演示了 GGUF 的完整加载模式。通过在 `gguf_init_params` 中传入 `&ctx_data`，同时加载元数据和张量数据到 GGML 上下文。`ggml_get_tensor` 可以按名称查找张量。在打印前 10 个元素时，`MIN(10, ggml_nelements(cur))` 宏用于在张量元素总数不足 10 个时防止越界读取。`check_data` 参数控制是否执行数据一致性校验，验证读出的数据是否与写入时的预期值（100+i）一致，确保文件读写循环的正确性。
 
-### `__main__`：模式分发与入口控制
+### 95.3.5 `__main__`：模式分发与入口控制
 
 源码路径：`examples/gguf/gguf.cpp` - `__main__`（272-305行）
 
@@ -446,7 +446,7 @@ int main(int argc, char ** argv) {
 
 这段代码是演示程序的控制入口。它解析命令行参数（文件名、读写模式、是否校验数据），通过 `srand(123456)` 固定随机种子保证张量创建的可复现性，然后根据模式调用写入或读取函数。`GGML_ASSERT((mode == "r" || mode == "w") && "mode must be r or w")` 这一断言用于在开发阶段强制检查 `mode` 参数必须是 `"r"` 或 `"w"` 之一，如果传入其他值则程序立即终止，从而避免用无效模式调用后续函数。读取模式下会同时执行只读元数据和完整加载两种模式，展示 GGUF 的两种读取能力。
 
-### 数据流与时序
+### 95.3.6 数据流与时序
 
 下图展示了 gguf.cpp 示例程序的完整数据流，从写入模式到两种读取模式的转换：
 
@@ -483,7 +483,7 @@ graph LR
 
 这个流程图清晰地展示了写入模式如何生成 GGUF 文件，以及两种读取模式如何从同一文件中获取信息。写入模式的关键在于 `gguf_init_empty` 创建空上下文后，按元数据 → 张量的顺序逐步填充；读取模式则通过是否传入 `ctx_data` 来区分只读元数据和完整加载。整个流程展示了 GGUF 格式“写入一次，多种读取方式”的设计理念。
 
-## 96.4 GGUF 哈希校验工具 —— 模型完整性的“指纹鉴定师”
+## 95.4 GGUF 哈希校验工具 —— 模型完整性的“指纹鉴定师”
 
 **多算法哈希体系**：gguf-hash 支持 xxh64（极速非加密哈希）、SHA-1、SHA-256 三种哈希算法，每种算法都有独立的流式状态管理（`XXH64_state_t`、`SHA1_CTX`、`sha256_t`）。此外，还基于 SHA-1 实现 UUIDv5 生成，为模型提供全局唯一标识符。
 
@@ -491,7 +491,7 @@ graph LR
 
 **Manifest 校验机制**：`manifest_type` 扫描清单文件自动识别包含的哈希类型；`manifest_verify` 逐行匹配哈希类型和张量名，返回 Ok/Mismatch/NotFound；退出码设计覆盖 Success/Failure/Mismatch/MissingEntry/UnknownHash/FileError 六种状态。
 
-### `hash_manifest_result_to_str()` 与 `hash_exit_code_to_str()`：枚举到可读字符串的映射
+### 95.4.1 `hash_manifest_result_to_str()` 与 `hash_exit_code_to_str()`：枚举到可读字符串的映射
 
 源码路径：`examples/gguf-hash/gguf-hash.cpp` - `hash_manifest_result_to_str()`（79-87行）与 `hash_exit_code_to_str()`（89-99行）
 
@@ -522,7 +522,7 @@ static char const * hash_exit_code_to_str(hash_exit_code_t value) {
 
 这两个函数将内部的枚举类型映射为人类可读的字符串，方便用户查看校验结果。`hash_manifest_result_to_str` 覆盖清单校验的三种结果状态，而 `hash_exit_code_to_str` 覆盖整个程序的六种退出状态，是工具输出的关键部分。
 
-### `hash_print_usage()` 与 `hash_params_parse()`：参数解析的异常安全包装
+### 95.4.2 `hash_print_usage()` 与 `hash_params_parse()`：参数解析的异常安全包装
 
 源码路径：`examples/gguf-hash/gguf-hash.cpp` - `hash_print_usage()`（101-116行）、`hash_params_parse_ex()`（118-157行）、`hash_params_parse()`（159-170行）
 
@@ -598,7 +598,7 @@ static bool hash_params_parse(int argc, const char ** argv, hash_params & params
 
 这三段代码构成了完整的参数解析体系：`hash_print_usage` 提供用户友好的帮助信息；`hash_params_parse_ex` 是严格解析器，遇到任何非法参数就抛出 `invalid_argument` 异常；`hash_params_parse` 作为异常安全包装，捕获异常、打印错误信息和帮助后统一以失败码退出。这种分层设计将解析逻辑与错误处理分离，使代码更清晰易维护。注意 `--all` 选项的行为：它启用 xxh64、sha1、sha256 三种哈希算法，但不启用 `--uuid`，因为 UUID 是一个独立的标识符选项，需要用户显式指定。
 
-### `manifest_type()` 与 `manifest_verify()`：清单识别与逐条校验
+### 95.4.3 `manifest_type()` 与 `manifest_verify()`：清单识别与逐条校验
 
 源码路径：`examples/gguf-hash/gguf-hash.cpp` - `manifest_type()`（172-188行）与 `manifest_verify()`（190-209行）
 
@@ -646,7 +646,7 @@ static hash_manifest_result_t manifest_verify(const std::string& manifest_file, 
 
 这两段代码实现了清单文件的解析和校验。`manifest_type` 通过读取每行的第一个字段来识别清单包含哪些哈希类型，用于后续的参数默认值设置。`manifest_verify` 则逐行匹配哈希类型和张量名，最终比较哈希值是否一致，返回 OK、Mismatch 或 Not Found 三种结果。
 
-### `generate_uuidv5()`：基于 SHA-1 的 UUIDv5 生成
+### 95.4.4 `generate_uuidv5()`：基于 SHA-1 的 UUIDv5 生成
 
 源码路径：`examples/gguf-hash/gguf-hash.cpp` - `generate_uuidv5()`（211-217行）
 
@@ -666,7 +666,7 @@ static void generate_uuidv5(const unsigned char sha1_digest[20], unsigned char u
 
 这段代码将一个 20 字节的 SHA-1 摘要转换为符合 RFC 9562（前身 RFC 4122）规范的 UUIDv5。关键在于对第 6 字节设置版本位 0101（版本 5）和第 8 字节设置变体位 10（RFC 4122 变体），确保生成的 UUID 在全球范围内具有唯一性和标准兼容性。
 
-### `gguf_hash()`：核心哈希与校验主流程
+### 95.4.5 `gguf_hash()`：核心哈希与校验主流程
 
 源码路径：`examples/gguf-hash/gguf-hash.cpp` - `gguf_hash()`（219-420行）
 
@@ -902,7 +902,7 @@ static hash_exit_code_t gguf_hash(const hash_params & hash_params) {
 
 **张量级哈希与模型级哈希的分工**：张量级哈希是对每个张量的原始数据单独计算哈希值，命名格式为 `文件名:张量名`，用于精确定位模型中的哪一个张量发生了损坏或改变。模型级哈希是对模型中所有张量数据按顺序进行流式更新后计算出的单一哈希值，命名格式为 `文件名`，用于快速判断整个模型文件是否与原始版本一致。退出码的汇总逻辑为：如果 manifest 中不存在模型条目，则检查是否存在张量层条目，如果也不存在则返回 `HASH_EXIT_MANIFEST_MISSING_ENTRY`；如果存在但有不匹配则返回 `HASH_EXIT_FAILURE`；否则返回 `HASH_EXIT_SUCCESS`。如果模型条目存在但不匹配，则直接返回 `HASH_EXIT_FAILURE`。
 
-### 双层哈希与 Manifest 校验流程图
+### 95.4.6 双层哈希与 Manifest 校验流程图
 
 下图展示了 gguf-hash 的核心执行流程：
 
@@ -935,7 +935,7 @@ graph TD
 
 这张流程图清晰地展示了 gguf-hash 的双层哈希策略：外层循环计算每个张量的哈希，内层流式更新模型级哈希状态。manifest 校验在张量级和模型级都会执行，最终的退出码由所有校验结果综合决定。这种设计让用户既可以检查单个张量是否损坏，也可以验证整个模型的完整性。
 
-## 96.5 哈希算法依赖库 —— 密码学工具箱中的“三剑客与极速新贵”
+## 95.5 哈希算法依赖库 —— 密码学工具箱中的“三剑客与极速新贵”
 
 本小节将深入 `examples/gguf-hash/deps/` 目录下的哈希算法依赖库，它们构成了 gguf-hash 工具的“密码学工具箱”。这个工具箱里有四位成员：**位旋转宏**（rotate-bits.h）是工具箱的“基础扳手”，为所有哈希算法提供位级操作原语；**SHA-1**（sha1.c/sha1.h）是经典的 80 轮循环压缩实现的“老工匠”，输出 20 字节摘要；**SHA-256**（sha256.c/sha256.h）是更安全的 64 轮压缩实现的“精进者”，输出 32 字节摘要；**xxHash**（xxhash.h）则是追求极致速度的“极速新贵”，提供 XXH32/XXH64/XXH3 三代算法家族。下面我们逐一了解它们的实现细节。
 
@@ -949,7 +949,7 @@ xxhash.h 是极速非加密哈希的巨兽，单文件包含 XXH32/XXH64/XXH3-64
 
 需要说明的是，本小节聚焦于 rotate-bits.h、sha1.c/sha1.h、sha256.c/sha256.h 的完整实现；xxhash.h 的内容非常庞大，将在第 96.6、96.7、96.8、96.9 小节中深入展开。对于 SHA-1 的压缩轮宏（R0-R79）的具体展开形式，以及 SHA-256 的 64 轮操作宏（`R(i)`、`RX_8`）的详细定义，由于它们属于展开实现的内部细节，正文不再逐行罗列，但会在下文中给出每个宏对应的逻辑函数与常量。
 
-### `rotate-bits.h`：跨平台位旋转宏
+### 95.5.1 `rotate-bits.h`：跨平台位旋转宏
 
 源码路径：`examples/gguf-hash/deps/rotate-bits/rotate-bits.h`（2-39行）
 
@@ -997,7 +997,7 @@ xxhash.h 是极速非加密哈希的巨兽，单文件包含 XXH32/XXH64/XXH3-64
 
 这段代码定义了完整的位旋转宏家族。在 MSVC 上利用编译器的内置函数获得最佳性能，在其他平台通过移位和或运算手动实现。特别注意 `ROTR32(v, n)` 等价于 `ROTL32(v, 32-n)` 的数学等价性，简化了宏数量。这些宏是 SHA-1、SHA-256 和 XXH 系列哈希算法中的核心操作原语。
 
-### `SHA1Transform()`：SHA-1 核心 80 轮压缩
+### 95.5.2 `SHA1Transform()`：SHA-1 核心 80 轮压缩
 
 源码路径：`examples/gguf-hash/deps/sha1/sha1.c` - `SHA1Transform()`（45-139行）
 
@@ -1049,7 +1049,7 @@ void SHA1Transform(uint32_t state[5], const unsigned char buffer[64]) {
 
 这段代码是 SHA-1 算法的核心压缩函数。它接收 5 个状态字和一个 64 字节数据块，通过 80 轮混合操作（四组不同的逻辑函数 F 和常量 K），将块的信息混合到状态中。循环展开宏 R0-R79 避免了循环控制开销，提升性能。最终状态值经过累加更新，完成对单个块的处理。这是 SHA-1 中最关键的计算密集部分。
 
-### `SHA1Init()` 与 `SHA1Update()`：状态初始化与流式更新
+### 95.5.3 `SHA1Init()` 与 `SHA1Update()`：状态初始化与流式更新
 
 源码路径：`examples/gguf-hash/deps/sha1/sha1.c` - `SHA1Init()`（148-161行）与 `SHA1Update()`（170-193行）
 
@@ -1087,7 +1087,7 @@ void SHA1Update(SHA1_CTX * context, const unsigned char *data, uint32_t len) {
 
 `SHA1Init` 用五个初始常量（取自十六进制平方根的小数部分）设置状态，清零计数器。`SHA1Update` 实现了经典的流式更新逻辑：先填充缓冲区，满 64 字节就调用 `SHA1Transform` 压缩；如果有多个完整块，直接对每个块调用 `SHA1Transform`；最后将尾部不足 64 字节的数据暂存到缓冲区。
 
-### `SHA1Final()` 与 `SHA1()`：收尾与一次性封装
+### 95.5.4 `SHA1Final()` 与 `SHA1()`：收尾与一次性封装
 
 源码路径：`examples/gguf-hash/deps/sha1/sha1.c` - `SHA1Final()`（199-229行）与 `SHA1()`（231-241行）
 
@@ -1129,7 +1129,7 @@ void SHA1(char *hash_out, const char *str, uint32_t len) {
 
 `SHA1Final` 按照 MD 结构哈希的标准流程收尾：追加 `0x80`、填充零到 56 字节位置（`while ((context->count[0] & 504) != 448)` 检查当前位数是否已达到 448 位，即 56 字节；如果未达到则持续填充零字节）、追加 64 位原始长度、最终压缩、按大端序输出 20 字节摘要。`SHA1` 是一次性计算的便捷封装，内部通过循环逐字节调用 `SHA1Update` 完成全部更新。
 
-### `sha256_init()`：SHA-256 状态初始化
+### 95.5.5 `sha256_init()`：SHA-256 状态初始化
 
 源码路径：`examples/gguf-hash/deps/sha256/sha256.c` - `sha256_init()`（22-35行）
 
@@ -1150,7 +1150,7 @@ void sha256_init(sha256_t *p) {
 
 `sha256_init` 设置 SHA-256 的 8 个 32 位初始状态常量（取自自然对数平方根的小数部分）并清零计数器。与 SHA-1 的 5 个状态字相比，SHA-256 使用 8 个状态字，这是两者在算法结构上的关键差异。
 
-### `sha256_transform()`：64 轮压缩核心与宏展开优化
+### 95.5.6 `sha256_transform()`：64 轮压缩核心与宏展开优化
 
 源码路径：`examples/gguf-hash/deps/sha256/sha256.c` - `sha256_transform()`（88-134行）
 
@@ -1190,7 +1190,7 @@ static void sha256_transform(uint32_t *state, const uint32_t *data) {
 
 这段代码展示了 `sha256_transform` 的两种宏展开优化策略。默认情况下，函数通过两层循环（外层 4 次，内层 16 次）完成 64 轮计算，每轮调用 `R(i)` 宏。`R(i)` 宏首先将 `W[i]` 更新为 `W[i-16] + s0(W[i-15]) + W[i-7] + s1(W[i-2])`，然后执行一步压缩操作。当定义了 `_SHA256_UNROLL` 宏时，内层循环被替换为 `RX_8(0); RX_8(8);` 两次宏调用，每次展开 8 轮操作，减少循环控制开销。当定义了 `_SHA256_UNROLL2` 宏时，不仅内层循环展开，状态变量也被直接存储在局部变量中（而非数组 `T[8]`），进一步减少了数组索引操作，提高了性能。
 
-### `sha256_write_byte_block()` 与 `sha256_update()`：字节块到字的转换与流式更新
+### 95.5.7 `sha256_write_byte_block()` 与 `sha256_update()`：字节块到字的转换与流式更新
 
 源码路径：`examples/gguf-hash/deps/sha256/sha256.c` - `sha256_write_byte_block()`（143-154行）与 `sha256_update()`（169-183行）
 
@@ -1227,7 +1227,7 @@ void sha256_update(sha256_t *p, const unsigned char *data, size_t size) {
 
 `sha256_write_byte_block` 是 SHA-256 流水线中的关键中间步骤。它将缓冲区的 64 个字节按大端序打包成 16 个 32 位字，然后调用 `sha256_transform` 执行 64 轮压缩。`sha256_update` 实现了简单的逐字节流式更新：每当缓冲区累计达 64 字节时触发压缩。这种"字节收集 → 字打包 → 压缩"的模式是 SHA-256 流式处理的基础，确保无论输入如何分块，最终都能按 512 位块正确压缩。
 
-### `sha256_final()` 与 `sha256_hash()`：收尾填充与一次性封装
+### 95.5.8 `sha256_final()` 与 `sha256_hash()`：收尾填充与一次性封装
 
 源码路径：`examples/gguf-hash/deps/sha256/sha256.c` - `sha256_final()`（187-210行）与 `sha256_hash()`（160-165行）
 
@@ -1270,7 +1270,7 @@ void sha256_hash(unsigned char *buf, const unsigned char *data, size_t size) {
 
 `sha256_final` 完成复杂的收尾流程：追加 `0x80` 填充起始位，填充零到 56 字节位置（注意：如果 `curBufferPos` 已经超过 56，说明当前缓冲区不足以容纳 8 字节长度信息，此时需要先把当前缓冲区填满并压缩，然后在新缓冲区中继续填充零，直到到达 56 字节位置），追加 64 位原始长度信息，执行最后一次压缩，最后按大端序输出 32 字节摘要。收尾后重置上下文，方便下一轮哈希计算。`sha256_hash` 是一次性计算的便捷封装，内部依次调用 init、update、final 三个步骤。
 
-### SHA-1 与 SHA-256 对比
+### 95.5.9 SHA-1 与 SHA-256 对比
 
 下表总结了 SHA-1 与 SHA-256 在实现上的关键差异：
 
@@ -1286,7 +1286,7 @@ void sha256_hash(unsigned char *buf, const unsigned char *data, size_t size) {
 
 从表中可以看出，SHA-256 在安全强度上显著强于 SHA-1（SHA-1 已被证实存在碰撞攻击），但计算开销也更高。gguf-hash 同时提供两者，让用户在安全性与性能之间灵活取舍。
 
-## 96.6 XXH32/XXH64 经典哈希 —— 流式状态管理的“双子星”
+## 95.6 XXH32/XXH64 经典哈希 —— 流式状态管理的“双子星”
 
 本小节深入 xxhash 库中的经典哈希算法 XXH32 与 XXH64。它们像一对“双子星”，共享相同的算法结构（4 个累加器、流式生命周期、规范表示），但分别面向 32 位和 64 位平台优化。我们将依次分析它们的流式状态生命周期管理（createState → reset → update → digest → freeState/copyState）与规范化表示转换（canonicalFromHash/hashFromCanonical）。
 
@@ -1296,7 +1296,7 @@ void sha256_hash(unsigned char *buf, const unsigned char *data, size_t size) {
 
 规范化表示（Canonical）转换由 `canonicalFromHash` 把哈希值转为大端序规范表示，`hashFromCanonical` 从大端序还原，解决跨平台存储和传输时的字节序兼容问题。
 
-### `XXH32_createState()` 与 `XXH32_reset()`：状态分配与初始化
+### 95.6.1 `XXH32_createState()` 与 `XXH32_reset()`：状态分配与初始化
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH32_createState()`（459-466行）与 `XXH32_reset()`（495-510行）
 
@@ -1320,7 +1320,7 @@ XXH_PUBLIC_API XXH_errorcode XXH32_reset(XXH32_state_t* statePtr, XXH32_hash_t s
 
 这两个函数构成了 XXH32 流式哈希的起点。`XXH32_createState` 使用 `XXH_malloc` 分配状态对象，确保与内部内存管理一致。`XXH32_reset` 完全清零状态后，用种子结合五个质数常量初始化 4 个累加器。累加器的设计是 xxHash 算法可并行处理 16 字节块的关键数据结构。
 
-### `XXH32_update()`：流式数据消费与缓冲管理
+### 95.6.2 `XXH32_update()`：流式数据消费与缓冲管理
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH32_update()`（512-528行）
 
@@ -1374,7 +1374,7 @@ XXH_PUBLIC_API XXH_errorcode XXH32_update(XXH32_state_t* state, const void* inpu
 
 `XXH32_update` 是流式哈希的数据入口。它首先处理缓冲区中的残留数据（不足 16 字节的部分），然后通过主循环每轮消费 16 字节并更新 4 个累加器，最后将不足 16 字节的尾部暂存到缓冲区。`state->large_len` 位标志的设置逻辑是 `(len>=16) | (state->total_len_32>=16)`，它表示只要当前批次长度达到 16 字节或累计总长度达到 16 字节，就标记为"大输入"模式。这个标志在 `XXH32_digest()` 中决定使用累加器合并路径还是简单的种子初始化路径。这种设计确保了输出与一次性哈希完全一致，同时支持任意长度的增量更新，是流式 API 的核心价值所在。
 
-### `XXH32_digest()` 与 `XXH32_canonicalFromHash()`：摘要生成与规范表示
+### 95.6.3 `XXH32_digest()` 与 `XXH32_canonicalFromHash()`：摘要生成与规范表示
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH32_digest()`（530-543行）与 `XXH32_canonicalFromHash()`（558-568行）
 
@@ -1407,7 +1407,7 @@ XXH_PUBLIC_API void XXH32_canonicalFromHash(XXH32_canonical_t* dst, XXH32_hash_t
 
 `XXH32_digest` 完成流式哈希的收尾：合并 4 个累加器（每个不同旋转量），加入总长度，处理尾部字节并执行最终雪崩混合。`XXH_aligned` 参数表示 `state->mem32` 缓冲区在状态结构内部已经是对齐的，因为结构体成员的对齐保证了 `mem32` 的起始地址至少是 4 字节对齐的，因此可以直接使用对齐读取路径。`canonicalFromHash` 解决了跨平台字节序兼容问题——哈希值以固定的大端序（规范表示）存储，确保在不同字节序平台间可移植。补充说明：哈希值在内部计算时使用本机字节序，而规范表示固定使用大端序，因此 `hashFromCanonical` 在反向转换时需要根据平台字节序决定是否交换。
 
-### `XXH32_freeState()` 与 `XXH32_copyState()`：资源管理与状态复制
+### 95.6.4 `XXH32_freeState()` 与 `XXH32_copyState()`：资源管理与状态复制
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH32_freeState()`（468-478行）与 `XXH32_copyState()`（480-493行）
 
@@ -1426,7 +1426,7 @@ XXH_PUBLIC_API void XXH32_copyState(XXH32_state_t* dstState, const XXH32_state_t
 
 `XXH32_freeState` 通过 `XXH_free` 释放状态对象，与 `XXH_malloc` 对称。`XXH32_copyState` 使用 `XXH_memcpy` 完整复制状态结构，这要求 `XXH32_state_t` 是普通可复制类型。与 XXH3 不同，XXH32 的状态结构比较简单，内部只包含累加器、缓冲区、计数器和标志位，因此浅复制即可。
 
-### `XXH64_update()`：64 位版本的流式数据消费
+### 95.6.5 `XXH64_update()`：64 位版本的流式数据消费
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH64_update()`（754-770行）
 
@@ -1474,7 +1474,7 @@ XXH_PUBLIC_API XXH_errorcode XXH64_update (XXH_NOESCAPE XXH64_state_t* state, XX
 
 `XXH64_update` 与 `XXH32_update` 结构对称，但处理的数据块大小为 32 字节（4 个 64 位通道）。`XXH64_digest` 的流程也与 `XXH32_digest` 类似：在 `total_len >= 32` 时合并 4 个累加器并执行 `mergeRound`，短输入时用种子加质数初始化，最后调用 `XXH64_finalize` 处理尾部并执行雪崩。需要注意的是，XXH64 的状态结构使用 `total_len`（64 位）而非 `total_len_32`，并且没有 `large_len` 标志，长度判断直接在 `XXH64_digest` 中通过 `state->total_len >= 32` 完成。
 
-### `XXH64_canonicalFromHash()` 与 `XXH64_hashFromCanonical()`：64 位规范表示转换
+### 95.6.6 `XXH64_canonicalFromHash()` 与 `XXH64_hashFromCanonical()`：64 位规范表示转换
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH64_canonicalFromHash()`（800-810行）与 `XXH64_hashFromCanonical()`（812-821行）
 
@@ -1494,7 +1494,7 @@ XXH_PUBLIC_API XXH64_hash_t XXH64_hashFromCanonical(const XXH64_canonical_t* src
 
 `XXH64_canonicalFromHash` 与 32 位版本逻辑相同，只是使用 64 位交换函数。`XXH64_hashFromCanonical` 通过 `XXH_readBE64` 读取大端序数据并在本机字节序不一致时自动交换。这两个函数共同保证了哈希值在不同平台间的可移植表示。
 
-### XXH32 与 XXH64 对比
+### 95.6.7 XXH32 与 XXH64 对比
 
 下表总结了 XXH32 与 XXH64 在实现上的关键差异：
 
@@ -1510,7 +1510,7 @@ XXH_PUBLIC_API XXH64_hash_t XXH64_hashFromCanonical(const XXH64_canonical_t* src
 
 XXH64 处理更大的数据块（32 字节 vs 16 字节），使用 64 位质数，在 64 位平台上性能更强。两者都遵循相同的流式生命周期管理（createState → reset → update → digest → freeState），这使得使用它们的代码结构非常相似。
 
-## 96.7 XXH3 内核与 SIMD 多后端 —— 极速哈希的“六引擎赛车”
+## 95.7 XXH3 内核与 SIMD 多后端 —— 极速哈希的“六引擎赛车”
 
 本小节深入 XXH3 的即时哈希（single-shot）核心，重点分析按输入长度分派的四条路径、长输入的条纹处理循环、累加器合并机制，以及六种 SIMD 后端的向量化实现。
 
@@ -1520,7 +1520,7 @@ XXH3 的长度分派策略由 `XXH3_64bits_internal()` 实现，它按输入长�
 
 SIMD 六路并行加速由每种 SIMD 后端各自提供对应的 `accumulate_512` 和 `scrambleAcc` 函数组成，覆盖 AVX512/AVX2/SSE2/NEON/VSX/SVE 六种硬件指令集。
 
-### `XXH3_len_0to16_64b()` 与 `XXH3_mix16B()`：短输入优化与 16 字节混合
+### 95.7.1 `XXH3_len_0to16_64b()` 与 `XXH3_mix16B()`：短输入优化与 16 字节混合
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH3_len_0to16_64b()`（4646-4654行）与 `XXH3_mix16B()`（4685-4694行）
 
@@ -1551,7 +1551,7 @@ XXH_FORCE_INLINE xxh_u64 XXH3_mix16B(const xxh_u8* XXH_RESTRICT input,
 
 `XXH3_len_0to16_64b` 根据输入长度在四个子路径之间分派。`XXH3_mix16B` 是 XXH3 的核心混合原语：将 16 字节输入拆分为高低两个 64 位部分，分别与 secret 加/减种子后，通过 `XXH3_mul128_fold64` 执行 128 位乘法并将高低 64 位异或折叠为 64 位输出。这种"乘法折叠"是现代非密码哈希的核心技术，一次操作就能充分混合输入位。
 
-### `XXH3_len_17to128_64b()` 与 `XXH3_len_129to240_64b()`：中长输入的层级混合
+### 95.7.2 `XXH3_len_17to128_64b()` 与 `XXH3_len_129to240_64b()`：中长输入的层级混合
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH3_len_17to128_64b()`（4700-4724行）与 `XXH3_len_129to240_64b()`（4730-4757行）
 
@@ -1584,7 +1584,7 @@ XXH_FORCE_INLINE xxh_u64 XXH3_mix16B(const xxh_u8* XXH_RESTRICT input,
 
 `XXH3_len_17to128_64b` 根据长度分层决定需要混合的组数：输入越长，混合的组数越多，每组通过 `XXH3_mix16B` 混合输入的一对头尾 16 字节块与 secret。`XXH3_len_129to240_64b` 则先混合前 8 组（覆盖输入的前 128 字节），再独立处理尾部，最后将两部分雪崩后相加。两种策略都在保证哈希质量的同时最大化性能。
 
-### `XXH3_hashLong_internal_loop()`：长输入条纹处理
+### 95.7.3 `XXH3_hashLong_internal_loop()`：长输入条纹处理
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH3_hashLong_internal_loop()`（5868-5902行）
 
@@ -1623,7 +1623,7 @@ XXH3_hashLong_internal_loop(xxh_u64* XXH_RESTRICT acc,
 
 `XXH3_hashLong_internal_loop` 是长输入的处理核心。它将输入划分为若干块（每个块包含固定数量的条纹），对每个块先执行条纹累加，然后在块末尾对累加器进行扰乱（scramble），增加混合强度。最后一个不完整块单独处理，最后一条条纹使用偏移 7 字节的 secret 位置，确保输入尾部也能充分混合。这个函数通过函数指针参数（`f_acc`/`f_scramble`）支持不同的 SIMD 后端实现。`XXH_SECRET_CONSUME_RATE` 表示每处理一个条纹时 secret 指针前进的字节数，而 `XXH_STRIPE_LEN` 是每个条纹的字节长度（64 字节），两者共同决定了 secret 的消耗速率和块内条纹数量。
 
-### `XXH3_mix2Accs()` 与 `XXH3_mergeAccs()`：累加器合并
+### 95.7.4 `XXH3_mix2Accs()` 与 `XXH3_mergeAccs()`：累加器合并
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH3_mix2Accs()`（5904-5911行）与 `XXH3_mergeAccs()`（5913-5942行）
 
@@ -1650,7 +1650,7 @@ XXH3_mergeAccs(const xxh_u64* XXH_RESTRICT acc, const xxh_u8* XXH_RESTRICT secre
 
 `XXH3_mix2Accs` 是合并的基本原语，将两个累加器与 secret 异或后通过 128 位乘法折叠。`XXH3_mergeAccs` 则遍历 8 个累加器，通过 4 轮 `XXH3_mix2Accs` 将它们合并到一个起始值上，最后执行 `XXH3_avalanche` 雪崩混合。这种"总装车间"的设计确保了每个累加器通道的输入都能影响最终输出的每一位。
 
-### `XXH3_accumulate_512_avx512()`：AVX512 加速的实现
+### 95.7.5 `XXH3_accumulate_512_avx512()`：AVX512 加速的实现
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH3_accumulate_512_avx512()`（4953-4974行）
 
@@ -1679,7 +1679,7 @@ XXH3_accumulate_512_avx512(void* XXH_RESTRICT acc,
 
 这段代码展示了 AVX512 如何用一个 512 位指令完成原本需要 8 个 64 位通道的标量操作。核心流程：加载 512 位输入和密钥 → 异或 → 提取高 32 位 → 32 位乘法 → 输入 32 位交换 → 累加器加和 → 最终累加。一次 `_mm512_mul_epu32` 指令同时执行 8 个独立的 32 位乘法，实现了 8 倍的数据并行度。
 
-### `XXH3_scrambleAcc_avx512()`：AVX512 累加器扰乱
+### 95.7.6 `XXH3_scrambleAcc_avx512()`：AVX512 累加器扰乱
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH3_scrambleAcc_avx512()`（5019-5033行）
 
@@ -1709,7 +1709,7 @@ XXH3_scrambleAcc_avx512(void* XXH_RESTRICT acc, const void* XXH_RESTRICT secret)
 
 `XXH3_scrambleAcc_avx512` 是块末尾的扰乱操作，使用 AVX512 的 `ternarylogic` 指令在一个操作中完成三次异或。核心流程：acc 右移 47 位 → 与原始 acc 和密钥三路异或 → 分别对低 32 位和高 32 位执行乘法 → 组合回 64 位并写回。
 
-### `XXH3_accumulate_512_avx2()` 与 `XXH3_accumulate_512_sse2()`：x86 家族的中坚力量
+### 95.7.7 `XXH3_accumulate_512_avx2()` 与 `XXH3_accumulate_512_sse2()`：x86 家族的中坚力量
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH3_accumulate_512_avx2()`（5083-5101行）与 `XXH3_accumulate_512_sse2()`（5169-5187行）
 
@@ -1766,7 +1766,7 @@ XXH3_accumulate_512_sse2( void* XXH_RESTRICT acc,
 
 AVX2 版本一次加载 256 位数据，每轮处理 32 字节（4 个 64 位通道），一个 512 位条纹需要 2 轮循环。SSE2 版本一次加载 128 位数据，每轮处理 16 字节（2 个 64 位通道），一个 512 位条纹需要 4 轮循环。SSE2 版本因为没有直接的 `srli_epi64` 指令，使用 `_mm_shuffle_epi32(data_key, _MM_SHUFFLE(0, 3, 0, 1))` 来提取高 32 位。两者的算法逻辑与 AVX512 完全相同，只是数据并行度不同。
 
-### `XXH3_accumulate_512_neon()`：NEON 向量化的实现
+### 95.7.8 `XXH3_accumulate_512_neon()`：NEON 向量化的实现
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH3_accumulate_512_neon()`（5292-5338行）
 
@@ -1824,7 +1824,7 @@ XXH3_accumulate_512_neon( void* XXH_RESTRICT acc,
 
 NEON 实现展示了 ARM 平台上如何利用 128 位向量指令加速哈希计算。关键的向量原语 `XXH_vmlal_low_u32` 和 `XXH_vmlal_high_u32` 在 AArch64 上使用 `umlal` 内联汇编指令实现 32 位乘加融合。与 AVX512 的一次处理整个 64 字节条纹不同，NEON 版本需要循环多个通道，但原理相同：每通道执行异或 → 提取高低 32 位 → 乘加 → 累加。
 
-### `XXH3_accumulate_512_vsx()`：PowerPC VSX 的实现
+### 95.7.9 `XXH3_accumulate_512_vsx()`：PowerPC VSX 的实现
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH3_accumulate_512_vsx()`（5400-5420行）
 
@@ -1861,7 +1861,7 @@ XXH3_accumulate_512_vsx(  void* XXH_RESTRICT acc,
 
 VSX 实现在 PowerPC 和 s390x 平台上运行。`XXH_vec_loadu` 处理非对齐加载并适配大端序，`XXH_vec_mulo` 执行向量奇通道乘法（通过内联汇编 vmulouw）。`vec_xxpermdi(data_vec, data_vec, 2)` 实现了 64 位交换，这是 POWER 架构下的通用操作，s390x 平台则使用 `vec_permi` 指令。VSX 版本还通过条件编译适配了 s390x 和 POWER 的指令差异。
 
-### `XXH3_accumulate_512_sve()`：ARM SVE 可伸缩向量实现
+### 95.7.10 `XXH3_accumulate_512_sve()`：ARM SVE 可伸缩向量实现
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH3_accumulate_512_sve()`（5451-5482行）
 
@@ -1914,7 +1914,7 @@ XXH3_accumulate_512_sve( void* XXH_RESTRICT acc,
 
 SVE（Scalable Vector Extension）是 ARMv8-A 架构的可伸缩向量指令集。与固定宽度的 SIMD 不同，SVE 的向量宽度由硬件决定，软件通过 `svcntd()` 在运行时查询。SVE 版本根据查询到的向量宽度分三种路径处理：向量宽度 >= 512 位时一次处理全部 8 个累加器；向量宽度为 256 位时分 2 组；向量宽度为 128 位时分 4 组。`ACCRND` 宏封装了一次累加-循环更新操作，`kSwap` 向量用于实现累加器通道交换。
 
-### `XXH3_scalarRound()` 与 `XXH3_scalarScrambleRound()`：标量回退路径
+### 95.7.11 `XXH3_scalarRound()` 与 `XXH3_scalarScrambleRound()`：标量回退路径
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH3_scalarRound()`（5701-5719行）与 `XXH3_scalarScrambleRound()`（5751-5772行）
 
@@ -1962,7 +1962,7 @@ XXH3_scalarScrambleRound(void* XXH_RESTRICT acc,
 
 `XXH3_scalarRound` 是标量回退路径的单通道累加操作，被 `XXH3_accumulate_512_scalar` 循环调用 8 次。它首先将输入与密钥异或，然后将原始输入累加到相邻通道（`lane ^ 1`），最后通过 `XXH_mult32to64_add64` 执行 32 位乘加融合。`XXH3_scalarScrambleRound` 是标量扰乱路径的单通道操作，执行"右移 47 位异或 → 与密钥异或 → 乘以素数"三步操作。
 
-### `XXH3_mult32to64_add64()`：AArch64 的内联汇编优化
+### 95.7.12 `XXH3_mult32to64_add64()`：AArch64 的内联汇编优化
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH_mult32to64_add64()`（5558-5564行）
 
@@ -1985,7 +1985,7 @@ XXH_mult32to64_add64(xxh_u64 lhs, xxh_u64 rhs, xxh_u64 acc) {
 
 `XXH_mult32to64_add64` 是 XXH3 标量累加路径中的性能关键函数。在 AArch64 平台上，它使用 `umaddl` 内联汇编指令将乘法和加法融合为单条指令，避免了两次独立操作的开销。在非 ARM 平台回退到通用实现：先执行 32 位乘法，再加到累加值。这种"平台专用 + 通用回退"的模式在 xxhash 库中随处可见。
 
-### `XXH3_accumulate_512_scalar()` 与 `XXH3_scrambleAcc_scalar()`：标量回退的完整实现
+### 95.7.13 `XXH3_accumulate_512_scalar()` 与 `XXH3_scrambleAcc_scalar()`：标量回退的完整实现
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH3_accumulate_512_scalar()`（5727-5742行）与 `XXH3_scrambleAcc_scalar()`（5779-5786行）
 
@@ -2015,7 +2015,7 @@ XXH3_scrambleAcc_scalar(void* XXH_RESTRICT acc, const void* XXH_RESTRICT secret)
 
 `XXH3_accumulate_512_scalar` 和 `XXH3_scrambleAcc_scalar` 是标量回退路径的完整实现，当编译平台不支持任何 SIMD 指令集时使用。它们分别遍历全部 8 个累加器通道，逐个调用 `XXH3_scalarRound` 和 `XXH3_scalarScrambleRound` 完成累加与扰乱操作。虽然性能不如 SIMD 版本，但保证了 XXH3 算法在任意平台上的正确性和可移植性。
 
-### 六种 SIMD 后端对比
+### 95.7.14 六种 SIMD 后端对比
 
 下表总结了六种 SIMD 后端的指令集特征：
 
@@ -2029,7 +2029,7 @@ XXH3_scrambleAcc_scalar(void* XXH_RESTRICT acc, const void* XXH_RESTRICT secret)
 
 每种后端都实现了相同的算法逻辑，但针对目标平台的指令集做了优化。AVX512 单指令处理 8 个 64 位通道，AVX2 处理 4 个，SSE2/NEON/VSX 处理 2 个。SVE 使用可伸缩向量，根据硬件能力自动调整。这种 "一个算法，多引擎执行" 的设计是 xxhash 库高性能的关键。
 
-## 96.8 XXH3 流式状态与 Secret 生成 —— 哈希工厂的“流水线控制室”
+## 95.8 XXH3 流式状态与 Secret 生成 —— 哈希工厂的“流水线控制室”
 
 本小节将视角从 XXH3 的即时哈希转向流式哈希状态管理，并深入 secret 生成机制。流式状态管理是 XXH3 支持增量哈希的关键，而 secret 生成则为带种子的哈希提供了高质量的密钥材料。
 
@@ -2039,7 +2039,7 @@ XXH3_scrambleAcc_scalar(void* XXH_RESTRICT acc, const void* XXH_RESTRICT secret)
 
 流式更新与摘要由 `XXH3_consumeStripes()` 消费条纹，`XXH3_update()` 管理缓冲区，`XXH3_digest_long()` 在不修改原始状态的前提下生成临时累加器并处理尾部。
 
-### `XXH3_reset_internal()`：统一重置与状态初始化
+### 95.8.1 `XXH3_reset_internal()`：统一重置与状态初始化
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH3_reset_internal()`（6214-6240行）
 
@@ -2072,7 +2072,7 @@ XXH3_reset_internal(XXH3_state_t* statePtr,
 
 `XXH3_reset_internal` 是 XXH3 流式状态的关键重置函数。它清空缓冲区，用 8 个不同的质数常量初始化累加器，然后设置种子、secret 指针、secret 可用范围和块内条纹数等关键参数。这个统一的内部函数被四种重置变体共享，体现了代码复用设计。
 
-### `XXH3_64bits_reset_withSeed()` 与 `XXH3_64bits_reset_withSecret()`：四种重置变体
+### 95.8.2 `XXH3_64bits_reset_withSeed()` 与 `XXH3_64bits_reset_withSecret()`：四种重置变体
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH3_64bits_reset_withSeed()`（6267-6277行）与 `XXH3_64bits_reset_withSecret()`（6254-6263行）
 
@@ -2101,7 +2101,7 @@ XXH3_64bits_reset_withSecret(XXH_NOESCAPE XXH3_state_t* statePtr, XXH_NOESCAPE c
 
 带种子重置时，如果种子非零且与当前不同，会调用 `XXH3_initCustomSecret` 生成定制的 secret。带 secret 重置则直接使用外部提供的 secret，同时校验非空和最小尺寸。两种变体最终都调用 `XXH3_reset_internal` 完成通用初始化，差异仅在于 seed/secret 的处理方式不同。
 
-### `XXH3_64bits_reset_withSecretandSeed()`：同时使用种子与 Secret 的重置
+### 95.8.3 `XXH3_64bits_reset_withSecretandSeed()`：同时使用种子与 Secret 的重置
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH3_64bits_reset_withSecretandSeed()`（6281-6291行）
 
@@ -2121,7 +2121,7 @@ XXH3_64bits_reset_withSecretandSeed(XXH_NOESCAPE XXH3_state_t* statePtr, XXH_NOE
 
 `XXH3_64bits_reset_withSecretandSeed` 是四种重置变体中最灵活的一种，它允许流式哈希同时使用自定义 secret 和 64 位种子。函数首先校验状态指针、secret 指针和 secret 的最小尺寸，然后调用 `XXH3_reset_internal` 完成统一初始化（此时 seed 和 secret 都参与状态设置），最后强制将 `useSeed` 置为 1。这意味着即使 seed64 为 0，短输入路径也会走带种子的分支，确保 secret 和 seed 的组合语义保持一致。
 
-### `XXH3_consumeStripes()`：条纹消费与块边界处理
+### 95.8.4 `XXH3_consumeStripes()`：条纹消费与块边界处理
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH3_consumeStripes()`（6314-6352行）
 
@@ -2161,7 +2161,7 @@ XXH3_consumeStripes(xxh_u64* XXH_RESTRICT acc,
 
 `XXH3_consumeStripes` 是流式状态中处理条纹消费的核心循环。它管理块内进度（`nbStripesSoFarPtr`），当足够消费完成一个块时，执行整块的累加 → 扰乱 → 前进循环；剩余不足一块的条纹则单独累加，并将进度记录在块内计数器中。这个函数设计精巧，通过指针参数返回新位置，同时更新块内进度状态。
 
-### `XXH3_update()`：流式更新主逻辑
+### 95.8.5 `XXH3_update()`：流式更新主逻辑
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH3_update()`（6361-6435行）
 
@@ -2205,7 +2205,7 @@ XXH3_update(XXH3_state_t* XXH_RESTRICT const state,
 
 `XXH3_update` 管理流式输入的缓冲区逻辑。它先将小量数据暂存到内部缓冲区；当缓冲区满时，消费缓冲中的条纹并清空缓冲；然后处理中间的大块输入；最后将尾部暂存。通过这个分层处理，无论调用方如何分块传入数据，流式哈希结果都与一次性哈希完全一致。
 
-### `XXH3_64bits_update()`：公开的 64 位流式更新接口
+### 95.8.6 `XXH3_64bits_update()`：公开的 64 位流式更新接口
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH3_64bits_update()`（6439-6444行）
 
@@ -2221,7 +2221,7 @@ XXH3_64bits_update(XXH_NOESCAPE XXH3_state_t* state, XXH_NOESCAPE const void* in
 
 `XXH3_64bits_update` 是公开的 64 位流式更新接口，它直接将参数转发给内部的通用 `XXH3_update` 函数，同时传入平台选择的累加函数（`XXH3_accumulate`）和扰乱函数（`XXH3_scrambleAcc`），这些函数根据编译时的平台定义自动选择最优的 SIMD 后端或标量回退实现。
 
-### `XXH3_digest_long()`：流式长输入收尾
+### 95.8.7 `XXH3_digest_long()`：流式长输入收尾
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH3_digest_long()`（6448-6481行）
 
@@ -2252,7 +2252,7 @@ XXH3_digest_long(XXH64_hash_t* acc,
 
 `XXH3_digest_long` 是流式长输入收尾的核心函数。它首先将原始累加器复制到临时数组，确保不修改原始状态；然后根据缓冲区的剩余数据量，要么直接消费缓冲区中完整的条纹，要么将不足一个条纹的尾部数据复制到本地并补零；最后使用位于 secret 末尾附近偏移的密钥处理最后一条条纹，确保输入尾部也能充分混合。
 
-### `XXH3_64bits_digest()`：流式摘要生成
+### 95.8.8 `XXH3_64bits_digest()`：流式摘要生成
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH3_64bits_digest()`（6485-6501行）
 
@@ -2278,7 +2278,7 @@ XXH_PUBLIC_API XXH64_hash_t XXH3_64bits_digest(XXH_NOESCAPE const XXH3_state_t* 
 
 `XXH3_64bits_digest` 展示了长输入和短输入的两条收尾路径。长输入使用 `XXH3_digest_long` 生成临时累加器（不修改原始状态），然后通过 `XXH3_mergeAccs` 合并。短输入则直接从缓冲区调用对应的一次性哈希函数，因为短输入的缓冲区已经保存了全部输入数据。
 
-### `XXH3_generateSecret()`：基于种子的高熵 Secret 生成
+### 95.8.9 `XXH3_generateSecret()`：基于种子的高熵 Secret 生成
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH3_generateSecret()`（7091-7132行）
 
@@ -2325,7 +2325,7 @@ XXH3_generateSecret(void* secretBuffer, size_t secretSize, const void* customSee
 
 `XXH3_generateSecret` 展示了如何从用户提供的种子生成高熵密钥材料。它先填充 secret 缓冲，然后通过多轮 XXH128 哈希（每轮使用不同的种子值）生成紊乱值并异或合并到 secret 中。`XXH128` 是 xxhash 库公开的 128 位哈希 API，内部调用 `XXH3_128bits_withSeed`。这种方法确保最终的 secret 即使来自低质量种子，也具有足够的熵分布，保证 XXH3 的哈希质量。
 
-### `XXH3_initCustomSecret_*()`：种子到 Secret 的定制化转换
+### 95.8.10 `XXH3_initCustomSecret_*()`：种子到 Secret 的定制化转换
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH3_initCustomSecret_scalar()`（5788-5835行）、`XXH3_initCustomSecret_avx512()`（5037-5054行）、`XXH3_initCustomSecret_avx2()`（5129-5149行）、`XXH3_initCustomSecret_sse2()`（5240-5257行）
 
@@ -2374,7 +2374,7 @@ XXH3_initCustomSecret_avx512(void* XXH_RESTRICT customSecret, xxh_u64 seed64)
 
 `XXH3_initCustomSecret_scalar` 是标量版本的实现，逐 16 字节段处理：低 8 字节加种子、高 8 字节减种子。AVX512 版本则用 `_mm512_mask_sub_epi64` 指令构造奇偶通道分别包含 `seed` 和 `0-seed` 的向量，然后一次性对 64 字节的默认 secret 加上该向量。AVX2 版本使用 `_mm256_set_epi64x` 构造交替正负种子的 256 位向量，手工展开 6 个 32 字节块的加法。SSE2 版本使用 `_mm_set_epi64x` 构造 128 位种子向量，循环处理 8 个 16 字节块。三种 SIMD 版本的核心思想相同：将默认 secret 的每个 64 位通道交替加减种子。
 
-## 96.9 XXH128 哈希与工具函数 —— 128 位世界的“精密仪器”
+## 95.9 XXH128 哈希与工具函数 —— 128 位世界的“精密仪器”
 
 本小节聚焦 XXH3 的 128 位输出变体以及 xxhash 库中的核心工具函数。128 位哈希在结构上与 64 位版本对称，但每个分支内部需要同时生成两个 64 位值，并处理它们之间的交叉混合。工具函数则提供了乘法和异或移位等基础原语。
 
@@ -2382,7 +2382,7 @@ XXH3_initCustomSecret_avx512(void* XXH_RESTRICT customSecret, xxh_u64 seed64)
 
 128 位长输入处理由 `XXH3_hashLong_128b_internal()` 完成，它使用与 64 位版本相同的条纹循环但有两个合并路径（低 64 位和高 64 位使用不同的 secret 偏移）。`XXH3_hashLong_128b_default()` 使用内置 secret，`XXH3_hashLong_128b_withSecret()` 使用自定义 secret。
 
-### `XXH3_len_0to16_128b()` 与 `XXH3_len_9to16_128b()`：短输入迷宫
+### 95.9.1 `XXH3_len_0to16_128b()` 与 `XXH3_len_9to16_128b()`：短输入迷宫
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH3_len_0to16_128b()`（6667-6685行）与 `XXH3_len_9to16_128b()`（6606-6665行）
 
@@ -2437,7 +2437,7 @@ XXH3_len_9to16_128b(const xxh_u8* input, size_t len, const xxh_u8* secret, XXH64
 
 128 位版本的短输入处理与 64 位版本在结构上对称，但每个分支内部需要同时生成低 64 位和高 64 位两个哈希值。`XXH3_len_9to16_128b` 展示了核心的混合逻辑：融合输入头和尾、加入长度、通过 64→128 位乘法扩展、高低交换互混、双重雪崩。注意 `XXH_mult64to128` 生成 128 位乘积后分别处理高低部分，这是 128 位哈希与 64 位版本的本质区别。
 
-### `XXH3_len_17to128_128b()`：中等长度输入的混合
+### 95.9.2 `XXH3_len_17to128_128b()`：中等长度输入的混合
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH3_len_17to128_128b()`（6701-6740行）
 
@@ -2474,7 +2474,7 @@ XXH3_len_17to128_128b(const xxh_u8* input, size_t len, const xxh_u8* secret, siz
 
 `XXH3_len_17to128_128b` 展示了中等长度输入的处理策略：根据长度分层判断需要混合的组数（越长的输入混合越多组），每组通过 `XXH128_mix32B` 混合输入的头尾 16 字节与 secret。最终生成时，高 64 位通过取负进一步增加与低 64 位的差异。这种"分层混搭"设计在保持哈希质量的同时最大化了性能。
 
-### `XXH3_len_129to240_128b()`：较长输入的 128 位哈希
+### 95.9.3 `XXH3_len_129to240_128b()`：较长输入的 128 位哈希
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH3_len_129to240_128b()`（6742-6790行）
 
@@ -2518,7 +2518,7 @@ XXH3_len_129to240_128b(const xxh_u8* input, size_t len, const xxh_u8* secret, si
 
 `XXH3_len_129to240_128b` 是中等长度输入的最长路径。它分两轮处理输入：第一轮覆盖前 128 字节（4 组 32 字节混合），中间执行一次雪崩混合以扩散已经累积的状态，第二轮处理剩余字节（使用不同的 secret 偏移），最后单独处理尾部 16 字节。最终混合阶段与 `XXH3_len_17to128_128b` 相同，低 64 位和高 64 位使用不同的组合方式生成，确保两个 64 位哈希值充分差异化。
 
-### `XXH3_hashLong_128b_internal()`：128 位长输入的合并
+### 95.9.4 `XXH3_hashLong_128b_internal()`：128 位长输入的合并
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH3_hashLong_128b_internal()`（6792-6812行）
 
@@ -2544,7 +2544,7 @@ XXH3_hashLong_128b_internal(const void* input, size_t len, const xxh_u8* secret,
 
 `XXH3_hashLong_128b_internal` 使用与 64 位版本相同的条纹循环处理长输入，但合并阶段有两个路径：低 64 位使用靠近 secret 开头的偏移（`XXH_SECRET_MERGEACCS_START`），高 64 位使用靠近 secret 末尾的偏移，起始值也不同（一个取长度乘以质数，另一个取反）。这种双路径设计确保两个 64 位哈希值充分差异化。
 
-### `XXH3_hashLong_128b_default()` 与 `XXH3_hashLong_128b_withSecret()`：两种长输入哈希变体
+### 95.9.5 `XXH3_hashLong_128b_default()` 与 `XXH3_hashLong_128b_withSecret()`：两种长输入哈希变体
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH3_hashLong_128b_default()`（6818-6825行）与 `XXH3_hashLong_128b_withSecret()`（6832-6839行）
 
@@ -2568,7 +2568,7 @@ XXH3_hashLong_128b_withSecret(const void* input, size_t len, XXH64_hash_t seed64
 
 `XXH3_hashLong_128b_default` 忽略外部传入的 secret 和种子，直接使用内置的 `XXH3_kSecret` 默认 secret，并通过平台选择的累加和扰乱函数处理长输入。`XXH3_hashLong_128b_withSecret` 则使用调用方提供的自定义 secret，忽略种子参数。两者最终都调用 `XXH3_hashLong_128b_internal` 完成实际的哈希计算。
 
-### `XXH3_128bits_internal()` 与 `XXH3_128bits()`：分派与公开入口
+### 95.9.6 `XXH3_128bits_internal()` 与 `XXH3_128bits()`：分派与公开入口
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH3_128bits_internal()`（6878-6892行）与 `XXH3_128bits()`（6897-6901行）
 
@@ -2593,7 +2593,7 @@ XXH_PUBLIC_API XXH128_hash_t XXH3_128bits(const void* input, size_t len)
 
 `XXH3_128bits_internal` 是 128 位哈希的分派中枢，根据输入长度选择对应的专用实现：0-16 字节走短路径，17-128 字节走中等路径，129-240 字节走较长路径，超过 240 字节委托给长输入哈希函数（通过函数指针 `f_hl128` 传入）。`XXH3_128bits` 是公开的 128 位一次性哈希入口，使用内置默认 secret 和种子 0。
 
-### `XXH3_128bits_withSeed()` 与 `XXH3_128bits_withSecret()`：带种子与自定义 Secret 的公开接口
+### 95.9.7 `XXH3_128bits_withSeed()` 与 `XXH3_128bits_withSecret()`：带种子与自定义 Secret 的公开接口
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH3_128bits_withSeed()`（6914-6919行）与 `XXH3_128bits_withSecret()`（6905-6910行）
 
@@ -2615,7 +2615,7 @@ XXH3_128bits_withSecret(const void* input, size_t len, const void* secret, size_
 
 `XXH3_128bits_withSeed` 使用内置默认 secret 和调用方提供的种子，长输入路径由 `XXH3_hashLong_128b_withSeed` 处理（内部根据种子生成定制的 secret）。`XXH3_128bits_withSecret` 则使用调用方提供的自定义 secret，忽略种子参数，长输入路径由 `XXH3_hashLong_128b_withSecret` 处理。
 
-### `XXH3_128bits_digest()`：流式收尾两种路径
+### 95.9.8 `XXH3_128bits_digest()`：流式收尾两种路径
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH3_128bits_digest()`（6990-7014行）
 
@@ -2646,7 +2646,7 @@ XXH3_128bits_digest(const XXH3_state_t* state) {
 
 `XXH3_128bits_digest` 展示了长输入和短输入的两条收尾路径。长输入使用 `XXH3_digest_long` 生成临时累加器，然后对低 64 位和高 64 位分别使用不同的 secret 偏移和起始值进行合并，确保两个 64 位哈希充分差异化。短输入则直接从缓冲区调用对应的一次性哈希函数，因为短输入的缓冲区已经保存了全部输入数据。
 
-### `XXH128_cmp()` 与 `XXH3_combine16()`：哈希值操作原语
+### 95.9.9 `XXH128_cmp()` 与 `XXH3_combine16()`：哈希值操作原语
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH128_cmp()`（7037-7045行）与 `XXH3_combine16()`（7083-7088行）
 
@@ -2671,7 +2671,7 @@ XXH3_combine16(void* dst, XXH128_hash_t h128) {
 
 `XXH128_cmp` 为 128 位哈希值提供了确定性的大小比较，先比高 64 位再比低 64 位，完美兼容 `qsort` 和 `bsearch`。`XXH3_combine16` 则是 secret 生成中的关键合并操作，将 128 位哈希值的低高部分分别异或到目标区域的 16 字节中，用于在哈希生成过程中逐步扰动 secret。
 
-### `XXH_mult64to128()` 与 `XXH3_mul128_fold64()`：64 到 128 位乘法的多路径实现
+### 95.9.10 `XXH_mult64to128()` 与 `XXH3_mul128_fold64()`：64 到 128 位乘法的多路径实现
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH_mult64to128()`（4423-4475行）与 `XXH3_mul128_fold64()`（4491-4496行）
 
@@ -2699,7 +2699,7 @@ XXH3_mul128_fold64(xxh_u64 lhs, xxh_u64 rhs)
 
 `XXH_mult64to128` 是 XXH3 中频繁使用的核心原语。在 GCC/Clang 等支持 `__uint128_t` 的编译器中直接使用扩展类型完成 64×64→128 位乘法；在 MSVC x64 上使用 `_umul128` 内置函数；在 ARM64 上使用 `__umulh` 提取高 64 位；在没有这些的平台则用多路 32 位乘法组合。`XXH3_mul128_fold64` 将 128 位乘积的高低 64 位异或折叠，生成一个充分混合的 64 位值。
 
-### `XXH_xorshift64()` 与 `XXH3_avalanche()`：移位混合与雪崩
+### 95.9.11 `XXH_xorshift64()` 与 `XXH3_avalanche()`：移位混合与雪崩
 
 源码路径：`examples/gguf-hash/deps/xxhash/xxhash.h` - `XXH_xorshift64()`（4501-4505行）与 `XXH3_avalanche()`（4513-4519行）、`XXH3_rrmxmx()`（4527-4535行）
 
@@ -2733,7 +2733,7 @@ static XXH64_hash_t XXH3_rrmxmx(xxh_u64 h64, xxh_u64 len) {
 
 `XXH_xorshift64` 是简单的异或移位混合。`XXH3_avalanche` 是快速雪崩混合，适合输入位已经部分混合的场景，通过两次异或移位和一次乘法打乱输出位分布。`XXH3_rrmxmx` 是更强的雪崩混合，适合输入尚未充分混合的场景（如 4-8 字节短输入），使用旋转、乘法和位移的复杂组合，确保即使微小输入变化也能引起输出的大幅改变。
 
-### 哈希算法选择指南
+### 95.9.12 哈希算法选择指南
 
 下表总结了 gguf-hash 中提供的四种哈希/标识算法的对比：
 
@@ -2747,7 +2747,7 @@ static XXH64_hash_t XXH3_rrmxmx(xxh_u64 h64, xxh_u64 len) {
 
 xxh64 追求极速，适合本地快速验证；SHA-256 提供最高安全性，适合发布校验；SHA-1 作为折中；UUIDv5 为模型提供稳定且全球唯一的标识符。gguf-hash 通过 manifest 机制支持同时使用多种哈希进行交叉验证。
 
-## 96.10 llama2.c 文件解析与权重加载 —— “原始矿石”的开采与初检
+## 95.10 llama2.c 文件解析与权重加载 —— “原始矿石”的开采与初检
 
 本小节开始进入 llama2.c 到 GGUF 转换器（`examples/convert-llama2c-to-ggml/convert-llama2c-to-ggml.cpp`）的源码解析。该转换器像一个“矿石精炼炉”，将 llama2.c 格式的原始模型文件转换为 GGUF 格式的标准模型。本节集中分析读取阶段：配置解析、权重分配、checkpoint 读取、跨平台文件封装，以及 GGML 模型骨架的搭建。
 
@@ -2757,7 +2757,7 @@ llama2.c 文件格式解析由 `Config` 结构体完成，它读取 dim、hidden
 
 跨平台文件封装由 `my_llama_file` 完成：构造函数打开文件、seek 到末尾计算大小、seek 回开头复位；`read_raw()` 读取原始字节，带 ferror 错误检测和 EOF 检测；析构函数自动关闭文件句柄，RAII 风格资源管理。
 
-### `alloc_weights()`：权重内存分配
+### 95.10.1 `alloc_weights()`：权重内存分配
 
 源码路径：`examples/convert-llama2c-to-ggml/convert-llama2c-to-ggml.cpp` - `alloc_weights()`（69-113行）
 
@@ -2791,7 +2791,7 @@ static void alloc_weights(TransformerWeights * w, const Config * p, bool shared_
 
 `alloc_weights` 根据模型配置计算各权重数组的尺寸并分配内存。注意多查询头（multi-query）的处理——当 n_kv_heads 少于 n_heads 时，K/V 的维度按比例缩小。`shared_weights` 为 true 时不为分类器分配独立空间，直接共享嵌入表的数据，这是 llama2.c 中常见的权重复用优化。
 
-### `checkpoint_init_weights()`：按序读取 checkpoint 权重
+### 95.10.2 `checkpoint_init_weights()`：按序读取 checkpoint 权重
 
 源码路径：`examples/convert-llama2c-to-ggml/convert-llama2c-to-ggml.cpp` - `checkpoint_init_weights()`（115-142行）
 
@@ -2823,7 +2823,7 @@ static int checkpoint_init_weights(TransformerWeights * w, const Config * p, FIL
 
 `checkpoint_init_weights` 按照 llama2.c 的固定存储布局逐个读取权重数组：先读取嵌入表和归一化权重，然后依次读取各层的 Q、K、V、O 投影权重和 FFN 的 W1、W2、W3 权重，最后读取最终归一化权重。接着跳过预计算的位置编码表（llama.cpp 运行时动态生成），并在非共享权重模式下读取独立的分类器权重。最后验证文件指针到达文件末尾，确保完整读取了所有数据。
 
-### `print_sample_weights()`：权重抽查验证
+### 95.10.3 `print_sample_weights()`：权重抽查验证
 
 源码路径：`examples/convert-llama2c-to-ggml/convert-llama2c-to-ggml.cpp` - `print_sample_weights()`（144-159行）
 
@@ -2848,7 +2848,7 @@ static void print_sample_weights(TransformerWeights *w){
 
 `print_sample_weights` 是一个非常轻量级的调试工具函数，仅打印每个权重数组的首个元素。它通常用在 `checkpoint_init_weights` 读取权重之后，快速验证权重数据是否成功加载，而不需要遍历整个数组。
 
-### `my_llama_file` 构造函数与 `read_raw()`：跨平台文件封装
+### 95.10.4 `my_llama_file` 构造函数与 `read_raw()`：跨平台文件封装
 
 源码路径：`examples/convert-llama2c-to-ggml/convert-llama2c-to-ggml.cpp` - `my_llama_file()`（263-274行）与 `read_raw()`（298-312行）
 
@@ -2883,7 +2883,7 @@ void read_raw(void * ptr, size_t size) {
 
 `my_llama_file` 构造函数展示了 RAII 风格的文件管理：打开文件后立即跳到文件末尾计算大小，再回到文件开头。需要注意的是，`size` 存储的是 `size_t` 类型（64 位系统上为 64 位无符号整数），而 `tell()` 返回的也是 `size_t`，因此对于通常的模型文件（几个 GB）不会出现溢出风险；但在某些 32 位平台上，`size_t` 最大只能表示约 4GB，如果模型文件超过此大小，`size` 会发生截断。`read_raw` 通过 `ferror` 区分读取错误和 EOF，让出错信息更明确。整个类的设计体现了"跨平台 + 安全边界检查"的工程实践。
 
-### `my_llama_file.tell()` 与 `my_llama_file.seek()`：跨平台文件指针操作
+### 95.10.5 `my_llama_file.tell()` 与 `my_llama_file.seek()`：跨平台文件指针操作
 
 源码路径：`examples/convert-llama2c-to-ggml/convert-llama2c-to-ggml.cpp` - `tell()`（276-285行）与 `seek()`（287-296行）
 
@@ -2912,7 +2912,7 @@ void seek(size_t offset, int whence) {
 
 这两个函数通过 `#ifdef _WIN32` 条件编译适配 Windows 和 POSIX 平台的文件指针 API。Windows 使用 `_ftelli64`/`_fseeki64` 支持 64 位文件偏移，POSIX 使用标准 C 的 `ftell`/`fseek`。每次调用都通过 `GGML_ASSERT` 校验操作是否成功，体现了对文件操作安全性的重视。
 
-### `my_llama_file.read_u32()`、`read_f32()` 与 `read_string()`：基本类型读取
+### 95.10.6 `my_llama_file.read_u32()`、`read_f32()` 与 `read_string()`：基本类型读取
 
 源码路径：`examples/convert-llama2c-to-ggml/convert-llama2c-to-ggml.cpp` - `read_u32()`（314-318行）、`read_f32()`（319-323行）、`read_string()`（325-329行）
 
@@ -2941,7 +2941,7 @@ std::string read_string(std::uint32_t len) {
 
 这三个方法是对 `read_raw` 的便捷封装，分别用于读取 32 位无符号整数、单精度浮点和指定长度的字符串。`read_string` 通过 `std::vector<char>` 作为临时缓冲区，避免直接操作裸指针时可能出现的资源泄漏风险。注意 `read_f32` 返回的是 `std::float_t` 而非 `float`，这在 C++ 中通常是 `float` 的别名。
 
-### `my_llama_file.~my_llama_file()`：析构函数
+### 95.10.7 `my_llama_file.~my_llama_file()`：析构函数
 
 源码路径：`examples/convert-llama2c-to-ggml/convert-llama2c-to-ggml.cpp` - `~my_llama_file()`（331-335行）
 
@@ -2956,7 +2956,7 @@ std::string read_string(std::uint32_t len) {
 
 `my_llama_file` 的析构函数体现了 RAII（Resource Acquisition Is Initialization）资源管理理念的核心：当 `my_llama_file` 对象离开作用域时，析构函数自动调用 `std::fclose` 关闭文件句柄，确保资源被正确释放，不会发生文件句柄泄漏。这也意味着 `my_llama_file` 对象通常以栈上局部变量的形式使用，其生命周期由作用域自动管理。
 
-### `my_llama_hparams::operator!=()`：基于内存的比较
+### 95.10.8 `my_llama_hparams::operator!=()`：基于内存的比较
 
 源码路径：`examples/convert-llama2c-to-ggml/convert-llama2c-to-ggml.cpp` - `my_llama_hparams::operator!=()`（170-172行）
 
@@ -2969,7 +2969,7 @@ bool operator!=(const my_llama_hparams& other) const {
 
 这个操作符使用 `memcmp` 直接按内存内容比较两个超参数对象。它要求 `my_llama_hparams` 是"平凡可复制"（trivially copyable）类型，且没有包含需要深比较的指针成员。这种实现简洁高效，但前提是结构体内所有字段都是值类型。
 
-### `init_model()`：GGML 张量骨架创建
+### 95.10.9 `init_model()`：GGML 张量骨架创建
 
 源码路径：`examples/convert-llama2c-to-ggml/convert-llama2c-to-ggml.cpp` - `init_model()`（229-278行）
 
@@ -3009,7 +3009,7 @@ static void init_model(struct my_llama_model * model) {
 
 `init_model` 在 GGML 上下文中创建了完整的 LLaMA 模型张量骨架。顶层包含令牌嵌入、最终归一化和输出层；每层包含注意力归一化、Q/K/V/O 投影以及 FFN 的 W1/W2/W3。注意 K/V 投影的维度除以 `n_multiqueries`，实现了分组查询注意力。该函数是模型转换中"塑形"的关键步骤。
 
-### `llama_model.init_model()`：类成员的模型初始化
+### 95.10.10 `llama_model.init_model()`：类成员的模型初始化
 
 源码路径：`examples/convert-llama2c-to-ggml/convert-llama2c-to-ggml.cpp` - `llama_model::init_model()`（45-120行）
 
@@ -3036,7 +3036,7 @@ static void init_model(struct llama_model * model) {
 
 `llama_model.init_model()` 是 `llama_model` 类的成员函数，与顶层的静态辅助函数 `init_model()` 类似，它也负责在 GGML 上下文中创建模型的张量骨架。两者的核心逻辑相同，但类的版本以成员函数的形式组织在 `llama_model` 类中，可以直接访问类的成员变量（如 `model->hparams`、`model->ctx` 等），从而更好地与类的生命周期管理相结合。在实际工程中，这两种组织方式分别适用于函数式编程风格和面向对象编程风格。
 
-### `print_params()` 与 `print_tensor_info()`：超参数与张量信息输出
+### 95.10.11 `print_params()` 与 `print_tensor_info()`：超参数与张量信息输出
 
 源码路径：`examples/convert-llama2c-to-ggml/convert-llama2c-to-ggml.cpp` - `print_params()`（199-210行）与 `print_tensor_info()`（212-227行）
 
@@ -3073,7 +3073,7 @@ static void print_tensor_info(const struct ggml_context * ctx) {
 
 `print_params` 输出全部超参数，用于调试确认模型配置与预期一致。`print_tensor_info` 遍历 GGML 上下文中的所有张量，打印每个张量的维度、总元素数和名称，用于在模型创建后验证张量布局是否正确。两者都是开发阶段的辅助工具。
 
-### `get_f32_2d()`、`get_i32_2d()` 与 `print_matrix()`：步长访问与矩阵打印
+### 95.10.12 `get_f32_2d()`、`get_i32_2d()` 与 `print_matrix()`：步长访问与矩阵打印
 
 源码路径：`examples/convert-llama2c-to-ggml/convert-llama2c-to-ggml.cpp` - `get_f32_2d()`（280-283行）、`get_i32_2d()`（285-288行）、`print_row()`（290-297行）、`print_matrix()`（299-310行）
 
@@ -3114,7 +3114,7 @@ static void print_matrix(struct ggml_tensor * probs) {
 
 `get_f32_2d` 和 `get_i32_2d` 使用 GGML 张量的 `nb` 数组（每个维度的步长，以字节为单位）来计算元素地址。这比简单下标计算更安全，因为 GGML 张量可能包含视图、量化或其他复杂的内存布局。`print_row` 打印单行元素，`print_matrix` 通过断言验证输入是矩阵形状后逐行逐列打印，适用于调试概率分布等中间结果。
 
-## 96.11 词表加载与权重转换保存 —— “矿石精炼”的最后一公里
+## 95.11 词表加载与权重转换保存 —— “矿石精炼”的最后一公里
 
 本小节继续剖析转换器的输出阶段：词表加载（`load_vocab`）和权重布局转换与 GGUF 写出（`convert_weights_ak_to_gg`/`save_as_llama_model`）。这些函数共同完成了从 llama2.c 原始格式到 GGUF 标准格式的"最后一公里"。
 
@@ -3122,7 +3122,7 @@ static void print_matrix(struct ggml_tensor * probs) {
 
 权重布局转换由 `convert_weights_ak_to_gg()` 使用 `ggml_unravel_index` 将一维线性索引映射到多维坐标，逐元素调用 `ggml_set_f32_nd` 填充 GGML 张量。llama2.c 的按层连续存储被逐层拆分为独立的 GGML 张量。
 
-### `is_ggml_file()` 与 `llama_escape_whitespaces()`：格式判断与空白转义
+### 95.11.1 `is_ggml_file()` 与 `llama_escape_whitespaces()`：格式判断与空白转义
 
 源码路径：`examples/convert-llama2c-to-ggml/convert-llama2c-to-ggml.cpp` - `is_ggml_file()`（337-345行）与 `llama_escape_whitespaces()`（347-355行）
 
@@ -3150,7 +3150,7 @@ static std::string llama_escape_whitespaces(const std::string & text) {
 
 `is_ggml_file` 通过检查文件头 4 字节的魔数判断文件是否为 GGUF 格式。`llama_escape_whitespaces` 将普通空格（0x20）替换为 SentencePiece 风格的下划线字符（UTF-8 编码 `\xe2\x96\x81`），这是为了与 llama.cpp 的预分词器保持一致，确保词元在分词时能正确还原空格。
 
-### `load_vocab()`：词表双源加载
+### 95.11.2 `load_vocab()`：词表双源加载
 
 源码路径：`examples/convert-llama2c-to-ggml/convert-llama2c-to-ggml.cpp` - `load_vocab()`（357-420行）
 
@@ -3205,7 +3205,7 @@ static void load_vocab(const char * filename, const Config * config, struct my_l
 
 `load_vocab` 展示了 GGUF 与 llama2.c 两种词表来源的兼容加载。GGUF 路径直接通过键名获取令牌列表、分数和类型数组；llama2.c 路径则按 `score + length + text` 的格式逐条读取。`KV_TOKENIZER_LIST`、`KV_TOKENIZER_SCORES`、`KV_TOKENIZER_TOKEN_TYPE` 等宏定义于 llama.cpp 的 `gguf.h` 头文件中，分别对应标准 GGUF 键名 `tokenizer.ggml.tokens`、`tokenizer.ggml.scores`、`tokenizer.ggml.token_type`。值得注意的是 `llama_escape_whitespaces` 将普通空格转为 SentencePiece 风格的下划线，这是为了与 llama.cpp 的预分词器保持一致。
 
-### `convert_weights_ak_to_gg()` 与 `save_as_llama_model()`：权重搬运与 GGUF 写出
+### 95.11.3 `convert_weights_ak_to_gg()` 与 `save_as_llama_model()`：权重搬运与 GGUF 写出
 
 源码路径：`examples/convert-llama2c-to-ggml/convert-llama2c-to-ggml.cpp` - `convert_weights_ak_to_gg()`（422-435行）与 `save_as_llama_model()`（437-540行）
 
@@ -3294,7 +3294,7 @@ static void save_as_llama_model(
 
 `convert_weights_ak_to_gg` 展示了核心的权重布局转换：通过 `ggml_unravel_index` 将线性索引展开为多维坐标，再逐元素填充 GGML 张量。`save_as_llama_model` 则整合了全套流程：先搬运权重到 GGML 张量，再通过 GGUF API 写入词表、元数据和张量，最后一次性落盘。`gguf_set_val_str(ctx, KV_GENERAL_ARCHITECTURE, "llama")` 声明了模型的架构类型为 "llama"，这是 GGUF 格式中下游加载器识别模型架构的关键字段。这个函数是 llama2.c 到 GGUF 转换的"总装配线"。
 
-### 转换流程时序图
+### 95.11.4 转换流程时序图
 
 下图展示了 llama2.c 模型转换到 GGUF 的完整流水线：
 
@@ -3331,7 +3331,7 @@ sequenceDiagram
 
 这个时序图清晰地展示了转换器从读取配置到写出 GGUF 的完整流程。关键步骤包括：按固定顺序读取 llama2.c 权重、跳过位置编码、双源加载词表、创建 GGML 张量骨架、通过线性索引映射搬运权重、最后通过 GGUF API 写盘。每个环节之间通过明确的函数调用和数据传递相连。
 
-## 96.12 命令行参数与主流程控制 —— 转换工具的“驾驶舱”
+## 95.12 命令行参数与主流程控制 —— 转换工具的“驾驶舱”
 
 本小节分析转换器的命令行参数处理与主流程编排。这些代码构成了整个转换工具的“驾驶舱”，控制着从读取输入到写出输出的每一步。
 
@@ -3339,7 +3339,7 @@ sequenceDiagram
 
 命令行参数解析由 `print_usage()` 打印帮助信息，列出所有可用选项；`params_parse()` 解析命令行参数，支持下划线到连字符的自动转换，处理 `--copy-vocab-from-model`、`--llama2c-model`、`--llama2c-output-model` 三个参数，检测缺失必需参数并报错退出。
 
-### `get_default_train_params()` 与 `params_parse()`：默认配置与参数解析
+### 95.12.1 `get_default_train_params()` 与 `params_parse()`：默认配置与参数解析
 
 源码路径：`examples/convert-llama2c-to-ggml/convert-llama2c-to-ggml.cpp` - `get_default_train_params()`（542-585行）与 `params_parse()`（597-645行）
 
@@ -3410,7 +3410,7 @@ static bool params_parse(int argc, char ** argv, struct train_params * params) {
 
 `get_default_train_params` 提供了合理的默认值，用户可以通过命令行覆盖。`params_parse` 展示了典型的命令行解析模式：遍历所有参数、识别已知选项、收集参数值、处理未知参数和缺失必需参数。特别注意到 `std::replace(arg.begin(), arg.end(), '_', '-')` 的宽容处理，允许用户使用下划线或连字符。`print_usage(argc, argv, &default_params)` 调用时，`argc` 和 `argv` 直接透传，`default_params` 是 `get_default_train_params()` 返回的默认配置对象，该函数的声明签名与实参类型一致。
 
-### `print_usage()` 与 `basename()`：帮助信息与路径清理
+### 95.12.2 `print_usage()` 与 `basename()`：帮助信息与路径清理
 
 源码路径：`examples/convert-llama2c-to-ggml/convert-llama2c-to-ggml.cpp` - `print_usage()`（587-595行）与 `basename()`（645-652行）
 
@@ -3437,7 +3437,7 @@ static std::string basename(const std::string &path) {
 
 `print_usage` 简洁地列出了三个核心参数，其中 `--llama2c-model` 被标注为 `[REQUIRED]`。`basename` 同时查找正斜杠（POSIX 路径分隔符）和反斜杠（Windows 路径分隔符），兼容两种平台的路径格式。
 
-### `__main__`：主流程编排
+### 95.12.3 `__main__`：主流程编排
 
 源码路径：`examples/convert-llama2c-to-ggml/convert-llama2c-to-ggml.cpp` - `__main__`（654-约末尾）
 
@@ -3516,7 +3516,7 @@ int main(int argc, char ** argv) {
 
 `__main__` 是整个转换工具的"驾驶舱"，按顺序编排全部步骤：环境初始化 → 参数解析 → 读取配置 → 分配权重 → 读取 checkpoint → 加载词表 → 构造 GGML 模型 → 设置超参数 → 初始化张量 → 转换保存。特别注意到 `config.vocab_size` 的符号判断：正数表示有独立分类器，负数表示与嵌入层共享权重，这是 llama2.c 的一个重要约定。`ggml_init_params` 中 `mem_size` 设置为 1GB，`no_alloc` 为 `false` 表示由 GGML 自动管理张量数据的内存分配。`print_params(&model.hparams)` 的调用中，`model.hparams` 的类型为 `my_llama_hparams`，而 `print_params` 期望的参数类型为 `struct my_llama_hparams *`，二者类型匹配，没有签名冲突。
 
-## 96.13 弃用警告与文档生成 —— 工具链的“文明劝导员与书记官”
+## 95.13 弃用警告与文档生成 —— 工具链的“文明劝导员与书记官”
 
 本小节剖析两个辅助工具：`deprecation-warning` 和 `gen-docs`。它们虽然不直接处理模型文件，但在工具链的日常维护中扮演着重要角色——前者保证旧命令的平滑迁移，后者确保文档与代码的同步更新。
 
@@ -3524,7 +3524,7 @@ deprecation-warning 负责旧命令的体面退役：从 `argv[0]` 提取二进�
 
 gen-docs 是 README 的自动维护者：用 `common_params_parser_init` 反向生成参数定义，再格式化为 Markdown 表格，通过标记定位并替换 README 中的帮助区块。
 
-### `deprecation-warning.cpp`：旧命令的迁移提示
+### 95.13.1 `deprecation-warning.cpp`：旧命令的迁移提示
 
 源码路径：`examples/deprecation-warning/deprecation-warning.cpp` - `__main__`（9-37行）
 
@@ -3565,7 +3565,7 @@ int main(int argc, char** argv) {
 
 这个工具非常简单但实用：通过分析程序名自动推导新的命令名称，打印清晰的迁移指引，并以失败码退出。`main` 特殊映射到 `llama-cli` 是因为历史上 llama.cpp 的主可执行文件名为 `main`，现在统一为 `llama-cli`。关于 `std::setlocale(LC_NUMERIC, "C")`：它用于将程序的数字格式化区域设置为标准 C 语言环境，确保在打印警告信息和后续可能的数字输出时使用固定的十进制小数点格式（`.`），避免受系统或用户环境变量影响而使用其他地区的数字格式（如逗号）。
 
-### `write_table_header()` 与 `write_table_entry()`：Markdown 表格生成
+### 95.13.2 `write_table_header()` 与 `write_table_entry()`：Markdown 表格生成
 
 源码路径：`examples/gen-docs/gen-docs.cpp` - `write_table_header()`（26-29行）与 `write_table_entry()`（31-62行）
 
@@ -3611,7 +3611,7 @@ static void write_table_entry(std::ostringstream & ss, const common_arg & opt) {
 
 `write_table_entry` 负责将单个命令行参数转换为 Markdown 表格行。关键的工程细节包括：处理参数别名列表、转义 Markdown 特殊字符（管道符 `|` 和换行符）、以及将多个值提示合并。这些转义处理确保生成的 Markdown 在渲染时不会破坏表格结构。特别是将换行符转为 `<br/>`，保证了多行帮助文本在表格中能正确换行显示。
 
-### `write_table()` 与 `write_help()`：表格编排与帮助块组装
+### 95.13.3 `write_table()` 与 `write_help()`：表格编排与帮助块组装
 
 源码路径：`examples/gen-docs/gen-docs.cpp` - `write_table()`（64-69行）与 `write_help()`（71-98行）
 
@@ -3654,7 +3654,7 @@ static void write_help(std::ostringstream & ss, const md_file & md) {
 
 `write_help` 展示了如何按类别（Common/Sampling/Example-specific）生成结构化的帮助块。每个类别对应一个独立的参数表格。`write_table` 是表头与逐行生成的编排者——先写表头，再遍历参数集合逐行写入。生成的内容被 `HELP_START_MARKER` 和 `HELP_END_MARKER` 标记包围，便于后续在 README 中定位和替换。
 
-### `main()`：README 的自动更新
+### 95.13.4 `main()`：README 的自动更新
 
 源码路径：`examples/gen-docs/gen-docs.cpp` - `main()`（100-137行）
 
@@ -3701,7 +3701,7 @@ int main(int, char **) {
 
 `main()` 展示了文档自动更新的完整流程：读取目标 Markdown 文件、通过 `HELP_START_MARKER` 和 `HELP_END_MARKER` 定位旧帮助区域、生成新的帮助内容、替换旧区域并写回文件。这种"标记 + 替换"的模式让 README 中的帮助文档始终与代码中的参数定义保持同步，避免了手动维护带来的版本漂移。关于 `md_files` 配置数组：它定义了 gen-docs 工具要批量更新哪些示例的 README 文件，每个 `md_file` 结构体包含目标文件路径、对应的示例类型 `ex` 以及专属参数章节的标题，具体实例在文件上方的全局数组中定义，通常覆盖 `main`、`server` 等常见示例。
 
-## 96.14 设计中的取舍
+## 95.14 设计中的取舍
 
 在构建这套模型文件工具链的过程中，开发者在多个方面做出了重要的设计权衡。理解这些取舍，有助于我们在自己的项目中做出更明智的决策。
 
@@ -3713,7 +3713,7 @@ int main(int, char **) {
 
 **为什么 `my_llama_hparams::operator!=` 使用 `memcmp`？** `memcmp` 按内存内容逐字节比较两个对象，效率高且实现简单。前提是 `my_llama_hparams` 不包含指针成员（所有字段都是值类型），且没有因对齐引入的未初始化填充字节（这会导致比较结果不确定）。这里的取舍是：`memcmp` 在性能上优于逐字段比较，但牺牲了对单个字段差异的定位能力——如果比较失败，无法知道是哪个字段不同。在实际使用中，这个运算符主要用于验证转换前后配置是否一致，不关心具体差异字段，因此 `memcmp` 是合理的选择。
 
-## 96.15 动手练习
+## 95.15 动手练习
 
 1. **对照实现 GGUF 写入与读取流程**
    - 阅读 `examples/gguf/gguf.cpp` 中 `to_string()`、`gguf_ex_write()`、`gguf_ex_read_0()`、`gguf_ex_read_1()` 四个函数。
@@ -3829,7 +3829,7 @@ int main(int, char **) {
       3. `write_help()` 如何将参数分为 Common、Sampling、Example-specific 三大类？
       4. `main()` 如何通过 HELP_START_MARKER 和 HELP_END_MARKER 定位并替换 README 中的帮助区块？
 
-## 96.16 本章小结
+## 95.16 本章小结
 
 在这一章中，我们系统地学习了 llama.cpp 模型文件工具链的完整生态。我们从一个生动的"模型集装箱与质检工厂"类比出发，将 GGUF 读写、哈希校验、格式转换和文档维护等一系列工具映射到直观的工程意象中，随后逐一深入每个工具的源码实现。
 

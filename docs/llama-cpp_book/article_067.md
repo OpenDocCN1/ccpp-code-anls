@@ -2,7 +2,7 @@
 
 
 
-# 68 命令行推理工具：模型对话的「智能终端」
+# 第67章 68 命令行推理工具：模型对话的「智能终端」
 
 ## 学习目标
 
@@ -15,14 +15,14 @@
 - 理解 CLI 工具的信号处理机制与命令行自动补全实现
 - 掌握 completion 工具的文件检查与会话管理辅助函数
 
-## 68.1 生活类比
+## 67.1 生活类比
 
 想象 llama.cpp 是一座「万能发电站」。在这个电站里，GGUF 模型文件就像标准化的燃料棒，它们被统一封装，无论来自哪个厂商，都能即插即用，为电站提供持续的动力。跨平台后端（Metal、CUDA、Vulkan 等）则相当于多种发电机组，无论是苹果的芯片、英伟达的 GPU，还是 AMD 的硬件，都能找到适配的机组，让电站在不同的土地上生根发芽。llama-cli 和 llama-completion 是控制面板与仪表，用户通过它们直接向电站发出指令，或是启动发电，或是调整输出。而 server_context 则是中央调度室，它精密地管理着并发请求、KV 缓存和采样策略，确保每一个任务都能高效完成。量化工具 llama-quantize 就像燃料精炼厂，它把笨重的 FP32 压缩成轻便的 Q4 或 Q8，减重不减效，让燃料的运输和储存更加便捷。多模态支持 mtmd 则是多燃料兼容系统，既能烧煤（文本），也能烧天然气（图像、音频），让电站的用途更加广泛。至于信号处理与自动补全，它们是电站的安全阀与智能控制台，保障操作的安全，同时提升交互的效率。就像发电站需要精密调度燃料、涡轮和电网，llama.cpp 也需要协调模型加载、内存管理与推理计算，才能在不同硬件上高效「发电」。
 
 **深化类比：工具链的分工协作**  
 如果将 llama.cpp 比作发电站，那么 `llama-cli` 是操作员面前的**主控制台**，集成了语音指令（多模态）、文件导入（/read /glob）、历史回溯（/clear /regen）等高级功能，适合人类直接交互；`llama-completion` 则是一台**经典的蒸汽涡轮发电机**，结构简单直接，只负责把燃料（prompt）烧成电力（token），适合脚本调用和管道操作；`llama-server` 则是**输电网络**，将发电站的能力通过标准化接口（OpenAI 兼容 API）分发给成千上万个下游用户；而 `llama-quantize` 是**燃料精炼厂**，在燃料入站前完成压缩换装。四大工具各司其职，共同构成了从原油到用电的完整产业链。
 
-## 68.2 源码地图
+## 67.2 源码地图
 
 ```text
 README.md
@@ -54,11 +54,11 @@ tools/completion/completion.cpp
 └── main()                            # 经典生成主循环：prompt → tokenize → batch decode → sample → loop
 ```
 
-## 68.3 源码解析单元 1：README.md —— 项目蓝图、模型矩阵与工具链总览
+## 67.3 源码解析单元 1：README.md —— 项目蓝图、模型矩阵与工具链总览
 
 源码路径：`README.md`
 
-### 68.3.1 项目概览与特性（第 1-50 行）
+### 67.3.1 项目概览与特性（第 1-50 行）
 
 ```markdown
 # llama.cpp
@@ -124,7 +124,7 @@ graph TB
     Common --> Core
 ```
 
-### 68.3.2 快速上手指南（第 52-120 行）
+### 67.3.2 快速上手指南（第 52-120 行）
 
 ```markdown
 ## Quick Start
@@ -139,22 +139,22 @@ cmake --build build --config Release
 
 ### 2. Get a model (GGUF format)
 ```bash
-# Option A: Download from Hugging Face (recommended)
+## 67.4 Option A: Download from Hugging Face (recommended)
 hf download bartowski/Qwen2.5-0.5B-Instruct-GGUF --include "*.gguf" --local-dir ./models
 
-# Option B: Convert from PyTorch/HF format
+## 67.5 Option B: Convert from PyTorch/HF format
 python convert_hf_to_gguf.py /path/to/model --outfile model.gguf
 ```
 
 ### 3. Run inference
 ```bash
-# CLI chat (interactive)
+## 67.6 CLI chat (interactive)
 ./build/bin/llama-cli -m ./models/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf -cnv
 
-# Server (OpenAI compatible API)
+## 67.7 Server (OpenAI compatible API)
 ./build/bin/llama-server -m ./models/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf -c 4096
 
-# Benchmark
+## 67.8 Benchmark
 ./build/bin/llama-bench -m ./models/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf
 ```
 ```
@@ -167,7 +167,7 @@ python convert_hf_to_gguf.py /path/to/model --outfile model.gguf
 >    - `llama-server`：生产级服务，OpenAI API 兼容，支持并发、流式、工具调用。
 >    - `llama-bench`：性能基准，测量 prompt 处理速度、生成速度、内存占用。
 
-### 68.3.3 支持模型矩阵（第 122-250 行）
+### 67.8.1 支持模型矩阵（第 122-250 行）
 
 ```markdown
 ## Supported Models
@@ -195,7 +195,7 @@ python convert_hf_to_gguf.py /path/to/model --outfile model.gguf
 > 3. **多模态集成**：通过 `mtmd`（多模态编码器）统一处理图像/音频投影，仅需额外加载 `mmproj` 文件。
 > 4. **特殊架构支持**：Mamba/RWKV 等 RNN 架构通过自定义 kernel 实现，BERT/T5 等编码器模型用于嵌入/重排序。
 
-### 68.3.4 多模态支持（第 252-320 行）
+### 67.8.2 多模态支持（第 252-320 行）
 
 ```markdown
 ## Multimodal Support
@@ -216,11 +216,11 @@ llama.cpp supports multimodal models through the **mtmd** (multi-modal) encoder 
 
 ### Usage
 ```bash
-# Download model + mmproj (projector weights)
+## 67.9 Download model + mmproj (projector weights)
 hf download llava-hf/llava-v1.6-mistral-7b-hf --include "*.gguf" --local-dir ./models
 hf download mmproj/llava-v1.6-mistral-7b-mmproj --include "*.gguf" --local-dir ./models
 
-# Run CLI with image
+## 67.10 Run CLI with image
 ./build/bin/llama-cli -m ./models/llava-v1.6-mistral-7b-Q4_K_M.gguf \
     --mmproj ./models/mmproj-llava-v1.6-mistral-7b.gguf \
     --image ./image.jpg -p "Describe this image"
@@ -233,7 +233,7 @@ hf download mmproj/llava-v1.6-mistral-7b-mmproj --include "*.gguf" --local-dir .
 > 3. **mtmd 编码器**：在 `common_mtmd.cpp` 中实现，负责图像预处理（resize、normalize、patch）、音频特征提取（mel spectrogram），调用编码器（CLIP/SigLIP/Whisper）并投影。
 > 4. **统一接口**：`llama_batch_add_image`/`llama_batch_add_audio` 将媒体 token 注入 batch，对上层透明。
 
-### 68.3.5 工具链说明（第 322-420 行）
+### 67.10.1 工具链说明（第 322-420 行）
 
 ```markdown
 ## Tools
@@ -262,9 +262,9 @@ hf download mmproj/llava-v1.6-mistral-7b-mmproj --include "*.gguf" --local-dir .
 
 ---
 
-## 68.4 源码解析单元 2：tools/cli/cli.cpp —— 现代交互式 CLI 核心实现
+## 67.11 源码解析单元 2：tools/cli/cli.cpp —— 现代交互式 CLI 核心实现
 
-### 68.4.1 全局辅助函数：should_stop()（第 34-36 行）
+### 67.11.1 全局辅助函数：should_stop()（第 34-36 行）
 
 ```cpp
 static bool should_stop() {
@@ -274,7 +274,7 @@ static bool should_stop() {
 
 > **解析**：`should_stop()` 是一个**原子标志检查器**，返回全局原子布尔变量 `g_is_interrupted` 的值。它被设计为**线程安全**的中断检查点，供推理线程（`server_context::start_loop()`）、流式生成循环（`generate_completion()`）、用户输入等待（`console::readline()`）等多处调用。通过 `std::atomic<bool>` 避免了数据竞争，实现了无锁的优雅停止机制。这是 CLI 与后台推理线程协作的「心跳检测」接口。
 
-### 68.4.2 全局辅助函数：signal_handler()（第 39-48 行）
+### 67.11.2 全局辅助函数：signal_handler()（第 39-48 行）
 
 ```cpp
 static void signal_handler(int) {
@@ -319,7 +319,7 @@ sequenceDiagram
     end
 ```
 
-### 68.4.3 全局辅助函数：auto_completion_callback()（第 253-341 行）
+### 67.11.3 全局辅助函数：auto_completion_callback()（第 253-341 行）
 
 ```cpp
 static std::vector<std::pair<std::string, size_t>> auto_completion_callback(std::string_view line, size_t cursor_byte_pos) {
@@ -448,7 +448,7 @@ flowchart TD
     CmdComplete --> Return
 ```
 
-### 68.4.4 cli_context 类：构造函数（第 66-99 行）
+### 67.11.4 cli_context 类：构造函数（第 66-99 行）
 
 ```cpp
 cli_context(const common_params & params) {
@@ -471,7 +471,7 @@ cli_context(const common_params & params) {
 > 3. **逐 token 计时**：`defaults.timings_per_token = true` 启用详细性能统计（prompt/生成 t/s）。
 > 4. **推理预算控制**：`reasoning_budget` 与 `reasoning_budget_message` 配合 DeepSeek 格式的 `<think>` 标签，限制思维链长度，防止过度推理。
 
-### 68.4.5 cli_context 类：generate_completion()（第 100-205 行）
+### 67.11.5 cli_context 类：generate_completion()（第 100-205 行）
 
 ```cpp
 std::string generate_completion(result_timings & out_timings) {
@@ -604,7 +604,7 @@ sequenceDiagram
     CLI_Main-->>Caller: 返回完整内容 + timings
 ```
 
-### 68.4.6 cli_context 类：load_input_file()（第 207-223 行）
+### 67.11.6 cli_context 类：load_input_file()（第 207-223 行）
 
 ```cpp
 std::string load_input_file(const std::string & fname, bool is_media) {
@@ -630,7 +630,7 @@ std::string load_input_file(const std::string & fname, bool is_media) {
 > 3. **媒体模式**：读取二进制数据到 `raw_buffer`（`std::vector<uint8_t>`），存入 `input_files` 成员向量，返回 `mtmd_default_marker()`（如 `<image>`、`<audio>`）作为 prompt 中的占位符。实际媒体数据随任务提交时通过 `task.cli_files` 传给 `server_context`，由 `mtmd` 编码器处理。
 > 4. **错误处理**：文件打开失败返回空字符串，调用方检查并报错。
 
-### 68.4.7 cli_context 类：format_chat()（第 225-241 行）
+### 67.11.7 cli_context 类：format_chat()（第 225-241 行）
 
 ```cpp
 common_chat_params format_chat() {
@@ -660,7 +660,7 @@ common_chat_params format_chat() {
 >    - `enable_thinking`：若模板支持 `enable_thinking` 参数（如 Qwen3），则开启。
 > 3. **应用模板**：`common_chat_templates_apply` 调用 Jinja2 模板引擎渲染，返回包含 `prompt`、`generation_prompt`、`thinking_start_tag`、`thinking_end_tag` 等字段的 `common_chat_params`。
 
-### 68.4.8 main()：程序入口与主交互循环（第 349-600 行）
+### 67.11.8 main()：程序入口与主交互循环（第 349-600 行）
 
 ```cpp
 int main(int argc, char ** argv) {
@@ -987,9 +987,9 @@ graph TB
 
 ---
 
-## 68.5 源码解析单元 3：tools/completion/completion.cpp —— 经典文本生成与会话管理
+## 67.12 源码解析单元 3：tools/completion/completion.cpp —— 经典文本生成与会话管理
 
-### 68.5.1 全局静态变量：共享状态（第 1-75 行）
+### 67.12.1 全局静态变量：共享状态（第 1-75 行）
 
 ```cpp
 static llama_context           ** g_ctx;          // 指向 llama_context 指针的指针
@@ -1025,7 +1025,7 @@ graph TB
     PerfPrint --> GSmpl
 ```
 
-### 68.5.2 print_usage()：使用示例输出（第 38-44 行）
+### 67.12.2 print_usage()：使用示例输出（第 38-44 行）
 
 ```cpp
 static void print_usage(int argc, char ** argv) {
@@ -1039,7 +1039,7 @@ static void print_usage(int argc, char ** argv) {
 
 > **解析**：`print_usage()` 是 completion 工具的帮助信息入口，展示了两种核心使用模式：单轮文本生成（`-p` 指定 prompt，`-n` 限制长度，`-no-cnv` 禁用对话模板）和多轮对话（`-sys` 设置系统提示词）。这种简洁的示例设计降低了新用户的上手门槛，体现了工具的「开箱即用」理念。
 
-### 68.5.3 file_exists()：文件存在性检查（第 46-49 行）
+### 67.12.3 file_exists()：文件存在性检查（第 46-49 行）
 
 ```cpp
 static bool file_exists(const std::string & path) {
@@ -1050,7 +1050,7 @@ static bool file_exists(const std::string & path) {
 
 > **解析**：`file_exists()` 通过尝试以文本模式打开文件并检查流状态 `good()` 来判断文件是否存在且可读。这是一种轻量级的存在性检查，不读取文件内容，仅验证路径有效性和读权限。在会话加载逻辑中，它用于决定是否尝试加载 prompt cache 文件。
 
-### 68.5.4 file_is_empty()：空文件检查（第 51-56 行）
+### 67.12.4 file_is_empty()：空文件检查（第 51-56 行）
 
 ```cpp
 static bool file_is_empty(const std::string & path) {
@@ -1063,7 +1063,7 @@ static bool file_is_empty(const std::string & path) {
 
 > **解析**：`file_is_empty()` 以二进制模式打开文件并定位到末尾（`std::ios::ate`），通过 `tellg()` 获取文件大小。启用 `failbit | badbit` 异常确保打开失败时抛出异常而非静默失败。此函数在会话加载时用于区分「文件不存在」（将创建新会话）和「文件存在但为空」（初始化新会话）两种情况，避免读取空文件导致的解析错误。
 
-### 68.5.5 sigint_handler()：交互模式中断状态机（第 60-75 行）
+### 67.12.5 sigint_handler()：交互模式中断状态机（第 60-75 行）
 
 ```cpp
 static void sigint_handler(int signo) {
@@ -1096,7 +1096,7 @@ stateDiagram-v2
     生成中 --> 退出程序: 非交互模式下 Ctrl+C
 ```
 
-### 68.5.6 main()：经典生成主循环（第 78-690 行）
+### 67.12.6 main()：经典生成主循环（第 78-690 行）
 
 ```cpp
 int main(int argc, char ** argv) {
@@ -1297,7 +1297,7 @@ flowchart TD
 
 ---
 
-## 68.6 设计中的取舍
+## 67.13 设计中的取舍
 
 **问：为什么 llama-cli 使用 server_context 而不是直接调用 llama API？**  
 **答：** server_context 提供了任务队列、响应读取器、多模态处理等高层抽象，而直接调用 llama API 需要手动管理 KV 缓存、采样器、批处理等底层细节。server_context 将这些复杂性封装起来，使 CLI 可以专注于 UI 交互和命令处理，实现了推理与 UI 的解耦。这种设计的 trade-off 是增加了一层抽象，但换来了代码的简洁性和可维护性，非常适合 CLI 工具的场景。
@@ -1319,7 +1319,7 @@ flowchart TD
 
 ---
 
-## 68.7 动手练习
+## 67.14 动手练习
 
 1. **阅读 README 与工具链源码**
    - 阅读 `README.md` 第 1-200 行，回答：
@@ -1361,7 +1361,7 @@ flowchart TD
 
 ---
 
-## 68.8 本章小结
+## 67.15 本章小结
 
 本章我们一起学习了以下概念：
 

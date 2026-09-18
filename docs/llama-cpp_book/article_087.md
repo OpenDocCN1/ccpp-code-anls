@@ -1,5 +1,5 @@
 
-# WebUI 源码解析 —— 驯服虚拟机场：llama-server 的前端工程
+# 第87章 WebUI 源码解析 —— 驯服虚拟机场：llama-server 的前端工程
 
 ## 学习目标
 
@@ -13,11 +13,11 @@
 - 掌握文件类型检测、PDF/音频处理、Markdown/LaTeX 管线、TTL 缓存与 URI 模板展开
 - 理解 Barrel Export、bits-ui 原语封装、Context API 和无障碍组件组织方式
 
-## 86.1 生活类比：WebUI 是一座 "智能机场塔台"
+## 87.1 生活类比：WebUI 是一座 "智能机场塔台"
 
 把 WebUI 想象成一座繁忙的智能机场。SvelteKit 与 Vite 是机场的基础设施：跑道、航站楼和调度系统决定飞机如何进出；TypeScript 类型与枚举是机场的统一通信标准，确保塔台、地勤和机组对"航班状态""货物类型""目的地"有一致理解。Store 是塔台控制台，`SettingsStore` 管理机场运行规则，`ServerStore` 监控主机场服务器，`ModelsStore` 管理可用的"飞机机队"，`ConversationsStore` 保存航班记录，`ChatStore` 则负责调度一架具体的对话航班。Service 是地勤与通信部门，`ChatService` 负责与推理服务器通信，`DatabaseService` 负责把航班日志写入本地数据库，`MCPService` 负责连接外部工具机场。MCP 工具就像外部机场的跑道、气象站和货运仓库，AgenticStore 则像智能塔台：它让模型先提出行动，再调用工具，拿到结果后继续决策。Markdown、LaTeX、文件处理和缓存工具则是机场的专用设备：负责清理货物、识别格式、生成预览、缓存常用信息，并把最终结果安全地交给乘客。这个比喻将贯穿全章，帮助我们在每个源码解析单元中都找到对应的机场意象。
 
-## 86.2 源码地图：从工程基座到业务航线
+## 87.2 源码地图：从工程基座到业务航线
 
 ```text
 tools/server/webui/
@@ -210,13 +210,13 @@ tools/server/webui/
 │       └── chat/[id]/+page.ts
 ```
 
-## 86.3 WebUI 工程基座 —— 打造前端的"现代化流水线车间"
+## 87.3 WebUI 工程基座 —— 打造前端的"现代化流水线车间"
 
-### 核心概念
+### 87.3.1 核心概念
 
 工程基座决定源码如何被编译、测试和部署。该项目不是一个独立运行的传统 SPA，而是要嵌入 llama-server 的静态目录，因此构建配置必须满足三个条件：资源路径可相对定位、路由不依赖服务器重写、构建产物能够被后端直接引用。与此同时，Storybook 提供组件展示与交互验证环境，ESLint 负责约束 Svelte、TypeScript 与 Storybook 文件的质量。在机场类比中，这一单元关注的是跑道和调度规则：如果跑道编号不统一，飞机即使制造完成也无法安全起降。
 
-### 86.3.1 `svelte.config.js`：hash 路由与静态适配器配置
+### 87.3.2 `svelte.config.js`：hash 路由与静态适配器配置
 
 源码路径：`tools/server/webui/svelte.config.js` - `__main__`（1-27行）
 
@@ -255,7 +255,7 @@ export default config; // 导出给 SvelteKit 使用
 
 这段代码将 WebUI 配置为相对路径、hash 路由和静态输出模式。SvelteKit 是 Svelte 官方提供的应用框架，`svelte.config.js` 是它的核心配置文件。配置中，`adapter-static` 将页面与资源直接写入 `../public`，让 llama-server 可以像提供普通静态文件一样提供 WebUI；浏览器只根据 `#` 后的片段切换页面，服务器无需理解前端路由，就像机场的行李分拣系统只需将行李运到指定传送带，而不需要知道航班的目的地详情。
 
-### 86.3.2 `llamaCppBuildPlugin()`：整理最终航站楼资源
+### 87.3.3 `llamaCppBuildPlugin()`：整理最终航站楼资源
 
 源码路径：`tools/server/webui/vite.config.ts` - `llamaCppBuildPlugin()`（33-116行）
 
@@ -337,7 +337,7 @@ function llamaCppBuildPlugin() { // 创建自定义 Vite 插件
 
 这段代码是自定义 Vite 插件的核心，扮演着航站楼"行李分拣"的角色。`llamaCppBuildPlugin()` 在构建完成后执行一系列"收尾"加工：等待静态适配器写盘，将 favicon 内嵌为 base64 Data URL 以省去外链请求，把带有 hash 的 JavaScript 与 CSS 文件复制为固定的 `bundle.js` 与 `bundle.css` 并改写 HTML 中的引用路径，最后统一换行符并注入前端使用指南。这种"延迟 + 复制"的策略是为嵌入式部署环境简化后端引用路径而设计的，它也带来了每次构建需额外处理一次产物的代价。
 
-### 86.3.3 `.storybook/main.ts`：Storybook 入口配置与 Vite 权限
+### 87.3.4 `.storybook/main.ts`：Storybook 入口配置与 Vite 权限
 
 源码路径：`tools/server/webui/.storybook/main.ts` - `__main__`（1-25行）
 
@@ -377,7 +377,7 @@ export default config; // 导出配置
 
 这段代码配置 Storybook 的入口，包括故事文件目录、插件列表与框架选择。它通过 `viteFinal` 回调放宽文件系统访问权限，使 Storybook 能够加载位于项目 `tests` 目录下的资源，就像为飞行模拟器开放更多飞行场地一样。
 
-### `.storybook/preview.ts`：全局预览装饰器
+### 87.3.5 `.storybook/preview.ts`：全局预览装饰器
 
 源码路径：`tools/server/webui/.storybook/preview.ts` - `__main__`（1-41行）
 
@@ -415,7 +415,7 @@ export default preview; // 导出配置
 
 这段代码定义 Storybook 的全局预览行为，包括控件匹配、背景禁用和无障碍检查策略。它为所有故事统一注入主题监听与 Tooltip Provider 装饰器，保证每个组件故事的展示环境一致，就像机场所有登机口都统一安装相同的安检设备一样。
 
-### `playwright.config.ts`：E2E 测试配置
+### 87.3.6 `playwright.config.ts`：E2E 测试配置
 
 源码路径：`tools/server/webui/playwright.config.ts` - `__main__`（1-12行）
 
@@ -435,7 +435,7 @@ export default defineConfig({ // 导出全局测试配置
 
 这段代码定义 Playwright 端到端测试的运行环境。它要求测试前先执行一次真实构建，再通过 `http-server` 在 8181 端口托管 `../public` 静态目录，从而模拟 llama-server 提供 WebUI 的真实场景，确保测试覆盖的是"飞机从真实跑道起飞"的完整流程。
 
-### `eslint.config.js`：ESLint Flat Config
+### 87.3.7 `eslint.config.js`：ESLint Flat Config
 
 源码路径：`tools/server/webui/eslint.config.js` - `__main__`（1-45行）
 
@@ -495,7 +495,7 @@ export default ts.config( // 使用 typescript-eslint 的配置组合函数
 
 这段代码配置 ESLint 的语言规则与插件组合。它通过 Flat Config 将 JavaScript、TypeScript、Svelte 与 Storybook 的规则集统一编排，并针对项目特性关闭了 `no-undef`、`svelte/no-at-html-tags` 与 `svelte/no-navigation-without-resolve` 这三项与 hash 路由及嵌入式部署不兼容的规则，同时将 `.storybook` 目录排除在主要 lint 范围之外。
 
-### 设计取舍
+### 87.3.8 设计取舍
 
 **问题：为什么 `llamaCppBuildPlugin()` 使用延迟 100 毫秒，而不是直接在 `closeBundle()` 中读文件？**
 
@@ -509,13 +509,13 @@ export default ts.config( // 使用 typescript-eslint 的配置组合函数
 
 回答：后端静态服务或 HTML 模板只需要稳定引用 `./bundle.js` 与 `./bundle.css`，不必了解每次构建生成的新 hash。代价是缓存指纹能力下降，构建流程也增加了一次复制后处理，这体现了"嵌入式部署简单性"与"基于 hash 的缓存优化"之间的 trade-off。
 
-## 86.4 类型契约与枚举体系 —— 统一塔台、机组与地勤的"通信语言"
+## 87.4 类型契约与枚举体系 —— 统一塔台、机组与地勤的"通信语言"
 
-### 核心概念
+### 87.4.1 核心概念
 
 类型体系是前端各层之间的契约。API 类型描述服务器能提供什么，数据库类型描述本地能保存什么，聊天类型描述 UI 如何展示什么，MCP 与 Agentic 类型则描述外部工具和多轮编排如何协作。枚举将容易拼写错误的字符串集中为有限集合，避免同一状态在不同模块出现不一致写法。这一层的价值就像机场无线电协议：塔台说一个术语，所有岗位都知道它代表同一状态，从而避免歧义和误解。
 
-### 86.4.1 `app.d.ts`：提升共享类型到全局
+### 87.4.2 `app.d.ts`：提升共享类型到全局
 
 源码路径：`tools/server/webui/src/app.d.ts` - `__main__`（1-90行）
 
@@ -572,7 +572,7 @@ declare global { // 第二个独立的全局声明块，用于扩展浏览器全
 
 这段代码是 SvelteKit 项目的全局类型声明文件。它通过两个独立的 `declare global` 块，将 API、聊天、数据库、模型和设置类型集中提升为全局可用，并为 `Window` 对象增加 `idxThemeStyle` 与 `idxCodeBlock` 两个项目专用属性，让组件、服务和 Markdown 插件共享同一套类型边界，减少重复导入与隐式 `any`。
 
-### 86.4.2 `ToolCallType` 与 `AgenticSectionType`：协议状态的枚举化
+### 87.4.3 `ToolCallType` 与 `AgenticSectionType`：协议状态的枚举化
 
 源码路径：`tools/server/webui/src/lib/enums/agentic.ts` - `ToolCallType`、`AgenticSectionType`（1-19行）
 
@@ -593,7 +593,7 @@ export enum AgenticSectionType { // 定义 Agentic 展示区块
 
 这段代码定义了 Agentic 功能需要的两个枚举。`ToolCallType.FUNCTION` 对齐 OpenAI Function Calling 协议，确保工具调用类型与后端识别一致；`AgenticSectionType` 则用六个值描述一次 Agentic 展示中出现的所有区块状态，让 UI 可以根据类型渲染不同的内容样式。
 
-### `ChatMessageStatsView`、`ReasoningFormat`、`MessageRole`、`MessageType`、`ContentPartType`、`ErrorDialogType`：聊天相关枚举
+### 87.4.4 `ChatMessageStatsView`、`ReasoningFormat`、`MessageRole`、`MessageType`、`ContentPartType`、`ErrorDialogType`：聊天相关枚举
 
 源码路径：`tools/server/webui/src/lib/enums/chat.ts` - `ChatMessageStatsView`、`ReasoningFormat`、`MessageRole`、`MessageType`、`ContentPartType`、`ErrorDialogType`（1-80行）
 
@@ -629,7 +629,7 @@ export enum ErrorDialogType { // 定义错误对话框类型
 
 这段代码定义了聊天模块的六个核心枚举。`MessageRole` 区分系统、用户、助手和工具结果；`MessageType` 区分普通文本与隐藏根节点；`ContentPartType` 描述多模态内容片段；`ReasoningFormat` 决定推理内容的解析方式；`ErrorDialogType` 区分服务端错误与超时错误。这些枚举为 UI、Store、Service 与索引数据库的跨层协作提供了稳定且一致的状态协议。
 
-### `MCPService` 连接状态相关枚举
+### 87.4.5 `MCPService` 连接状态相关枚举
 
 源码路径：`tools/server/webui/src/lib/enums/mcp.ts` - `MCPConnectionPhase`、`MCPLogLevel`、`MCPTransportType`、`HealthCheckStatus`、`MCPContentType`、`JsonSchemaType`、`MCPRefType`（1-105行）
 
@@ -682,7 +682,7 @@ export enum MCPRefType { // 补全引用类型
 
 这段代码定义了 MCP 模块的七个枚举。`MCPConnectionPhase` 描述连接生命周期的七个阶段，`MCPLogLevel` 区分日志严重程度，`MCPTransportType` 标识三种传输协议，`HealthCheckStatus` 表示健康检查的四种状态，`MCPContentType` 区分工具结果的文本与图片，`JsonSchemaType` 对应 JSON Schema 的标准类型，`MCPRefType` 则用于补全请求中区分提示词与资源。
 
-### `AgenticConfig`、`AgenticMessage`、`AgenticSession`、`AgenticFlowCallbacks`：Agentic 类型契约
+### 87.4.6 `AgenticConfig`、`AgenticMessage`、`AgenticSession`、`AgenticFlowCallbacks`：Agentic 类型契约
 
 源码路径：`tools/server/webui/src/lib/types/agentic.d.ts` - `AgenticConfig`、`AgenticMessage`、`AgenticSession`、`AgenticFlowCallbacks`（1-135行）
 
@@ -743,7 +743,7 @@ export interface AgenticFlowCallbacks { // 定义流程回调契约
 
 这段代码定义了 Agentic 编排所需的全部类型契约。`AgenticConfig` 控制循环的启用状态与轮次上限；`AgenticMessage` 通过角色区分系统、用户、助手和工具消息，保证每种消息只携带与角色匹配的字段；`AgenticSession` 保存每个会话的运行快照；`AgenticFlowCallbacks` 则定义了流式增量、单轮完成、工具执行、附件和全流程完成等全部回调签名。
 
-### 模块依赖图
+### 87.4.7 模块依赖图
 
 ```mermaid
 graph LR
@@ -756,19 +756,19 @@ graph LR
     E --> U[Utils]
 ```
 
-### 设计取舍
+### 87.4.8 设计取舍
 
 **问题：为什么项目同时使用类型别名、接口和枚举，而不是全部使用字符串联合类型？**
 
 回答：接口适合表达可扩展对象结构，类型别名适合联合类型和组合类型，枚举适合跨模块复用并提供稳定命名。枚举的运行时产物会增加少量代码体积，但换来了更清晰的协议语义，这是可读性、运行时可用性与 bundle 体积之间的 trade-off。
 
-## 86.5 服务层与 API 协议 —— 塔台与外部机场的"无状态通信中心"
+## 87.5 服务层与 API 协议 —— 塔台与外部机场的"无状态通信中心"
 
-### 核心概念
+### 87.5.1 核心概念
 
 Service 层负责通信、转换和持久化，但不直接持有页面状态。它接收参数，调用外部 API，解析结果，再通过返回值或回调把事件交给 Store。这样的无状态设计让服务易于测试、复用和替换，也避免网络逻辑散落在组件中。在本节中，我们将重点阐述标准 API 请求封装、服务器属性读取、模型管理、参数同步，以及 ChatService 的 OpenAI 兼容协议和 SSE 流式响应等内容。
 
-### 服务调用链
+### 87.5.2 服务调用链
 
 ```mermaid
 sequenceDiagram
@@ -785,7 +785,7 @@ sequenceDiagram
     Store-->>UI: $state 更新
 ```
 
-### 86.5.1 `apiFetch()`：统一封装浏览器 fetch 请求
+### 87.5.3 `apiFetch()`：统一封装浏览器 fetch 请求
 
 源码路径：`tools/server/webui/src/lib/utils/api-fetch.ts` - `apiFetch()`（49-73行）
 
@@ -819,7 +819,7 @@ export async function apiFetch<T>( // 定义泛型 GET 请求函数
 
 这段代码是整个服务层网络请求的核心封装。`apiFetch()` 统一处理了 URL 前缀拼接、JSON/认证请求头的选择、自定义头合并以及 HTTP 错误解析，使得调用方只需关注路径和返回类型。同时它在请求失败时抛出统一结构的 Error，让上层 Store 能够一致地处理错误并展示给用户。
 
-#### `getAuthHeaders()` 与 `getJsonHeaders()`：生成请求认证头
+#### 87.5.3.1 `getAuthHeaders()` 与 `getJsonHeaders()`：生成请求认证头
 
 源码路径：`tools/server/webui/src/lib/utils/api-headers.ts` - `getAuthHeaders()`、`getJsonHeaders()`（8-21行）
 
@@ -840,7 +840,7 @@ export function getJsonHeaders(): Record<string, string> { // 生成 JSON 请求
 
 这段代码负责生成请求头。`getAuthHeaders()` 从全局设置中读取 API Key，仅在配置非空时生成 Bearer 认证头；`getJsonHeaders()` 则在 JSON 请求头的基础上合并认证信息。这两个函数被 `apiFetch()` 与聊天请求等模块复用，保证所有对外请求携带一致的认证与内容类型。
 
-### 86.5.2 `PropsService.fetch()`：获取服务器属性
+### 87.5.4 `PropsService.fetch()`：获取服务器属性
 
 源码路径：`tools/server/webui/src/lib/services/props.service.ts` - `PropsService.fetch()`、`fetchForModel()`（18-46行）
 
@@ -873,7 +873,7 @@ static async fetchForModel( // 获取指定模型属性
 
 这段代码是 `PropsService` 的核心方法，负责与 llama-server 的 `/props` 端点交互。`fetch()` 获取服务器全局属性，`fetchForModel()` 在 ROUTER 模式下按需获取指定模型的属性。两者的关键设计是默认将 `autoload` 显式设为 `false`，从而避免前端在仅查询属性时意外触发模型加载。
 
-### `ServerStore.fetch()`：管理服务器信息请求
+### 87.5.5 `ServerStore.fetch()`：管理服务器信息请求
 
 源码路径：`tools/server/webui/src/lib/stores/server.svelte.ts` - `ServerStore.fetch()`（64-85行）
 
@@ -906,7 +906,7 @@ async fetch(): Promise<void> { // 获取服务器信息
 
 这段代码是服务器状态层的入口。`ServerStore.fetch()` 通过 `fetchPromise` 合并并发请求，避免多个组件同时触发重复的 `/props` 调用；在成功回调中保存服务器属性并调用 `detectRole()` 判断当前是 MODEL 还是 ROUTER 模式，在失败回调中把原始异常转换为用户友好的错误消息。
 
-### `ModelsService.parseModelId()`：拆分模型 ID 的多个组成部分
+### 87.5.6 `ModelsService.parseModelId()`：拆分模型 ID 的多个组成部分
 
 源码路径：`tools/server/webui/src/lib/services/models.service.ts` - `ModelsService.parseModelId()`（120-199行）
 
@@ -968,7 +968,7 @@ static parseModelId(modelId: string): ParsedModelId { // 解析模型 ID
 
 这段代码把多种模型命名方式统一转换为结构化对象。`ModelsService.parseModelId()` 依次处理冒号分隔的量化、斜杠分隔的组织名、点分隔的量化后缀，以及短横线分隔的参数规模与标签，最终返回包含 `orgName`、`modelName`、`params`、`quantization` 等字段的对象，为模型选择器、参数徽章和分组逻辑提供基础。
 
-### `ParameterSyncService.extractServerDefaults()`：提取服务器默认参数
+### 87.5.7 `ParameterSyncService.extractServerDefaults()`：提取服务器默认参数
 
 源码路径：`tools/server/webui/src/lib/services/parameter-sync.service.ts` - `ParameterSyncService.extractServerDefaults()`（221-257行）
 
@@ -1015,7 +1015,7 @@ static extractServerDefaults( // 提取服务器默认参数
 
 这段代码从服务器 `/props` 响应中提取可同步的默认参数。`ParameterSyncService.extractServerDefaults()` 遍历 `SYNCABLE_PARAMETERS` 映射表，对服务端生成参数与管理端 WebUI 设置分别提取，将 `samplers` 数组转换为分号分隔字符串，并对所有数值做浮点精度归一化，为后续的合并与差异对比提供统一的数据源。
 
-### `ChatService.sendMessage()`：发送聊天补全请求
+### 87.5.8 `ChatService.sendMessage()`：发送聊天补全请求
 
 源码路径：`tools/server/webui/src/lib/services/chat.service.ts` - `ChatService.sendMessage()`（41-226行）
 
@@ -1044,7 +1044,7 @@ static async sendMessage( // 发送聊天补全请求
 
 这段代码是聊天请求的总入口。`ChatService.sendMessage()` 负责将数据库消息与 API 消息统一为 OpenAI 兼容格式，并根据模型能力过滤不支持的图片附件；随后构建包含采样参数、惩罚参数、工具定义与推理格式的请求体，通过 `./v1/chat/completions` 端点发送请求。该函数支持流式与非流式两种模式，并将错误按网络、超时和上下文溢出分类返回给上层。
 
-### `ChatService.handleStreamResponse()`：处理 SSE 流式响应
+### 87.5.9 `ChatService.handleStreamResponse()`：处理 SSE 流式响应
 
 源码路径：`tools/server/webui/src/lib/services/chat.service.ts` - `ChatService.handleStreamResponse()`（246-441行）
 
@@ -1072,7 +1072,7 @@ private static async handleStreamResponse( // 处理流式响应
 
 这段代码是 SSE 流式响应的核心处理器。`ChatService.handleStreamResponse()` 通过 `response.body.getReader()` 逐块读取数据，按 `data:` 前缀解析每一行 SSE 事件，并在解析过程中聚合正文、推理内容、工具调用增量与计时统计。它定义了工具调用增量的合并辅助函数，在流结束后调用 `onComplete` 一次性传入聚合后的完整结果；同时处理取消信号与错误释放读取器锁，确保资源安全回收。
 
-### `ChatService.handleNonStreamResponse()`：处理非流式响应
+### 87.5.10 `ChatService.handleNonStreamResponse()`：处理非流式响应
 
 源码路径：`tools/server/webui/src/lib/services/chat.service.ts` - `ChatService.handleNonStreamResponse()`（456-521行）
 
@@ -1094,7 +1094,7 @@ private static async handleNonStreamResponse( // 处理非流式响应
 
 这段代码处理非流式（一次性返回）的聊天补全响应。`ChatService.handleNonStreamResponse()` 读取完整响应文本并解析为 `ApiChatCompletionResponse`，随后提取模型名称、正文内容、推理内容与工具调用数组，将工具调用序列化为 JSON 字符串，最后通过 `onComplete` 回调把结果交给调用方并返回正文内容字符串。
 
-### `ChatService.mergeToolCallDeltas()`：合并流式工具调用增量
+### 87.5.11 `ChatService.mergeToolCallDeltas()`：合并流式工具调用增量
 
 源码路径：`tools/server/webui/src/lib/services/chat.service.ts` - `ChatService.mergeToolCallDeltas()`（534-582行）
 
@@ -1115,7 +1115,7 @@ private static mergeToolCallDeltas( // 合并工具调用增量
 
 这段代码将在流式响应中分片到达的工具调用增量合并到已有的工具调用数组。`ChatService.mergeToolCallDeltas()` 为每个增量确定目标索引（必要时补充数组长度），然后依次更新 `id`、`type`、函数名与参数，最终返回一个完整合并后的工具调用数组，供 `handleStreamResponse` 在流结束时统一使用。
 
-### `ChatService.convertDbMessageToApiChatMessageData()`：数据库消息转 API 消息
+### 87.5.12 `ChatService.convertDbMessageToApiChatMessageData()`：数据库消息转 API 消息
 
 源码路径：`tools/server/webui/src/lib/services/chat.service.ts` - `ChatService.convertDbMessageToApiChatMessageData()`（605-789行）
 
@@ -1134,7 +1134,7 @@ static convertDbMessageToApiChatMessageData(
 
 这段代码将数据库消息（含附件）转换为 API 聊天消息格式。`ChatService.convertDbMessageToApiChatMessageData()` 首先处理工具结果消息，将 `toolCalls` 从 JSON 字符串解析为数组；随后根据附件的不同类型（图片、文本文件、旧版上下文、音频、PDF、MCP 提示词、MCP 资源）构建 `contentParts` 数组，最终返回携带 `role`、`content`、可选 `reasoning_content` 与 `tool_calls` 的 API 消息对象。
 
-### `ChatService.parseErrorResponse()`：解析错误响应
+### 87.5.13 `ChatService.parseErrorResponse()`：解析错误响应
 
 源码路径：`tools/server/webui/src/lib/services/chat.service.ts` - `ChatService.parseErrorResponse()`（803-835行）
 
@@ -1153,7 +1153,7 @@ private static async parseErrorResponse(
 
 这段代码从 HTTP 错误响应中提取标准化的错误对象。`ChatService.parseErrorResponse()` 尝试解析 JSON 错误体，提取 `error.message` 作为错误消息，根据错误类型设置 `ServerError` 或 `HttpError` 名称，并从错误体中提取 `n_prompt_tokens` 与 `n_ctx` 作为上下文信息；若 JSON 解析失败则回退为仅包含状态码的错误对象。
 
-### `ChatService.extractModelName()`：提取模型名称
+### 87.5.14 `ChatService.extractModelName()`：提取模型名称
 
 源码路径：`tools/server/webui/src/lib/services/chat.service.ts` - `ChatService.extractModelName()`（851-895行）
 
@@ -1178,7 +1178,7 @@ private static extractModelName(data: unknown): string | undefined {
 
 这段代码从聊天补全响应数据中提取模型名称。`ChatService.extractModelName()` 优先检查根级的 `model` 字段，随后依次尝试 `choices[0].delta.model` 与 `choices[0].message.model`，只从标准位置提取，避免从非标准字段猜测模型名。
 
-### `ChatService.notifyTimings()`：通知计时统计
+### 87.5.15 `ChatService.notifyTimings()`：通知计时统计
 
 源码路径：`tools/server/webui/src/lib/services/chat.service.ts` - `ChatService.notifyTimings()`（906-916行）
 
@@ -1195,19 +1195,19 @@ private static notifyTimings(
 
 这段代码是计时回调的集中分发器。`ChatService.notifyTimings()` 仅在存在回调且至少有一项计时数据时调用 `onTimingsCallback`，避免无意义的空回调节点。
 
-### 设计取舍
+### 87.5.16 设计取舍
 
 **问题：为什么 Service 不直接修改 Store，而使用回调？**
 
 回答：回调让 `ChatService` 保持无状态，既可以被 ChatStore 使用，也可以被 AgenticStore、测试代码或其他页面使用。代价是回调数量较多、调用链更难追踪，但换来了高复用和低耦合，这体现了"接口复杂度"与"模块独立性"之间的 trade-off。
 
-## 86.6 Svelte 5 Store 协作 —— 塔台控制台的"响应式调度"
+## 87.6 Svelte 5 Store 协作 —— 塔台控制台的"响应式调度"
 
-### 核心概念
+### 87.6.1 核心概念
 
 Svelte 5 Runes 将状态声明、派生值和副作用显式化。`$state` 保存可变响应式数据，`$derived` 根据其他状态计算结果，`$effect` 负责与浏览器 API、定时器或外部系统同步。项目没有把所有状态塞进一个 Store，而是按职责拆分，再通过导出访问器、Context 和回调协作。就像机场塔台有多个专员各司其职，通过共享通信协议协同调度。
 
-### 86.6.1 `SettingsStore.updateConfig()`：更新单条设置并维护用户覆盖
+### 87.6.2 `SettingsStore.updateConfig()`：更新单条设置并维护用户覆盖
 
 源码路径：`tools/server/webui/src/lib/stores/settings.svelte.ts` - `SettingsStore.updateConfig()`（146-169行）
 
@@ -1240,7 +1240,7 @@ updateConfig<K extends keyof SettingsConfigType>( // 更新单个设置
 
 这段代码处理的不仅是"写入一个新值"，还负责维护用户覆盖集合。`SettingsStore.updateConfig()` 在写入新值后，若该参数可与服务器同步，则比较归一化后的新值与服务器默认值：一致时移除覆盖标记，否则标记为自定义覆盖；最后调用 `saveConfig()` 将配置与覆盖集合持久化到 localStorage。就像机场运行规则更新时，系统会区分"哪些是新设定的规则，哪些仍沿用默认值"。
 
-### `SettingsStore.syncWithServerDefaults()`：与服务器默认值同步
+### 87.6.3 `SettingsStore.syncWithServerDefaults()`：与服务器默认值同步
 
 源码路径：`tools/server/webui/src/lib/stores/settings.svelte.ts` - `SettingsStore.syncWithServerDefaults()`（292-320行）
 
@@ -1274,7 +1274,7 @@ syncWithServerDefaults(): void { // 与服务器默认值同步
 
 这段代码在服务器属性加载后执行三方对齐。`SettingsStore.syncWithServerDefaults()` 首先清除与服务器默认值一致的"伪覆盖"，再为未被用户显式覆盖的字段写入管理端 WebUI 设置的实际值，最后持久化同步结果。这段逻辑保证了本地默认值、服务器默认值与用户覆盖的优先级始终清晰正确。
 
-### `SettingsStore.resetParameterToServerDefault()`：重置参数到服务器默认值
+### 87.6.4 `SettingsStore.resetParameterToServerDefault()`：重置参数到服务器默认值
 
 源码路径：`tools/server/webui/src/lib/stores/settings.svelte.ts` - `SettingsStore.resetParameterToServerDefault()`（264-280行）
 
@@ -1300,7 +1300,7 @@ resetParameterToServerDefault(key: string): void { // 重置参数到默认值
 
 这段代码将指定参数重置为"最近默认值"，其优先级为：管理端设置的实际值优先，其次服务器默认值（通过清空让服务器自行决定），最后本地默认值。`SettingsStore.resetParameterToServerDefault()` 最后删除该键的用户覆盖标记并持久化，供设置 UI 的"重置为默认值"按钮使用。
 
-### `SettingsStore.forceSyncWithServerDefaults()`：强制同步所有参数
+### 87.6.5 `SettingsStore.forceSyncWithServerDefaults()`：强制同步所有参数
 
 源码路径：`tools/server/webui/src/lib/stores/settings.svelte.ts` - `SettingsStore.forceSyncWithServerDefaults()`（322-344行）
 
@@ -1329,7 +1329,7 @@ forceSyncWithServerDefaults(): void { // 强制同步所有参数
 
 这段代码执行全量强制同步。`SettingsStore.forceSyncWithServerDefaults()` 遍历所有可同步参数键，对每个键按"管理端设置、服务器默认值、本地默认值"的优先级写入，并清除全部覆盖标记后统一持久化，适用于用户点击"全部重置为默认值"的场景。
 
-### `SettingsStore.getParameterInfo()`：获取参数来源信息
+### 87.6.6 `SettingsStore.getParameterInfo()`：获取参数来源信息
 
 源码路径：`tools/server/webui/src/lib/stores/settings.svelte.ts` - `SettingsStore.getParameterInfo()`（370-381行）
 
@@ -1349,7 +1349,7 @@ getParameterInfo(key: string) { // 获取参数来源信息
 
 这段代码供设置 UI 查询参数的来源状态。`SettingsStore.getParameterInfo()` 将当前值、服务器默认值与用户覆盖集合交给 `ParameterSyncService.getParameterInfo()`，后者根据是否被用户覆盖来返回 `DEFAULT` 或 `CUSTOM` 来源标记。
 
-### `SettingsStore.getParameterDiff()`：生成参数差异
+### 87.6.7 `SettingsStore.getParameterDiff()`：生成参数差异
 
 源码路径：`tools/server/webui/src/lib/stores/settings.svelte.ts` - `SettingsStore.getParameterDiff()`（383-394行）
 
@@ -1369,7 +1369,7 @@ getParameterDiff() { // 生成参数差异
 
 这段代码生成当前配置与服务器默认值之间的差异。`SettingsStore.getParameterDiff()` 先将可同步键从配置中提取为扁平记录，再将记录交给 `ParameterSyncService.createParameterDiff()` 得到每个参数的当前值、服务器值与是否不同，供调试面板或"重置为默认值"功能使用。
 
-### 86.6.2 `ConversationsStore.loadConversation()`：加载会话与消息树路径
+### 87.6.8 `ConversationsStore.loadConversation()`：加载会话与消息树路径
 
 源码路径：`tools/server/webui/src/lib/stores/conversations.svelte.ts` - `ConversationsStore.loadConversation()`（268-294行）
 
@@ -1404,7 +1404,7 @@ async loadConversation(convId: string): Promise<boolean> { // 加载指定会话
 
 这段代码在用户打开某个历史会话时负责恢复消息树。`ConversationsStore.loadConversation()` 先查询会话记录，若存在 `currNode` 则使用 `filterByLeafNodeId()` 计算从根节点到当前叶节点的完整路径消息；否则退化为加载全部消息。成功返回 `true`，失败记录错误并返回 `false`。
 
-### `ConversationsStore.createConversation()`：创建新会话
+### 87.6.9 `ConversationsStore.createConversation()`：创建新会话
 
 源码路径：`tools/server/webui/src/lib/stores/conversations.svelte.ts` - `ConversationsStore.createConversation()`（240-261行）
 
@@ -1434,7 +1434,7 @@ async createConversation(name?: string): Promise<string> { // 创建新会话
 
 这段代码创建新会话并应用待生效的 MCP 服务器覆盖配置。`ConversationsStore.createConversation()` 的特别之处在于将 `pendingMcpServerOverrides` 深克隆为纯对象（避免 Svelte 5 Proxy 序列化问题）后写入会话，再置顶列表、设为激活并跳转到新会话页面。
 
-### `ConversationsStore.deleteConversation()`：删除会话与分叉
+### 87.6.10 `ConversationsStore.deleteConversation()`：删除会话与分叉
 
 源码路径：`tools/server/webui/src/lib/stores/conversations.svelte.ts` - `ConversationsStore.deleteConversation()`（310-350行）
 
@@ -1484,7 +1484,7 @@ async deleteConversation(convId: string, options?: { deleteWithForks?: boolean }
 
 这段代码支持两种删除模式。`ConversationsStore.deleteConversation()` 在 `deleteWithForks` 为真时通过广度优先遍历收集所有分叉后代并一并删除；否则仅删除当前会话，并将其直接分叉重新挂到被删会话的父级。若删除的是激活会话，则自动跳转到新建会话页。
 
-### `ConversationsStore.navigateToSibling()`：导航到兄弟分支
+### 87.6.11 `ConversationsStore.navigateToSibling()`：导航到兄弟分支
 
 源码路径：`tools/server/webui/src/lib/stores/conversations.svelte.ts` - `ConversationsStore.navigateToSibling()`（508-540行）
 
@@ -1522,7 +1522,7 @@ async navigateToSibling(siblingId: string): Promise<void> { // 导航到兄弟�
 
 这段代码实现分叉导航。`ConversationsStore.navigateToSibling()` 先计算目标兄弟消息对应的叶节点 ID，更新 `currNode` 后刷新消息路径；随后对比新旧路径的首条用户消息，若内容发生变化则触发标题确认更新流程。
 
-### `ConversationsStore.setMcpServerOverride()`：设置会话级 MCP 覆盖
+### 87.6.12 `ConversationsStore.setMcpServerOverride()`：设置会话级 MCP 覆盖
 
 源码路径：`tools/server/webui/src/lib/stores/conversations.svelte.ts` - `ConversationsStore.setMcpServerOverride()`（591-632行）
 
@@ -1571,7 +1571,7 @@ async setMcpServerOverride(serverId: string, enabled: boolean | undefined): Prom
 
 这段代码允许每个会话独立决定启用哪些 MCP 服务器。`ConversationsStore.setMcpServerOverride()` 在无激活会话时将覆盖写入待生效列表；在激活会话时，先深克隆现有覆盖为纯对象，再按 `enabled` 参数更新或移除指定服务器，最后持久化到 IndexedDB 并同步内存状态与会话列表。
 
-### `ConversationsStore.buildConversationTree()`：构建会话树
+### 87.6.13 `ConversationsStore.buildConversationTree()`：构建会话树
 
 源码路径：`tools/server/webui/src/lib/stores/conversations.svelte.ts` - `buildConversationTree()`（895-938行）
 
@@ -1615,7 +1615,7 @@ export function buildConversationTree(convs: DatabaseConversation[]): Conversati
 
 这段代码将扁平的会话列表转换为带层级的树形结构。`buildConversationTree()` 先按 `forkedFromConversationId` 建立父子映射，再遍历根节点递归生成带 `depth` 的扁平列表；最后将未被访问到的孤儿节点以深度 1 追加到末尾，保证所有会话都能在侧边栏中展示。
 
-### `ConversationsStore.generateConversationFilename()`：生成导出文件名
+### 87.6.14 `ConversationsStore.generateConversationFilename()`：生成导出文件名
 
 源码路径：`tools/server/webui/src/lib/stores/conversations.svelte.ts` - `ConversationsStore.generateConversationFilename()`（730-753行）
 
@@ -1644,7 +1644,7 @@ generateConversationFilename(
 
 这段代码生成会话导出文件的文件名。`ConversationsStore.generateConversationFilename()` 将会话名中的非字母数字字符替换为下划线、压缩重复下划线并截断；日期部分优选最新消息的时间戳，替换为文件系统友好的格式；最后拼接会话 ID 前缀生成 `.json` 文件名。
 
-### `ConversationsStore.downloadConversationFile()`：下载会话文件
+### 87.6.15 `ConversationsStore.downloadConversationFile()`：下载会话文件
 
 源码路径：`tools/server/webui/src/lib/stores/conversations.svelte.ts` - `ConversationsStore.downloadConversationFile()`（760-782行）
 
@@ -1674,7 +1674,7 @@ downloadConversationFile(data: ExportedConversations, filename?: string): void {
 
 这段代码通过浏览器下载能力将导出的会话数据保存为 JSON 文件。`ConversationsStore.downloadConversationFile()` 将 `ExportedConversations` 序列化为带缩进的 JSON，创建 Blob URL 和隐藏锚点触发下载，最后清理 DOM 与 URL 资源。
 
-### `ConversationsStore.importConversations()`：导入会话文件
+### 87.6.16 `ConversationsStore.importConversations()`：导入会话文件
 
 源码路径：`tools/server/webui/src/lib/stores/conversations.svelte.ts` - `ConversationsStore.importConversations()`（810-858行）
 
@@ -1727,19 +1727,19 @@ async importConversations(): Promise<DatabaseConversation[]> { // 导入会话�
 
 这段代码通过文件选择器导入 JSON 会话文件。`ConversationsStore.importConversations()` 校验文件格式为单个 `{ conv, messages }` 对象或数组后，调用 `DatabaseService.importConversations()` 批量导入，提示导入/跳过数量，刷新会话列表并返回导入的会话数组。
 
-### 设计取舍
+### 87.6.17 设计取舍
 
 **问题：为什么 Store 之间通过回调和访问器协作，而不是互相直接修改所有字段？**
 
 回答：回调和访问器减少循环依赖，并保留每个 Store 的职责边界。例如 ConversationsStore 只负责消息集合，ChatStore 负责流式状态。代价是跨 Store 调用链较长，但这是"可维护的边界"与"调用简短"之间的 trade-off。
 
-## 86.7 IndexedDB 消息树 —— 把对话保存成"可分叉的航线图"
+## 87.7 IndexedDB 消息树 —— 把对话保存成"可分叉的航线图"
 
-### 核心概念
+### 87.7.1 核心概念
 
 对话不是线性数组，而是一棵消息树。每条消息有 `parent` 和 `children`，会话通过 `currNode` 指向当前叶节点。编辑、重新生成和分叉不会覆盖历史，而是创建新的同级节点或新的会话副本。Dexie 将 IndexedDB 封装为类型化表格，并通过事务保证关键关系同时更新。就像机场的航班航线图一样，每一次改签或重新规划都会保留历史路径，而不是抹去旧航线。
 
-### 消息树时序图
+### 87.7.2 消息树时序图
 
 ```mermaid
 sequenceDiagram
@@ -1761,7 +1761,7 @@ sequenceDiagram
     ChatStore-->>UI: refreshActiveMessages()
 ```
 
-### 86.7.1 `LlamacppDatabase.constructor()`：初始化数据库表结构
+### 87.7.3 `LlamacppDatabase.constructor()`：初始化数据库表结构
 
 源码路径：`tools/server/webui/src/lib/services/database.service.ts` - `LlamacppDatabase.constructor()`（9-17行）
 
@@ -1778,7 +1778,7 @@ constructor() { // 初始化数据库
 
 这段代码定义数据库名称与表结构。`LlamacppDatabase` 继承自 Dexie，在构造函数中声明了数据库 `LlamacppWebui` 与 `conversations`、`messages` 两张表的索引字段。`messages` 表通过 `parent` 与 `children` 字段表达树形结构，为后续的消息分支和路径导航提供数据库层面的查询能力。
 
-### `DatabaseService.createMessageBranch()`：创建消息分支
+### 87.7.4 `DatabaseService.createMessageBranch()`：创建消息分支
 
 源码路径：`tools/server/webui/src/lib/services/database.service.ts` - `DatabaseService.createMessageBranch()`（63-100行）
 
@@ -1829,7 +1829,7 @@ static async createMessageBranch( // 创建消息分支
 
 这段代码通过一个数据库事务同时完成"创建子节点、更新父节点 children、更新会话 currNode"三件事。如果任何一步失败，`createMessageBranch()` 所在的事务会整体回滚，避免出现"子消息已经存在但父消息没有引用"或"当前节点指向不存在消息"的断裂关系，就像机场调度系统确保了每次航线变更都同时更新航班与登机口信息。
 
-### 86.7.2 `DatabaseService.createRootMessage()`：创建隐藏根节点
+### 87.7.5 `DatabaseService.createRootMessage()`：创建隐藏根节点
 
 源码路径：`tools/server/webui/src/lib/services/database.service.ts` - `DatabaseService.createRootMessage()`（108-123行）
 
@@ -1854,7 +1854,7 @@ static async createRootMessage(convId: string): Promise<string> { // 创建隐�
 
 这段代码为新会话创建隐藏的根节点。`DatabaseService.createRootMessage()` 创建的根消息不参与 UI 展示，但作为整棵消息树的起点，供所有后续消息挂接，就像飞机航线图的基准原点。
 
-### `DatabaseService.deleteMessageCascading()`：级联删除消息分支
+### 87.7.6 `DatabaseService.deleteMessageCascading()`：级联删除消息分支
 
 源码路径：`tools/server/webui/src/lib/services/database.service.ts` - `DatabaseService.deleteMessageCascading()`（246-272行）
 
@@ -1889,7 +1889,7 @@ static async deleteMessageCascading( // 级联删除消息分支
 
 这段代码在事务中先收集目标消息的所有后代，再清理父节点的 children 引用，最后批量删除整个分支并返回被删除的 ID 列表。`deleteMessageCascading()` 保证删除操作不会留下指向已不存在节点的引用，如同机场信息系统在取消一段航班时同步清理所有关联订座记录。
 
-### 86.7.3 `filterByLeafNodeId()`：获取根到叶路径
+### 87.7.7 `filterByLeafNodeId()`：获取根到叶路径
 
 源码路径：`tools/server/webui/src/lib/utils/branching.ts` - `filterByLeafNodeId()`（40-86行）
 
@@ -1927,7 +1927,7 @@ export function filterByLeafNodeId( // 获取根到叶路径
 
 这段代码从指定叶节点开始沿 `parent` 引用向上回溯，返回从根到叶的完整路径消息。若叶节点不存在，`filterByLeafNodeId()` 会退化为取最新时间戳的消息作为起点；返回路径时系统消息排在最前，其余按时间升序排列，以便 UI 正确展示。
 
-### `DatabaseService.forkConversation()`：创建会话分叉
+### 87.7.8 `DatabaseService.forkConversation()`：创建会话分叉
 
 源码路径：`tools/server/webui/src/lib/services/database.service.ts` - `DatabaseService.forkConversation()`（410-470行）
 
@@ -1985,7 +1985,7 @@ static async forkConversation( // 创建会话分叉
 
 这段代码通过 ID 映射复制"根到目标消息"的完整路径，并为所有克隆消息重建父子引用。`DatabaseService.forkConversation()` 分叉后的新会话不共享原会话的任何可变节点，从而实现了真正的独立分支，并将源会话的 MCP 覆盖配置一并继承。
 
-### `findLeafNode()`：查找叶节点
+### 87.7.9 `findLeafNode()`：查找叶节点
 
 源码路径：`tools/server/webui/src/lib/utils/branching.ts` - `findLeafNode()`（96-112行）
 
@@ -2011,7 +2011,7 @@ export function findLeafNode(messages: readonly DatabaseMessage[], messageId: st
 
 这段代码沿"最后一个子节点"一直向下遍历，直到到达没有子节点的叶子消息，返回该叶子节点的 ID。`findLeafNode()` 是分叉导航与当前节点更新的基础，保证每次总是跟随最新分支。
 
-### `findDescendantMessages()`：查找全部后代
+### 87.7.10 `findDescendantMessages()`：查找全部后代
 
 源码路径：`tools/server/webui/src/lib/utils/branching.ts` - `findDescendantMessages()`（122-149行）
 
@@ -2049,7 +2049,7 @@ export function findDescendantMessages(
 
 这段代码使用广度优先遍历收集给定消息的所有后代 ID。`findDescendantMessages()` 从目标消息的 children 开始逐层向下，用于级联删除整个分支的场景，确保所有子孙节点都被一并清理。
 
-### `getMessageSiblings()`：获取兄弟节点信息
+### 87.7.11 `getMessageSiblings()`：获取兄弟节点信息
 
 源码路径：`tools/server/webui/src/lib/utils/branching.ts` - `getMessageSiblings()`（159-210行）
 
@@ -2113,7 +2113,7 @@ export function getMessageSiblings(
 
 这段代码将目标消息的所有兄弟节点转换为叶节点 ID 列表，并返回当前消息的位置信息。`getMessageSiblings()` 的关键处理是将兄弟消息 ID 转换为各自的叶节点 ID，这样用户点击导航时能直接跳到对应分支的最新节点，实现完整的跨分支导航体验。
 
-### 设计取舍
+### 87.7.12 设计取舍
 
 **问题：为什么消息树同时保存 `parent` 和 `children`，而不是只保存一种方向？**
 
@@ -2123,13 +2123,13 @@ export function getMessageSiblings(
 
 回答：编辑消息代表"同一个上下文位置产生另一种输入"，所以新消息与原消息共享父节点，是同级分支；重新生成助手回复代表"同一个用户输入产生另一种回答"，所以新助手消息挂在原助手的父节点上，成为该输入位置的另一个回答分支。这样可以保留历史路径，同时让用户切换不同候选回答。
 
-## 86.8 MCP 协议与工具执行 —— 连接外部机场的"跨场调度中心"
+## 87.8 MCP 协议与工具执行 —— 连接外部机场的"跨场调度中心"
 
-### 核心概念
+### 87.8.1 核心概念
 
 MCP 将外部工具、提示词和资源统一为协议对象。`MCPService` 负责单个连接上的协议调用，`MCPStore` 负责多个连接的生命周期、工具索引和 UI 状态。连接表 `connections` 解决"工具实际由哪个客户端连接提供"，工具索引 `toolsIndex` 解决"给定工具名应该路由到哪个服务器"。在机场类比中，MCP 服务器是外部合作机场，`MCPStore` 则像航线调度中心，负责决定哪个工具从哪个外部机场调用。
 
-### 连接与工具索引关系图
+### 87.8.2 连接与工具索引关系图
 
 ```mermaid
 graph LR
@@ -2143,7 +2143,7 @@ graph LR
     executeTool -->|serverName 查询| connections
 ```
 
-### 86.8.1 `MCPService.createTransport()`：创建传输对象
+### 87.8.3 `MCPService.createTransport()`：创建传输对象
 
 源码路径：`tools/server/webui/src/lib/services/mcp.service.ts` - `MCPService.createTransport()`（78-163行）
 
@@ -2160,7 +2160,7 @@ static createTransport(config: MCPServerConfig): { // 创建传输对象
 
 这段代码根据服务器配置中的 `transport` 字段创建对应的 MCP SDK 传输对象，并同时返回传输类型。`MCPService.createTransport()` 将底层的 WebSocket、Streamable HTTP 或 SSE 传输差异隔离在 Service 内部，使上层 Store 只需关心连接与调用。
 
-### 86.8.2 `MCPService.connect()`：创建 MCP 客户端并建立连接
+### 87.8.4 `MCPService.connect()`：创建 MCP 客户端并建立连接
 
 源码路径：`tools/server/webui/src/lib/services/mcp.service.ts` - `MCPService.connect()`（188-379行）
 
@@ -2200,7 +2200,7 @@ static async connect( // 连接单个 MCP 服务器
 
 这段代码完成一次完整的 MCP 握手。`MCPService.connect()` 依次创建传输、初始化 SDK Client、执行握手连接、列出服务器工具与提示，最后返回包含客户端、传输、工具列表与能力信息的连接对象。它在建立连接后立即获取一次工具与提示列表，使上层 Store 无需额外请求便能构建工具索引。
 
-### `MCPService.disconnect()`：断开连接
+### 87.8.5 `MCPService.disconnect()`：断开连接
 
 源码路径：`tools/server/webui/src/lib/services/mcp.service.ts` - `MCPService.disconnect()`（381-397行）
 
@@ -2220,7 +2220,7 @@ static async disconnect(connection: MCPConnection): Promise<void> { // 断开连
 
 这段代码负责断开 MCP 连接。`MCPService.disconnect()` 先将传输对象的 `onclose` 回调置空，避免在主动断开时触发自动重连逻辑，再执行 SDK `client.close()`；即使关闭过程出现异常也会以警告记录，而不是向上抛出。
 
-### `MCPService.callTool()`：调用 MCP 工具
+### 87.8.6 `MCPService.callTool()`：调用 MCP 工具
 
 源码路径：`tools/server/webui/src/lib/services/mcp.service.ts` - `MCPService.callTool()`（463-506行）
 
@@ -2248,7 +2248,7 @@ static async callTool( // 调用 MCP 工具
 
 这段代码在调用前检查取消信号，随后通过 SDK 客户端调用指定工具，并将原始返回格式化为统一的 `ToolExecutionResult`。`MCPService.callTool()` 的错误处理采取"抛出而非吞掉"的策略，由 MCPStore 决定是否重连重试或向上层报告。
 
-### `MCPService.formatToolResult()`：格式化工具结果
+### 87.8.7 `MCPService.formatToolResult()`：格式化工具结果
 
 源码路径：`tools/server/webui/src/lib/services/mcp.service.ts` - `MCPService.formatToolResult()`（508-556行）
 
@@ -2265,7 +2265,7 @@ private static formatToolResult(result: ToolCallResult): string { // 格式化�
 
 这段代码将 MCP 工具返回的内容数组逐项转换为字符串并合并为一段文本。`MCPService.formatToolResult()` 依赖 `formatSingleContent` 完成具体转换：文本片段直接保留，图片片段转为 data URL，其他未知类型回退为 JSON 序列化。统一后的文本可以方便地存入数据库消息或展示在聊天流中。
 
-### `MCPService.formatSingleContent()`：格式化单个内容项
+### 87.8.8 `MCPService.formatSingleContent()`：格式化单个内容项
 
 源码路径：`tools/server/webui/src/lib/services/mcp.service.ts` - `MCPService.formatSingleContent()`（523-556行）
 
@@ -2284,7 +2284,7 @@ private static formatSingleContent(content: ToolResultContentItem): string { // 
 
 这段代码负责单个内容项的格式化。`MCPService.formatSingleContent()` 根据 `type` 字段区分文本与图片，图片内容使用 `createBase64DataUrl()` 转为 data URL，未知内容类型则回退为 JSON 序列化，保证结果永远可读。
 
-### `MCPService.listResources()` 与 `listAllResources()`：资源分页列表
+### 87.8.9 `MCPService.listResources()` 与 `listAllResources()`：资源分页列表
 
 源码路径：`tools/server/webui/src/lib/services/mcp.service.ts` - `MCPService.listResources()`、`listAllResources()`（580-625行）
 
@@ -2306,7 +2306,7 @@ static async listAllResources(...) // 列出全部资源
 
 这两段代码实现 MCP 资源的分页获取与自动合并。`MCPService.listResources()` 调用 SDK 返回单页资源与 `nextCursor`；`listAllResources()` 循环拉取所有分页直到没有游标，最终返回完整资源列表。
 
-### `MCPService.readResource()`：读取资源内容
+### 87.8.10 `MCPService.readResource()`：读取资源内容
 
 源码路径：`tools/server/webui/src/lib/services/mcp.service.ts` - `MCPService.readResource()`（674-696行）
 
@@ -2316,7 +2316,7 @@ static async readResource(...)... // 读取资源
 
 这段代码通过连接调用 SDK 的 `readResource` 方法读取指定 URI 的资源内容，返回 `ReadResourceResult`（含 `contents` 数组），调用方负责将资源信息与内容关联缓存。
 
-### `MCPService.subscribeResource()` 与 `unsubscribeResource()`：订阅与取消订阅
+### 87.8.11 `MCPService.subscribeResource()` 与 `unsubscribeResource()`：订阅与取消订阅
 
 源码路径：`tools/server/webui/src/lib/services/mcp.service.ts` - `MCPService.subscribeResource()`、`unsubscribeResource()`（698-742行）
 
@@ -2327,7 +2327,7 @@ static async unsubscribeResource(...)... // 取消订阅
 
 这两段代码通过 SDK 的 `subscribeResource` 与 `unsubscribeResource` 方法管理资源更新订阅。订阅后服务器会在资源内容变化时推送通知，`MCPResourceStore` 据此使缓存失效并刷新最近更新时间。
 
-### `MCPService.supportsResources()` 与 `supportsResourceSubscriptions()`：能力判定
+### 87.8.12 `MCPService.supportsResources()` 与 `supportsResourceSubscriptions()`：能力判定
 
 源码路径：`tools/server/webui/src/lib/services/mcp.service.ts` - `MCPService.supportsResources()`、`supportsResourceSubscriptions()`（744-764行）
 
@@ -2343,15 +2343,15 @@ static supportsResourceSubscriptions(connection: MCPConnection): boolean { // �
 
 这两段代码基于服务器能力对象判断是否支持资源与资源订阅。`MCPService.supportsResources()` 只需检查 `resources` 字段存在；`supportsResourceSubscriptions()` 进一步检查 `subscribe` 标志，供 UI 决定是否显示订阅入口。
 
-### 设计取舍
+### 87.8.13 设计取舍
 
 **问题：为什么 MCPStore 采用"连接池 + 工具索引"，而不是每次执行工具都重新连接？**
 
 回答：长连接可以降低握手开销，并支持服务器主动推送列表变更、资源更新和断开事件。代价是需要处理过期会话、断线重连和连接清理，但这是低延迟与连接管理复杂度之间的 trade-off。
 
-## 86.9 Agentic 循环 —— 智能塔台的"观察—行动—再观察"循环
+## 87.9 Agentic 循环 —— 智能塔台的"观察—行动—再观察"循环
 
-### 核心概念
+### 87.9.1 核心概念
 
 Agentic 流程不是一次请求，而是一个循环：
 
@@ -2364,7 +2364,7 @@ Agentic 流程不是一次请求，而是一个循环：
 
 AgenticStore 同时承担两项职责：用 `_sessions` 按会话保存运行状态，用回调把流式正文、推理、工具调用和计时交给 ChatStore。就像智能塔台在每一轮"观察—行动—再观察"中不断调整航班路径，直到安全降落。
 
-### Agentic 循环流程图
+### 87.9.2 Agentic 循环流程图
 
 ```mermaid
 flowchart TD
@@ -2383,7 +2383,7 @@ flowchart TD
     K -- 是 --> G
 ```
 
-### 86.9.1 `createDefaultSession()`：创建默认会话状态
+### 87.9.3 `createDefaultSession()`：创建默认会话状态
 
 源码路径：`tools/server/webui/src/lib/stores/agentic.svelte.ts` - `createDefaultSession()`（74-82行）
 
@@ -2401,7 +2401,7 @@ function createDefaultSession(): AgenticSession { // 创建默认会话状态
 
 这段代码返回 Agentic 会话的初始状态，包含运行标志、轮次计数、工具调用计数、错误和流式工具调用字段。`createDefaultSession()` 作为 `_sessions` 中不存在会话时的默认回退值，保证上层代码查询时不会遇到未定义。
 
-### `toAgenticMessages()`：将 API 消息转换为内部 Agentic 消息
+### 87.9.4 `toAgenticMessages()`：将 API 消息转换为内部 Agentic 消息
 
 源码路径：`tools/server/webui/src/lib/stores/agentic.svelte.ts` - `toAgenticMessages()`（84-110行）
 
@@ -2445,7 +2445,7 @@ function toAgenticMessages(messages: ApiChatMessageData[]): AgenticMessage[] { /
 
 这段代码负责把 API 消息数组转换为 Agentic 循环使用的内部消息联合类型。`toAgenticMessages()` 为缺少 ID 的工具调用补默认值，把工具结果统一为字符串，并确保系统/用户消息携带合法角色。
 
-### 86.9.2 `AgenticStore.runAgenticFlow()`：运行 Agentic 流程入口
+### 87.9.5 `AgenticStore.runAgenticFlow()`：运行 Agentic 流程入口
 
 源码路径：`tools/server/webui/src/lib/stores/agentic.svelte.ts` - `AgenticStore.runAgenticFlow()`（191-253行）
 
@@ -2509,7 +2509,7 @@ async runAgenticFlow(params: AgenticFlowParams): Promise<AgenticFlowResult> { //
 
 这段代码是 Agentic 流程的入口。`AgenticStore.runAgenticFlow()` 先计算配置并确保 MCP 已初始化，再检查工具可用性；随后规范化消息、初始化会话状态、增加 MCP 引用并进入核心循环。无论循环是正常结束还是抛出异常，`finally` 块都会清除运行态并释放 MCP 连接引用。
 
-### `AgenticStore.executeAgenticLoop()`：执行多轮 LLM-工具循环
+### 87.9.6 `AgenticStore.executeAgenticLoop()`：执行多轮 LLM-工具循环
 
 源码路径：`tools/server/webui/src/lib/stores/agentic.svelte.ts` - `AgenticStore.executeAgenticLoop()`（255-571行）
 
@@ -2602,7 +2602,7 @@ private async executeAgenticLoop(params: { // 定义核心循环
 
 这段代码是 Agentic 的核心循环骨架。`AgenticStore.executeAgenticLoop()` 每轮先调用 LLM 流式接口并等待 `onComplete`，随后将助手消息持久化；若本轮包含工具调用，则逐个执行 MCP 工具、提取附件、创建工具消息并加入下一轮上下文，最后调用 `onTurnComplete`。当模型不再返回工具调用、达到 `maxTurns` 上限或发生错误时，循环终止并触发 `onFlowComplete`。
 
-### 86.9.3 `AgenticStore.extractBase64Attachments()`：提取工具返回的 Base64 图片附件
+### 87.9.7 `AgenticStore.extractBase64Attachments()`：提取工具返回的 Base64 图片附件
 
 源码路径：`tools/server/webui/src/lib/stores/agentic.svelte.ts` - `AgenticStore.extractBase64Attachments()`（597-637行）
 
@@ -2651,7 +2651,7 @@ private extractBase64Attachments(result: string): { // 提取工具图片
 
 这段代码扫描工具返回的每一行，识别形如 `data:image/png;base64,...` 的图片 data URI，将其保存为数据库附件并在原文本中留下 `[Attachment saved: ...]` 占位符。`AgenticStore.extractBase64Attachments()` 后渲染层可通过 `parseToolResultWithImages()` 按占位符名称找回图片，实现图文混合展示。
 
-### `AgenticStore.buildFinalTimings()`：合并最终计时
+### 87.9.8 `AgenticStore.buildFinalTimings()`：合并最终计时
 
 源码路径：`tools/server/webui/src/lib/stores/agentic.svelte.ts` - `AgenticStore.buildFinalTimings()`（573-586行）
 
@@ -2674,7 +2674,7 @@ private buildFinalTimings( // 构建最终计时
 
 这段代码将 LLM 原始计时与 Agentic 聚合计时合成为最终计时对象。`AgenticStore.buildFinalTimings()` 在无工具调用时直接返回原始计时，否则在原始计时上附加 `agentic` 字段，包含轮次、工具调用次数、工具耗时与逐轮统计，供 ChatMessageTimings 展示。
 
-### `AgenticStore.normalizeToolCalls()`：规范化工具调用列表
+### 87.9.9 `AgenticStore.normalizeToolCalls()`：规范化工具调用列表
 
 源码路径：`tools/server/webui/src/lib/stores/agentic.svelte.ts` - `AgenticStore.normalizeToolCalls()`（588-595行）
 
@@ -2691,7 +2691,7 @@ private normalizeToolCalls(toolCalls: ApiChatCompletionToolCall[]): AgenticToolC
 
 这段代码将原始 API 工具调用对象规范化为带默认 `id`/`type`/空参数的 `AgenticToolCallList`，避免后续处理遇到缺失字段。
 
-### `AgenticStore.buildAttachmentName()`：生成附件文件名
+### 87.9.10 `AgenticStore.buildAttachmentName()`：生成附件文件名
 
 源码路径：`tools/server/webui/src/lib/stores/agentic.svelte.ts` - `AgenticStore.buildAttachmentName()`（639-643行）
 
@@ -2705,19 +2705,19 @@ private buildAttachmentName(mimeType: string, index: number): string {
 
 这段代码根据 MIME 类型生成带时间戳与序号的附件文件名。`AgenticStore.buildAttachmentName()` 使用 `IMAGE_MIME_TO_EXTENSION` 映射扩展名，未知类型回退为 `img`，最终生成 `mcp-attachment-1730000000000-1.png` 格式的文件名。
 
-### 设计取舍
+### 87.9.11 设计取舍
 
 **问题：为什么 AgenticStore 不把所有轮次合并成一条助手消息？**
 
 回答：每轮助手消息和工具消息都单独持久化，可以准确展示"模型思考—工具调用—工具结果—再次回答"的过程，也便于恢复和调试。代价是消息树节点更多、持久化次数增加，这是可观察性与存储复杂度之间的 trade-off。
 
-## 86.10 文件、多媒体与 Markdown 管线 —— "货物安检与包装中心"
+## 87.10 文件、多媒体与 Markdown 管线 —— "货物安检与包装中心"
 
-### 核心概念
+### 87.10.1 核心概念
 
 文件输入并非简单的 `FileReader`：系统需要识别 MIME 与扩展名，判断模型是否支持视觉/音频，将 PDF 转换为文本或图片，将 SVG/WebP 规范化为 PNG，并把最终结果转换为数据库附件。Markdown 管线则通过 AST 处理代码块、链接、RTL 文本、表格 HTML、附件图片和 LaTeX，避免直接拼接 HTML 带来的安全与结构问题。在机场类比中，这里是货物安检与包装中心：不同货物走不同通道，最终统一打包成可托运的包裹。
 
-### 文件处理管线流程图
+### 87.10.2 文件处理管线流程图
 
 ```mermaid
 flowchart LR
@@ -2737,7 +2737,7 @@ flowchart LR
     N --> O[DatabaseMessageExtra]
 ```
 
-### 86.10.1 `getFileTypeCategory()`：根据 MIME 分类文件类型
+### 87.10.3 `getFileTypeCategory()`：根据 MIME 分类文件类型
 
 源码路径：`tools/server/webui/src/lib/utils/file-type.ts` - `getFileTypeCategory()`（17-80行）
 
@@ -2767,7 +2767,7 @@ export function getFileTypeCategory(mimeType: string): FileTypeCategory | null {
 
 这段代码将 MIME 类型映射为图片、音频、PDF、文本四大类。`getFileTypeCategory()` 是文件上传与模型能力判断的起点，被 `processFilesToChatUploaded()`、`parseFilesToMessageExtras()` 和 `filterFilesByModalities()` 等多个模块复用。
 
-### `filterFilesByModalities()`：按模型能力过滤文件
+### 87.10.4 `filterFilesByModalities()`：按模型能力过滤文件
 
 源码路径：`tools/server/webui/src/lib/utils/modality-file-validation.ts` - `filterFilesByModalities()`（89-147行）
 
@@ -2809,7 +2809,7 @@ export function filterFilesByModalities( // 按模型能力过滤文件
 
 这段代码根据当前模型的视觉与音频能力过滤待上传文件。图片需要 `hasVision`，音频需要 `hasAudio`，文本与 PDF 始终支持；不支持的文件连同原因一并返回，便于 UI 展示错误提示。
 
-### 86.10.2 `processFilesToChatUploaded()`：处理上传文件生成预览或文本
+### 87.10.5 `processFilesToChatUploaded()`：处理上传文件生成预览或文本
 
 源码路径：`tools/server/webui/src/lib/utils/process-uploaded-files.ts` - `processFilesToChatUploaded()`（54-128行）
 
@@ -2861,7 +2861,7 @@ export async function processFilesToChatUploaded( // 处理上传文件
 
 这段代码在文件进入聊天表单时立即生成统一的 `ChatUploadedFile` 对象：图片生成预览（SVG/WebP 转为 PNG），PDF 提取文本，音频生成可播放的 data URL 预览，其余类型按 UTF-8 读取为文本。这样可以在用户发送前就展示文件缩略图或内容摘要。
 
-### `parseFilesToMessageExtras()`：转换为数据库附件
+### 87.10.6 `parseFilesToMessageExtras()`：转换为数据库附件
 
 源码路径：`tools/server/webui/src/lib/utils/convert-files-to-extra.ts` - `parseFilesToMessageExtras()`（28-185行）
 
@@ -2931,7 +2931,7 @@ export async function parseFilesToMessageExtras( // 转数据库附件
 
 这段代码在发送消息时把上传对象转换为可持久化的数据库附件：图片保存 Base64、音频保存 Base64 与 MIME、PDF 保存文本与原始数据、文本附件通过 `isLikelyTextFile()` 启发式判断是否为二进制；同时收集空文件列表，供上层 UI 提示用户。
 
-### `convertPDFToText()`：PDF 文本提取
+### 87.10.7 `convertPDFToText()`：PDF 文本提取
 
 源码路径：`tools/server/webui/src/lib/utils/pdf-processing.ts` - `convertPDFToText()`（51-129行）
 
@@ -2958,7 +2958,7 @@ export async function convertPDFToText(file: File): Promise<string> { // PDF 转
 
 这段代码基于 PDF.js 将 PDF 文档逐页提取为文本。`convertPDFToText()` 并行读取所有页面后拼接为纯文本字符串；由于依赖浏览器 API，该函数在 SSR 环境下会主动抛出异常，确保只在客户端被调用。
 
-### `processFilesToChatUploaded()` 中的 PDF 提示逻辑
+### 87.10.8 `processFilesToChatUploaded()` 中的 PDF 提示逻辑
 
 源码路径：`tools/server/webui/src/lib/utils/process-uploaded-files.ts` - `processFilesToChatUploaded()` PDF 分支（54-128行）
 
@@ -2986,7 +2986,7 @@ export async function convertPDFToText(file: File): Promise<string> { // PDF 转
 
 这段代码在用户选择 PDF 文件且当前模型支持视觉但 `pdfAsImage` 未被启用时，弹出 toast 通知并提供"Enable PDF as Images"快捷操作按钮。按钮点击直接更新设置，实现一键切换到 PDF 图片解析模式。
 
-### 86.10.3 `rehypeEnhanceCodeBlocks()`：为代码块添加头部与操作按钮
+### 87.10.9 `rehypeEnhanceCodeBlocks()`：为代码块添加头部与操作按钮
 
 源码路径：`tools/server/webui/src/lib/markdown/enhance-code-blocks.ts` - `rehypeEnhanceCodeBlocks()`（146-176行）
 
@@ -3018,7 +3018,7 @@ export const rehypeEnhanceCodeBlocks: Plugin<[], Root> = () => { // 定义 Rehyp
 
 这段代码是 Markdown 渲染管线中的核心增强插件。`rehypeEnhanceCodeBlocks()` 遍历 HAST 树，为每个 `<pre><code>` 代码块添加语言标签、复制按钮（以及 HTML 代码块的预览按钮）和唯一 ID。由于直接操作 AST，插件可以安全地插入复杂结构，而无需重新解析 HTML 字符串。
 
-### `rehypeEnhanceLinks()`：为链接添加安全属性
+### 87.10.10 `rehypeEnhanceLinks()`：为链接添加安全属性
 
 源码路径：`tools/server/webui/src/lib/markdown/enhance-links.ts` - `rehypeEnhanceLinks()`（17-33行）
 
@@ -3041,7 +3041,7 @@ export const rehypeEnhanceLinks: Plugin<[], Root> = () => { // 定义链接插�
 
 这段代码为 Markdown 中的所有链接统一添加 `target="_blank"` 与 `rel="noopener noreferrer"`，既保证外部链接在新标签页打开，又防止反向标签页劫持。
 
-### `rehypeResolveAttachmentImages()`：将附件图片名替换为 Base64 URL
+### 87.10.11 `rehypeResolveAttachmentImages()`：将附件图片名替换为 Base64 URL
 
 源码路径：`tools/server/webui/src/lib/markdown/resolve-attachment-images.ts` - `rehypeResolveAttachmentImages()`（8-36行）
 
@@ -3070,7 +3070,7 @@ export function rehypeResolveAttachmentImages( // 定义附件图片插件
 
 这段代码在渲染 Markdown 时，将只包含文件名（如 `mcp-attachment-xxx.png`）的图片源替换为数据库附件中对应的 Base64 data URL，从而让附件图片能够在聊天消息中正确显示。
 
-### `remarkLiteralHtml()`：将原始 HTML 转换为安全文本
+### 87.10.12 `remarkLiteralHtml()`：将原始 HTML 转换为安全文本
 
 源码路径：`tools/server/webui/src/lib/markdown/literal-html.ts` - `remarkLiteralHtml()`（60-117行）
 
@@ -3102,7 +3102,7 @@ export const remarkLiteralHtml: Plugin<[], Root> = () => { // 定义 Remark 插�
 
 这段代码将 Markdown 中的原始 HTML 片段转换为纯文本节点并保留缩进，避免拼接 HTML 导致 XSS 风险。`remarkLiteralHtml()` 对块级父节点中的原始 HTML 包装成独立段落，短语父节点中则直接替换为转义文本与换行节点。
 
-### 86.10.4 `maskInlineLaTeX()`：保护行内公式并跳过货币金额
+### 87.10.13 `maskInlineLaTeX()`：保护行内公式并跳过货币金额
 
 源码路径：`tools/server/webui/src/lib/utils/latex-protection.ts` - `maskInlineLaTeX()`（23-95行）
 
@@ -3165,7 +3165,7 @@ export function maskInlineLaTeX( // 保护行内公式
 
 这段代码通过扫描行内成对美元符号，将 `$E=mc^2$` 这类 LaTeX 公式替换为索引占位符，同时用启发式规则跳过 `$5.99` 这类货币金额和代码中的标识符场景。它保护的是"看起来像公式"的内容，避免后续 Markdown 解析误伤普通美元符号。
 
-### `preprocessLaTeX()`：处理 Markdown 中的 LaTeX 公式
+### 87.10.14 `preprocessLaTeX()`：处理 Markdown 中的 LaTeX 公式
 
 源码路径：`tools/server/webui/src/lib/utils/latex-protection.ts` - `preprocessLaTeX()`（126-260行）
 
@@ -3242,7 +3242,7 @@ export function preprocessLaTeX(content: string): string { // 预处理 LaTeX
 
 这段代码是 LaTeX 保护流水线的总入口，它必须按严格顺序执行：先移除引用标记和保护代码块，再保护已有公式与行内公式，之后才能转义货币美元符号；恢复公式后再执行括号与 mhchem 转换，最后恢复代码块和引用标记。若提前恢复代码块，后续正则可能把代码中的 `$` 或 `\(` 当成公式。
 
-### `formatMessageForClipboard()`：格式化剪贴板内容
+### 87.10.15 `formatMessageForClipboard()`：格式化剪贴板内容
 
 源码路径：`tools/server/webui/src/lib/utils/clipboard.ts` - `formatMessageForClipboard()`、`parseClipboardContent()`（103-241行）
 
@@ -3276,7 +3276,7 @@ export function formatMessageForClipboard( // 格式化剪贴板
 
 这段代码将消息正文与文本类附件转换为剪贴板内容。`formatMessageForClipboard()` 在纯文本模式下直接拼接正文与附件内容；结构化模式则输出"JSON 正文 + JSON 附件数组"的可逆格式，方便粘贴时通过 `parseClipboardContent()` 还原附件。
 
-### `parseClipboardContent()`：解析剪贴板内容
+### 87.10.16 `parseClipboardContent()`：解析剪贴板内容
 
 源码路径：`tools/server/webui/src/lib/utils/clipboard.ts` - `parseClipboardContent()`（165-241行）
 
@@ -3369,7 +3369,7 @@ export function parseClipboardContent(clipboardText: string): ParsedClipboardCon
 
 这段代码是 `formatMessageForClipboard()` 的逆操作。`parseClipboardContent()` 手动扫描第一个 JSON 字符串的结束引号，将消息与附件数组分离，再通过类型守卫逐一校验附件结构，最终返回剥离了附件后的纯消息与有效附件列表。
 
-### `TTLCache.get()`、`set()`、`prune()`：管理带过期时间的缓存
+### 87.10.17 `TTLCache.get()`、`set()`、`prune()`：管理带过期时间的缓存
 
 源码路径：`tools/server/webui/src/lib/utils/cache-ttl.ts` - `TTLCache.get()`、`set()`、`prune()`（50-81、133-145行）
 
@@ -3416,7 +3416,7 @@ prune(): number { // 主动清理
 
 这段代码实现了 TTL 过期、容量上限与 LRU 风格淘汰能力。`TTLCache.get()` 在读取时惰性删除过期条目并刷新最近访问时间，`set()` 在容量满时逐出最久未访问项，`prune()` 则允许周期性主动清理。MCP 资源缓存、模型属性缓存和非活跃会话状态都依赖类似的生命周期控制，避免浏览器页面长时间运行导致内存膨胀。
 
-### 设计取舍
+### 87.10.18 设计取舍
 
 **问题：为什么 Markdown 处理采用 AST 插件，而不是正则替换 HTML 字符串？**
 
@@ -3426,13 +3426,13 @@ prune(): number { // 主动清理
 
 回答：浏览器提供的 MIME 可能为空或错误，扩展名可以作为回退；只看扩展名又容易被伪造或误判。因此项目采用 MIME 优先、扩展名回退的策略，这是兼容性与严格安全判断之间的 trade-off。
 
-## 86.11 组件库、Barrel Export 与无障碍封装 —— 统一航站楼"值机柜台"
+## 87.11 组件库、Barrel Export 与无障碍封装 —— 统一航站楼"值机柜台"
 
-### 核心概念
+### 87.11.1 核心概念
 
 Barrel Export 通过 `index.ts` 聚合模块，形成稳定的公共 API。业务组件可以从 `app/chat`、`app/mcp` 等入口导入，不必知道内部文件组织；基础 UI 则在 bits-ui 原语上封装统一命名、样式和无障碍行为。在机场类比中，这里是统一的值机柜台：所有乘客（开发者）只需要去对应柜台（Barrel 入口）办理业务，而无需了解机场背后的复杂通道（内部文件结构）。
 
-### Barrel Export 组件依赖图
+### 87.11.2 Barrel Export 组件依赖图
 
 ```mermaid
 graph TD
@@ -3449,7 +3449,7 @@ graph TD
     Dialog --> bits-ui[bits-ui 原语]
 ```
 
-### 86.11.1 `app/chat/index.ts`：统一导出聊天业务组件
+### 87.11.3 `app/chat/index.ts`：统一导出聊天业务组件
 
 源码路径：`tools/server/webui/src/lib/components/app/chat/index.ts` - `__main__`（1-288行）
 
@@ -3510,7 +3510,7 @@ export { default as ChatSidebarSearch } from './ChatSidebar/ChatSidebarSearch.sv
 
 这段代码是聊天模块的 Barrel Export 入口，将附件、表单、消息、容器、设置和侧边栏等 50+ 个 Svelte 组件聚合为一个稳定的公共 API。`app/chat/index.ts` 使页面和父组件只需从 `$lib/components/app/chat` 导入，而不必关心具体文件路径，就像乘客只需去"值机柜台"办理业务，而不需要了解机场内部的所有通道。
 
-### 86.11.2 `dialog/index.ts`：封装无障碍 Dialog 组件
+### 87.11.4 `dialog/index.ts`：封装无障碍 Dialog 组件
 
 源码路径：`tools/server/webui/src/lib/components/ui/dialog/index.ts` - `__main__`（1-35行）
 
@@ -3550,7 +3550,7 @@ export { // 同时导出短名与前缀名
 
 这段代码在 bits-ui 的无障碍 Dialog 原语之上，导入了本地自定义的标题、内容、遮罩、触发器和关闭按钮等 Svelte 组件，再以短名与前缀名两种方式统一导出。这样既保留了 bits-ui 提供的焦点管理、ARIA 语义和键盘导航能力，又通过本地封装实现了项目统一的视觉风格。
 
-### `button/index.ts`：封装按钮组件与变体
+### 87.11.5 `button/index.ts`：封装按钮组件与变体
 
 源码路径：`tools/server/webui/src/lib/components/ui/button/index.ts` - `__main__`（1-16行）
 
@@ -3574,7 +3574,7 @@ export { // 统一导出
 
 这段代码将按钮根组件、属性类型、尺寸类型、变体类型和样式变体函数统一导出。`button/index.ts` 同时提供 `Button` 与 `Props` 别名，方便外部使用语义化名称，内部组合则使用短名 `Root`。
 
-### `cn()`：合并 Tailwind 样式冲突
+### 87.11.6 `cn()`：合并 Tailwind 样式冲突
 
 源码路径：`tools/server/webui/src/lib/components/ui/utils.ts` - `cn()`（5-7行）
 
@@ -3586,13 +3586,13 @@ export function cn(...inputs: ClassValue[]) { // 接收多个类名输入
 
 这段代码是 UI 组件库的基础工具。`cn()` 先用 `clsx` 处理条件类名，再用 `tailwind-merge` 合并冲突的 Tailwind 类，确保动态传入的样式能够正确覆盖默认样式。
 
-### 设计取舍
+### 87.11.7 设计取舍
 
 **问题：为什么同一个组件同时导出 `Root` 和 `Button`、`Dialog` 等别名？**
 
 回答：短名适合组件内部组合，带前缀名更适合跨模块使用，能减少 `Root`、`Content` 等通用名称冲突。代价是公共 API 名称增多，需要维护别名一致性，这是易用性与 API 简洁性之间的 trade-off。
 
-## 86.12 动手练习
+## 87.12 动手练习
 
 1. 阅读 `tools/server/webui/vite.config.ts` 中的 `llamaCppBuildPlugin()` 函数（第33-116行）：
    1. 解释 `closeBundle()` 与 `setTimeout(..., 100)` 配合解决了什么问题，以及它为什么不是严格的构建同步机制。
@@ -3624,7 +3624,7 @@ export function cn(...inputs: ClassValue[]) { // 接收多个类名输入
    2. 说明 `maskInlineLaTeX()` 如何区分 `$E=mc^2$` 与 `$5.99`，以及 `preprocessLaTeX()` 为什么必须先保护代码块再处理公式。
    3. 对比 `TTLCache` 与 `ReactiveTTLMap` 的适用场景，并解释 `prune()` 如何主动清理过期条目。
 
-## 86.13 设计中的取舍
+## 87.13 设计中的取舍
 
 **问题：为什么项目将业务逻辑拆成 Services、Stores、Utils 和 Components 多层，而不是集中在页面组件中？**
 
@@ -3646,7 +3646,7 @@ export function cn(...inputs: ClassValue[]) { // 接收多个类名输入
 
 回答：长连接可以降低握手开销，并支持服务器主动推送列表变更、资源更新和断开事件。代价是需要处理过期会话、断线重连和连接清理，但这是低延迟与连接管理复杂度之间的 trade-off。
 
-## 86.14 本章小结
+## 87.14 本章小结
 
 这一章中，我们从"智能机场塔台系统"的类比出发，重新梳理了 WebUI 的完整源码结构。首先，我们解析了工程基座：SvelteKit、adapter-static、hash 路由、Vite 后处理插件、Storybook、ESLint 与 Playwright 共同构建了可嵌入、可测试、可维护的前端流水线；其次，我们分析了 `app.d.ts`、API/聊天/数据库/MCP/Agentic 类型以及枚举体系，它们构成了跨模块的类型契约，保证塔台、机组和地勤使用同一套通信语言；接着，我们深入了无状态 Service 层，理解了 `PropsService`、`ModelsService`、`ParameterSyncService` 与 `ChatService` 如何分别负责服务器属性读取、模型管理、参数同步以及 OpenAI 兼容请求与 SSE 流式响应；然后，我们学习了 Svelte 5 Runes 驱动的 SettingsStore、ServerStore、ModelsStore、ConversationsStore、ChatStore、MCPResourceStore 与 AgenticStore，看到 IndexedDB 消息树如何通过 `parent`、`children` 与 `currNode` 表达分支与持久化；最后，我们了解了文件类型检测、多模态文件处理、PDF/音频转换、Markdown AST 插件、LaTeX 保护、URI 模板、TTL 缓存、剪贴板与 Barrel Export 组件体系。
 

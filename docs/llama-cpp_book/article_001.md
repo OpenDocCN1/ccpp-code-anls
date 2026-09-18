@@ -2,7 +2,7 @@
 
 
 
-# 第2章 中央调度台：解码 HF→GGUF 的模型物流分拨中心
+# 第1章 中央调度台：解码 HF→GGUF 的模型物流分拨中心
 
 ## 学习目标
 
@@ -15,7 +15,7 @@
 - 理解 `convert_lora_to_gguf.py` 中 LoraTorchTensor 如何模拟 PyTorch 接口以支持切片、reshape、permute 等操作
 - 掌握 `convert_llama_ggml_to_gguf.py` 中 GGMLFormat / GGMLFType 枚举与外部 HF 元数据覆盖机制
 
-## 2.1 生活类比
+## 1.1 生活类比
 
 想象 llama.cpp 是一座国际化的大型物流转运中心，把全球各地（HuggingFace）生产的"模型货物"统一打包到 GGUF 标准集装箱里运输。README.md 是物流中心的对外宣传册，告诉客户我们支持哪些品牌的货物（模型架构）、发往哪些目的地（后端）、使用什么交通工具（Metal/CUDA/Vulkan/SYCL 等）；GGUF 是全球通用集装箱标准，所有进来的模型都必须"换装"成这种标准箱才能上路；convert_hf_to_gguf.py 是主调度台，根据货物标签（architectures 字段）自动派单到对应的打包流水线；convert_llama_ggml_to_gguf.py 是旧版集装箱改造车间，把古董级 GGML/GGMF/GGJT 集装箱翻新成 GGUF；convert_lora_to_gguf.py 是配件仓库，专门处理 LoRA 适配器这种"模型补丁"，以 A/B 矩阵对的形式入库；ModelBase 注册表是调度台背后的"货物-流水线对应表"，写着"LLaMA 走 3 号流水线、Qwen 走 7 号流水线、…"；parse_args() 的开关是客户的提单指令（要什么精度、要分片、要远程取货等）。就像调度台需要精确识别每个货物标签并匹配对应流水线一样，convert_hf_to_gguf.py 的核心挑战就是：如何通过 `@ModelBase.register` 装饰器和 `from_model_architecture()` 工厂方法，让一个 Python 入口能优雅地承载上百种架构的转换需求。
 
@@ -42,7 +42,7 @@ graph TD
     S --> T[LoraModel 适配器转换]
 ```
 
-## 2.2 源码地图
+## 1.2 源码地图
 
 README.md
 ├── 项目蓝图（Quick Start、Hot topics）
@@ -114,45 +114,45 @@ README.md
     ├── modify_tensors()           # 写出 .lora_a / .lora_b 对
     └── generate_extra_tensors()   # 空（适配器不写额外张量）
 
-## 2.3 llama.cpp 项目初印象：走进「大模型推理引擎」的大门
+## 1.3 llama.cpp 项目初印象：走进「大模型推理引擎」的大门
 
-### 为什么 llama.cpp 能「单文件即可运行」？
+### 1.3.1 为什么 llama.cpp 能「单文件即可运行」？
 
 llama.cpp 的核心目标是 Plain C/C++ 实现，无任何外部依赖，零门槛跨平台。这种设计意味着用户只需一个编译好的二进制文件即可在任何支持的硬件上运行模型，无需配置 Python 环境、CUDA Toolkit 或复杂的依赖链。Apple Silicon 是一等公民，体现在 NEON、Accelerate、Metal 的深度优化上；同时支持 x86 AVX/AVX2/AVX512/AMX 与 RISC-V RVV/ZVFH 等指令集。项目提供 1.5~8 bit 整数量化与 GGML 生态全栈加速，覆盖从服务器级 GPU 到边缘设备的全场景。
 
-### README 的「项目蓝图」告诉我们什么？
+### 1.3.2 README 的「项目蓝图」告诉我们什么？
 
 README 提供了四种安装方式：包管理器、Docker、Release 二进制、源码编译。一个命令即可从 Hugging Face 直接下载并运行模型（`-hf` 参数），缓存与 HF Hub 共享，极大降低了使用门槛。
 
-### README 中的「模型宇宙」有多庞大？
+### 1.3.3 README 中的「模型宇宙」有多庞大？
 
 文本模型覆盖 LLaMA、Mistral、Qwen、DeepSeek、Mamba、RWKV 等上百种架构；多模态家族包含 LLaVA、Qwen2-VL、LFM2-VL、GLM-4V 等视觉/音频模型。这种广泛的覆盖得益于下文将详述的注册器模式架构。
 
-### 「支持的后端全家福」揭示了什么？
+### 1.3.4 「支持的后端全家福」揭示了什么？
 
 后端矩阵包含 Metal（Apple）、CUDA/HIP/MUSA（NVIDIA/AMD/摩尔线程）、Vulkan/SYCL/OpenCL/WebGPU（跨平台 GPU）、BLAS、ZenDNN、zDNN、CANN（昇腾 NPU）等专用加速库，以及 RPC/VirtGPU 支持跨主机分布式推理与 virtio-GPU API。这展示了 llama.cpp "Write once, run anywhere" 的工程野心。
 
-## 2.4 HF → GGUF 转换器家族概览：三套「模型打包工具」
+## 1.4 HF → GGUF 转换器家族概览：三套「模型打包工具」
 
-### 为什么需要 convert_hf_to_gguf.py？
+### 1.4.1 为什么需要 convert_hf_to_gguf.py？
 
 llama.cpp 只识别 GGUF 格式，需要一个中央调度台把 HuggingFace 模型统一转换。它支持文本模型（TextModel）与多模态投影器（MmprojModel）两大类。
 
-### convert_llama_ggml_to_gguf.py 在做什么？
+### 1.4.2 convert_llama_ggml_to_gguf.py 在做什么？
 
 把旧版 GGML/GGMF/GGJT 三种格式迁移到 GGUF，是历史包袱的搬运工。支持从独立目录加载 HuggingFace 配置覆盖旧 GGML 的缺失参数。
 
-### convert_lora_to_gguf.py 的角色是什么？
+### 1.4.3 convert_lora_to_gguf.py 的角色是什么？
 
 LoRA 适配器以 .lora_a / .lora_b 张量对形式写入 ADAPTER 类型 GGUF。LoraTorchTensor 模拟 PyTorch 接口支持切片、重塑、转置等操作。
 
-### StableLM 的 per-head norm 合并机制是什么？
+### 1.4.4 StableLM 的 per-head norm 合并机制是什么？
 
 StableLM 使用 per-head Q/K LayerNorm，需要把 n_head 个独立 norm 张量合并成一个 2D 权重。`_stack_qk_norm` 方法把分散的 per-head 权重 `torch.stack` 之后变成 2D 张量，对应 GGUF 中的 MODEL_TENSOR。
 
-## 源码解析：ModelBase 基类设计
+## 1.5 源码解析：ModelBase 基类设计
 
-### ModelBase.__init__：转换器实例的初始化与惰性加载策略
+### 1.5.1 ModelBase.__init__：转换器实例的初始化与惰性加载策略
 
 **源码路径**：`./convert_hf_to_gguf.py` - `ModelBase.__init__`（第 81-143 行）
 
@@ -208,7 +208,7 @@ def __init__(self, dir_model: Path, ftype: gguf.LlamaFileType, fname_out: Path, 
 4. **张量索引构建**：`index_tensors()` 扫描本地/远程 safetensors 分片，建立名称到生成器的映射
 5. **GGUF 写入器**：预创建 `gguf.GGUFWriter`，后续所有元数据/张量写入均通过它完成
 
-### ModelBase.index_tensors：张量索引构建与远程加载支持
+### 1.5.2 ModelBase.index_tensors：张量索引构建与远程加载支持
 
 **源码路径**：`./convert_hf_to_gguf.py` - `ModelBase.index_tensors`（第 160-240 行）
 
@@ -246,7 +246,7 @@ def index_tensors(self, remote_hf_model_id: str | None = None) -> dict[str, Call
 
 该方法构建张量名称到延迟加载生成器的映射。远程模式下利用 `SafetensorRemote` 直接读取 HF Hub 索引，本地模式下扫描分片文件。所有张量均通过 `LazyTorchTensor` 包装，实现按需加载，大幅降低内存峰值。
 
-### ModelBase.dequant_model：多种量化格式的反量化处理
+### 1.5.3 ModelBase.dequant_model：多种量化格式的反量化处理
 
 **源码路径**：`./convert_hf_to_gguf.py` - `ModelBase.dequant_model`（第 242-397 行）
 
@@ -293,7 +293,7 @@ def dequant_model(self):
 
 该方法统一处理 BitNet、FP8、GPTQ、compressed-tensors、ModelOpt 等量化格式的反量化。核心思想是：识别量化配置 → 定义对应反量化逻辑 → 将量化权重及其辅助张量替换为全精度张量，供后续重新量化为 GGUF 格式使用。
 
-### ModelBase.prepare_tensors：张量处理流水线核心
+### 1.5.4 ModelBase.prepare_tensors：张量处理流水线核心
 
 **源码路径**：`./convert_hf_to_gguf.py` - `ModelBase.prepare_tensors`（第 740-834 行）
 
@@ -332,7 +332,7 @@ def prepare_tensors(self):
 2. **反量化**：将各种量化格式统一还原为全精度
 3. **逐张量处理**：遍历所有张量（含额外生成张量），经 `modify_tensors` 映射名称、`tensor_force_quant` 确定量化类型，最后量化写入
 
-### ModelBase.prepare_metadata：元数据生成与量化类型自动调整
+### 1.5.5 ModelBase.prepare_metadata：元数据生成与量化类型自动调整
 
 **源码路径**：`./convert_hf_to_gguf.py` - `ModelBase.prepare_metadata`（第 836-861 行）
 
@@ -358,7 +358,7 @@ def prepare_metadata(self, vocab_only: bool):
 
 关键逻辑：统计参数量 → 加载/生成元数据 → 根据检测到的特殊量化（NVFP4/MXFP4）自动修正 `ftype` → 写入架构超参（由子类实现 `set_gguf_parameters`）→ 标记量化版本。
 
-### ModelBase.register 与 from_model_architecture：注册器模式与工厂方法
+### 1.5.6 ModelBase.register 与 from_model_architecture：注册器模式与工厂方法
 
 **源码路径**：`./convert_hf_to_gguf.py` - `ModelBase.register`（第 916-925 行）、`from_model_architecture`（第 934-939 行）
 
@@ -388,7 +388,7 @@ def from_model_architecture(cls, arch: str, model_type = ModelType.TEXT) -> type
 
 这种设计将「架构识别」与「转换逻辑」完全解耦——新增模型只需编写子类并加装饰器，无需修改主流程分发代码。
 
-### StableLMModel.modify_tensors 与 _stack_qk_norm：Per-head Norm 合并案例
+### 1.5.7 StableLMModel.modify_tensors 与 _stack_qk_norm：Per-head Norm 合并案例
 
 **源码路径**：`./convert_hf_to_gguf.py` - `StableLMModel.modify_tensors` 与 `_stack_qk_norm`（约第 5920-5980 行）
 
@@ -434,9 +434,9 @@ def _stack_qk_norm(self, bid: int, norm_type: str):
 - **维度对齐**：`torch.stack(dim=0)` 将 `[head_dim]` × n_head → `[n_head, head_dim]`，完美匹配 GGUF `ATTN_Q_NORM` 规范
 - **兜底校验**：`prepare_tensors()` 末尾会检查 `_q_norms/_k_norms` 是否清空，防止配置缺失导致静默丢失
 
-## 源码解析：convert_llama_ggml_to_gguf.py 核心类与函数
+## 1.6 源码解析：convert_llama_ggml_to_gguf.py 核心类与函数
 
-### GGMLModel.load：旧版 GGML 二进制格式的完整解析
+### 1.6.1 GGMLModel.load：旧版 GGML 二进制格式的完整解析
 
 **源码路径**：`./convert_llama_ggml_to_gguf.py` - `GGMLModel.load`（第 178-195 行）
 
@@ -466,7 +466,7 @@ def load(self, data, offset):
 
 该方法按顺序解析：文件头魔数/版本 → 超参数（7 个 uint32） → 词表（含分数） → 所有张量（维度、名称、数据类型、数据块）。`validate_conversion` 根据格式版本和量化类型判断是否支持转换。`Tensor.load` 处理不同版本的 padding 规则，`Hyperparameters.set_n_ff` 从首层 FFN 权重推断中间层维度。
 
-### GGMLToGGUF.save：GGML→GGUF 转换的完整写入流程
+### 1.6.2 GGMLToGGUF.save：GGML→GGUF 转换的完整写入流程
 
 **源码路径**：`./convert_llama_ggml_to_gguf.py` - `GGMLToGGUF.save`（第 222-237 行）
 
@@ -493,7 +493,7 @@ def save(self):
 
 标准 GGUF 写入流程：创建 Writer → 写入超参（`add_params`）→ 写入词表（`add_vocab`）→ 写入特殊词表 → 写入张量（`add_tensors`）→ 依次落盘 Header/KV/Tensors。
 
-### handle_metadata：外部 HF 元数据覆盖旧 GGML 缺失参数
+### 1.6.3 handle_metadata：外部 HF 元数据覆盖旧 GGML 缺失参数
 
 **源码路径**：`./convert_llama_ggml_to_gguf.py` - `handle_metadata`（第 323-344 行）
 
@@ -524,9 +524,9 @@ def handle_metadata(cfg, hp):
 
 旧版 GGML 缺少上下文长度、RoPE 参数、归一化 epsilon 等关键超参。该函数从独立目录加载 HF `config.json` 或原始 `params.json`，构造假模型对象供旧转换器复用，并加载词表工厂，最终返回覆盖用的参数、词表、特殊词表对象。
 
-## 源码解析：convert_lora_to_gguf.py 核心类与函数
+## 1.7 源码解析：convert_lora_to_gguf.py 核心类与函数
 
-### LoraTorchTensor.__init__：LoRA 低秩分解张量的构造
+### 1.7.1 LoraTorchTensor.__init__：LoRA 低秩分解张量的构造
 
 **源码路径**：`./convert_lora_to_gguf.py` - `LoraTorchTensor.__init__`（第 64-72 行）
 
@@ -544,7 +544,7 @@ def __init__(self, A: Tensor, B: Tensor):
 
 接收 LoRA 的两个低秩矩阵 A（[..., r, d]）和 B（[..., d, r]），校验形状兼容性，统一 dtype 为 float32，记录秩 `r`。
 
-### LoraTorchTensor.__getitem__ / reshape / permute：模拟 PyTorch 切片与变形操作
+### 1.7.2 LoraTorchTensor.__getitem__ / reshape / permute：模拟 PyTorch 切片与变形操作
 
 **源码路径**：`./convert_lora_to_gguf.py` - `LoraTorchTensor` 核心方法（第 77-187 行）
 
@@ -608,7 +608,7 @@ def permute(self, *dims: int) -> LoraTorchTensor:
 
 **核心设计**：所有操作都在保持 LoRA 分解结构（A @ B）的前提下，对 A、B 矩阵分别应用对应变换。`reshape` 保持输出维度不变，压缩前置维度；`permute` 处理 2D 转置特例（交换 A/B 角色）。
 
-### LoraTorchTensor.__torch_function__：拦截 torch 函数调用
+### 1.7.3 LoraTorchTensor.__torch_function__：拦截 torch 函数调用
 
 **源码路径**：`./convert_lora_to_gguf.py` - `LoraTorchTensor.__torch_function__`（第 192-223 行）
 
@@ -656,7 +656,7 @@ def __torch_function__(cls, func: Callable, types, args=(), kwargs=None):
 
 通过 `__torch_function__` 协议，拦截 `torch.permute`、`torch.reshape`、`torch.stack`、`torch.cat` 等操作，将其分发到自定义方法。`stack` 沿第 0 维堆叠 A/B；`cat` 支持两种情况：高维张量直接拼接，或共享 A 矩阵仅拼接 B。
 
-### LoraModel.get_tensors：LoRA A/B 矩阵配对与 LoraTorchTensor 生成
+### 1.7.4 LoraModel.get_tensors：LoRA A/B 矩阵配对与 LoraTorchTensor 生成
 
 **源码路径**：`./convert_lora_to_gguf.py` - `LoraModel.get_tensors`（第 374-401 行）
 
@@ -695,7 +695,7 @@ def get_tensors(self) -> Iterator[tuple[str, Tensor]]:
 
 遍历 LoRA 权重字典，按基础张量名分组收集 A/B 矩阵。跳过 `base_layer.weight`（基础模型权重），直接透传 norm 张量。最终为每对 A/B 创建 `LoraTorchTensor` 实例，使后续转换流程可像处理普通张量一样处理 LoRA 权重。
 
-### LoraModel.modify_tensors：输出 .lora_a / .lora_b 对
+### 1.7.5 LoraModel.modify_tensors：输出 .lora_a / .lora_b 对
 
 **源码路径**：`./convert_lora_to_gguf.py` - `LoraModel.modify_tensors`（第 403-418 行）
 
@@ -719,9 +719,9 @@ def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iter
 
 调用父类 `modify_tensors` 获取标准化名称，对 norm 张量直接透传。对 LoRA 张量，拆解为 A/B 两个矩阵，token_embd 特殊转置，最后以 `.lora_a`、`.lora_b` 后缀写入 GGUF，符合 ADAPTER 格式规范。
 
-## 2.5 convert_hf_to_gguf.py 入口与命令行：转换器的「启动开关」
+## 1.8 convert_hf_to_gguf.py 入口与命令行：转换器的「启动开关」
 
-### parse_args：命令行参数定义与分组
+### 1.8.1 parse_args：命令行参数定义与分组
 
 **源码路径**：`./convert_hf_to_gguf.py` - `parse_args`（第 12924-13020 行）
 
@@ -769,7 +769,7 @@ def parse_args() -> argparse.Namespace:
 | **优化开关** | `--fuse-gate-up-exps` | MoE gate/up 融合，减少张量数量 |
 | | `--no-lazy` | 关闭惰性加载，全量读入内存 |
 
-### main：主流程与模型分发决策树
+### 1.8.2 main：主流程与模型分发决策树
 
 **源码路径**：`./convert_hf_to_gguf.py` - `main`（第 13198-13292 行）
 
@@ -886,7 +886,7 @@ args.model_type ───────┤
                               │     └── 否 ──► get_model_architecture() ──► from_model_architecture()
 ```
 
-### get_model_architecture：多模态架构识别逻辑
+### 1.8.3 get_model_architecture：多模态架构识别逻辑
 
 **源码路径**：`./convert_hf_to_gguf.py` - `get_model_architecture`（第 13042-13061 行）
 
@@ -919,7 +919,7 @@ def get_model_architecture(hparams: dict[str, Any], model_type: ModelType) -> st
 - **投影模型**（`ModelType.MMPROJ`）：优先 `vision_config.architectures[0]`
 - 这种分层查找确保了 Qwen2-VL 等「文本+视觉」复合模型能正确分离出文本骨干与视觉投影器
 
-## 2.6 设计中的取舍
+## 1.9 设计中的取舍
 
 **问**：为什么 `ModelBase._model_classes` 要按 `ModelType.TEXT` / `MMPROJ` 分两级？
 
@@ -937,9 +937,9 @@ def get_model_architecture(hparams: dict[str, Any], model_type: ModelType) -> st
 | **双表隔离**：文本/视觉张量名空间天然分离 | **Mistral 特例**：破坏了统一分发抽象，增加维护认知负担 |
 | **惰性加载默认开启**：大模型转换内存友好 | **远程模式实验性**：`--remote` 仍标记实验，生产环境慎用 |
 
-## 2.7 动手练习
+## 1.10 动手练习
 
-### 练习 1：阅读 README.md 的 Description 与 Supported backends
+### 1.10.1 练习 1：阅读 README.md 的 Description 与 Supported backends
 
 阅读 `README.md` 第 36-90 行（Description 与 Supported backends 表格），理解以下要点：
 1. llama.cpp 的核心目标是什么？Plain C/C++ 实现意味着什么？
@@ -952,7 +952,7 @@ def get_model_architecture(hparams: dict[str, Any], model_type: ModelType) -> st
 - 在 Apple M2 Ultra + 96GB 内存的机器上运行 70B Q4_K_M 模型，最佳后端组合应该是什么？
 - 如果要在国产昇腾 NPU 上部署，应该选择哪个后端？该后端当前处于什么状态？
 
-### 练习 2：阅读 convert_hf_to_gguf.py 入口与命令行
+### 1.10.2 练习 2：阅读 convert_hf_to_gguf.py 入口与命令行
 
 阅读 `./convert_hf_to_gguf.py` 第 12924-13292 行（`parse_args()` 与 `main()`），弄清：
 1. `--vocab-only`、`--outtype`、`--remote`、`--mmproj` 四个开关的语义与典型用法
@@ -965,7 +965,7 @@ def get_model_architecture(hparams: dict[str, Any], model_type: ModelType) -> st
 - 如果一个模型是 Qwen2.5-VL，命令行应该如何选择才能分别导出文本模型与 mmproj？
 - `model_instance.fname_out` 在 vocab-only 与完整导出两种场景下分别会如何处理？
 
-### 练习 3：阅读 ModelBase 注册器与工厂方法
+### 1.10.3 练习 3：阅读 ModelBase 注册器与工厂方法
 
 阅读 `./convert_hf_to_gguf.py` 第 916-939 行（`ModelBase.register`、`from_model_architecture`、`print_registered_models`）与第 13042-13061 行（`main()` 中的 `get_model_architecture` + `from_model_architecture` 调用），弄清：
 1. `_model_classes` 字典的两级结构（按 `ModelType` 分组）
@@ -978,7 +978,7 @@ def get_model_architecture(hparams: dict[str, Any], model_type: ModelType) -> st
 - 为什么 `MODEL_ARCH.MMPROJ` 要从 TEXT 注册表中独立出来？
 - 当架构名为 `Mistral3ForConditionalGeneration`（同时含文本与视觉）时，`get_model_architecture` 会如何决定走 TEXT 还是 MMPROJ 分支？
 
-### 练习 4：阅读 StableLMModel.modify_tensors 与 Q/K norm 合并
+### 1.10.4 练习 4：阅读 StableLMModel.modify_tensors 与 Q/K norm 合并
 
 阅读 `./convert_hf_to_gguf.py` 中 `StableLMModel.modify_tensors`（约 5920-5980 行附近），弄清：
 1. StableLM 的 q_layernorm / k_layernorm 为什么要按 head 拆分？每个 head 的 norm 是什么形状？
@@ -991,7 +991,7 @@ def get_model_architecture(hparams: dict[str, Any], model_type: ModelType) -> st
 - 如果模型同时打开了 `tie_word_embeddings` 并去掉了 `lm_head`，StableLM 这条路径会受影响吗？为什么？
 - 对比 StableLM 的 per-head norm 与 Gemma3 的 `+1` 偏移，量化阶段对这两种 norm 的处理策略应该有何不同？
 
-### 练习 5：对比三大转换器的职责边界
+### 1.10.5 练习 5：对比三大转换器的职责边界
 
 对照三个转换脚本的入口函数，弄清它们各自负责什么：
 1. `convert_hf_to_gguf.py::main()`（第 13198-13292 行）
@@ -1004,7 +1004,7 @@ def get_model_architecture(hparams: dict[str, Any], model_type: ModelType) -> st
 - `convert_lora_to_gguf.py` 的 `LoraTorchTensor` 为什么需要 `__torch_function__` 魔法方法？
 - 如果用户有一个 7B 模型 + 三个不同任务的 LoRA 适配器，应该如何组合使用这三个转换器？
 
-## 2.8 本章小结
+## 1.11 本章小结
 
 这一章中我们学习了 llama.cpp 的核心转换工具链架构。首先了解了 llama.cpp 的零依赖跨平台设计哲学及 GGUF 作为唯一模型容器的地位；其次深入剖析了 convert_hf_to_gguf.py 的 ModelBase 抽象基类、注册器模式与工厂方法如何实现上百种架构的自动分发；接着分析了命令行入口 parse_args() 与 main() 的七大开关语义、Mistral 格式特殊分发逻辑及多模态架构识别机制；然后对比了三大转换器（HF→GGUF、GGML→GGUF、LoRA→GGUF）的职责边界与输出 GGUFType 差异；最后通过 StableLM 的 per-head norm 合并案例，理解了张量级转换中的延迟写入与维度对齐技巧。
 

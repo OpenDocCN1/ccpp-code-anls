@@ -1,6 +1,6 @@
 
 
-# 第43章 硬件加速的百变军团——GGML多后端集成实战
+# 第42章 硬件加速的百变军团——GGML多后端集成实战
 
 ## 学习目标
 
@@ -13,7 +13,7 @@
 - 理解OpenVINO对动态形状（CPU/GPU）和静态形状（NPU）的差异化处理策略，包括分块预填充（chunk processing）和状态化管理
 - 掌握各后端算子级别的实现细节：RoPE的多种变体（普通、NeoX、M-RoPE、Vision）、Flash Attention的优化路径、GLU系列的融合算子
 
-## 43.1 生活类比
+## 42.1 生活类比
 
 想象GGML的多后端系统是一个**国际物流中心网络**，在这个网络中，不同的后端扮演着各自独特的角色，共同确保货物（计算任务）能够高效、准确地送达目的地。
 
@@ -27,7 +27,7 @@
 
 就像物流中心经理需要根据包裹类型（张量类型）、目的地（硬件平台）和时效要求（性能需求）来选择不同的配送方式一样，GGML的多后端框架也根据算子特性、硬件能力和内存布局，动态地选择最优的执行路径，从而构建出一个灵活、高效的硬件加速生态系统。
 
-## 43.2 源码地图
+## 42.2 源码地图
 
 ```mermaid
 graph TD
@@ -69,13 +69,13 @@ graph TD
     end
 ```
 
-## 43.3 BLAS 计算后端 —— CPU上的『矩阵计算专家』
+## 42.3 BLAS 计算后端 —— CPU上的『矩阵计算专家』
 
 BLAS后端是GGML中一个轻量级但高效的组件，它利用底层BLAS库（如OpenBLAS、MKL）来加速CPU上的核心矩阵运算。你不需要为它配备复杂的GPU，它就像你手边随时可用的一个强力计算工具，专注于性能关键的矩阵乘法（MUL_MAT）和外积（OUT_PROD）操作。
 
 它的设计哲学是“专而精”：不直接管理内存，而是使用已有的CPU缓冲区；不试图覆盖所有算子，而是将精力集中在能最大利用BLAS库优势的两种操作上。这种克制，使得BLAS后端代码精简，并且能够成为无法使用GPU时提升CPU性能的有效手段。
 
-### 43.3.1 BLAS后端的完整生命周期
+### 42.3.1 BLAS后端的完整生命周期
 
 **`ggml_backend_blas_init()`：初始化与配置**
 
@@ -180,7 +180,7 @@ ggml_backend_reg_t ggml_backend_blas_reg(void) {
 
 注册函数采用**单例模式**：创建一个静态的`ggml_backend_reg`结构体，其中定义了注册接口（`ggml_backend_blas_reg_i`），包括`get_name`返回"BLAS"、`get_device_count`返回1、`get_device`返回设备0。这个注册机制是GGML多后端调度框架的核心——通过统一的注册接口，上层调度器可以枚举和识别所有可用的后端。
 
-### 43.3.2 `ggml_backend_blas_mul_mat()`：核心矩阵乘法
+### 42.3.2 `ggml_backend_blas_mul_mat()`：核心矩阵乘法
 
 源码路径：`ggml/src/ggml-blas/ggml-blas.cpp` - `ggml_backend_blas_mul_mat`（28-131行）
 
@@ -331,7 +331,7 @@ static void ggml_backend_blas_mul_mat(ggml_backend_blas_context * ctx, struct gg
 
 **性能调优**是另一个关键点。代码在调用`cblas_sgemm`之前，会根据编译时选择的BLAS库（`GGML_BLAS_USE_OPENBLAS`等），调用对应的线程数设置函数（如`openblas_set_num_threads`），确保底层库能充分利用多核资源。这种编译时选择、运行时配置的方式，是BLAS后端能够适应不同硬件环境的关键。
 
-### 43.3.3 `ggml_backend_blas_out_prod()`：外积计算
+### 42.3.3 `ggml_backend_blas_out_prod()`：外积计算
 
 源码路径：`ggml/src/ggml-blas/ggml-blas.cpp` - `ggml_backend_blas_out_prod`（133-190行）
 
@@ -393,7 +393,7 @@ static void ggml_backend_blas_out_prod(ggml_backend_blas_context * ctx, struct g
 
 外积（OUT_PROD）是矩阵乘法的“反向”操作：对于形状为`(k,n)`的`src0`和`(k,m)`的`src1`，输出形状为`(m,n)`的`dst`。这段代码展示了如何巧妙地将外积映射到标准GEMM调用上：通过计算合适的转置标志（`transposeA`）和leading dimension（`lda`），将外积表达为一次`sgemm`调用。这也是BLAS后端“专而精”理念的体现——用最少的代码覆盖最核心的计算模式。
 
-### 43.3.4 `ggml_backend_blas_device_supports_op()`：能力边界
+### 42.3.4 `ggml_backend_blas_device_supports_op()`：能力边界
 
 源码路径：`ggml/src/ggml-blas/ggml-blas.cpp` - `ggml_backend_blas_device_supports_op`（359-398行）
 
@@ -454,11 +454,11 @@ static bool ggml_backend_blas_device_supports_op(ggml_backend_dev_t dev, const s
 
 这个函数定义了BLAS后端的能力边界，是GGML框架进行算子调度时的关键依据。它的核心逻辑是**明确告诉调度器哪些操作可以安全、高效地下放给BLAS**。对于矩阵乘法，它设定了严格的限制：不仅要求输入张量内存连续、`src1`为FP32类型，还要求矩阵的各维度不小于 `min_batch=32`。这个阈值避免了调用BLAS库处理小矩阵所产生的固定开销，确保只有“大型”计算才能从BLAS的优化中获益。
 
-## 43.4 CANN NPU 后端 —— 华为昇腾的『算子翻译官』
+## 42.4 CANN NPU 后端 —— 华为昇腾的『算子翻译官』
 
 CANN后端扮演着GGML框架与华为昇腾NPU之间的“翻译官”角色。它的核心任务是将GGML的计算图操作逐一“翻译”成昇腾AI处理器能高效执行的ACLNN算子调用。这不仅仅是简单的函数映射，还涉及张量数据在内存中的重新布局（比如转换为NZ格式以利用硬件加速）、内存池的高效管理等关键环节。
 
-### 43.4.1 CANN后端的调度中枢
+### 42.4.1 CANN后端的调度中枢
 
 **`ggml_cann_compute_forward()`：算子分派**
 
@@ -546,7 +546,7 @@ static bool ggml_cann_compute_forward(ggml_backend_cann_context & ctx, struct gg
 
 这个函数是CANN后端的“总调度员”，是整个后端算子执行的中枢神经系统。它接收一个GGML计算图中的目标张量节点（`dst`），根据其操作类型（`dst->op`）将其分派到对应的CANN实现函数。代码展示了GGML与CANN算子之间的一种优雅映射方式：对于二元操作（ADD、SUB、MUL、DIV），它使用模板函数`ggml_cann_binary_op`统一处理；对于一元操作（ABS、NEG、GELU等），通过`GGML_CANN_CALL_OP_UNARY`宏简化调用；对于GLU变体，使用`GGML_CANN_CALL_OP_UNARY_GATED`宏。这种宏加模板的组合，让算子注册变得极为简洁。
 
-### 43.4.2 `ggml_cann_create_tensor()`：张量转换的桥梁
+### 42.4.2 `ggml_cann_create_tensor()`：张量转换的桥梁
 
 源码路径：`ggml/src/ggml-cann/acl_tensor.cpp` - `ggml_cann_create_tensor`（41-77行）
 
@@ -605,7 +605,7 @@ acl_tensor_ptr ggml_cann_create_tensor(const ggml_tensor * tensor,
 2. **维度顺序反转**：这是最微妙的地方。GGML和ACL在张量维度排列上遵循不同的约定，因此需要将`ne`和`stride`数组反转，以匹配ACL的“最高维优先”的布局。
 3. **偏移处理**：通过`elem_offset`参数支持在张量内部创建“视图”，这对于切片等操作至关重要。
 
-### 43.4.3 `ggml_cann_get_bcast_shape()`：广播形状计算
+### 42.4.3 `ggml_cann_get_bcast_shape()`：广播形状计算
 
 源码路径：`ggml/src/ggml-cann/acl_tensor.cpp` - `ggml_cann_get_bcast_shape`（102-128行）
 
@@ -640,7 +640,7 @@ int64_t ggml_cann_get_bcast_shape(const ggml_tensor * src0,
 
 广播（Broadcast）是张量运算中非常常见的需求：当参与运算的两个张量形状不完全一致时，需要通过广播将较小的张量扩展到较大张量的形状。这个函数的核心逻辑是**将广播信息编码到`bcast_src0_ne`等数组中**：对于需要广播的维度（`nr != 1`），它会将该维度拆分为两部分，并额外插入一个维度来捕捉广播的“倍数”（`nr`）。这样，底层ACL算子可以直接利用这些形状信息高效执行广播运算，而无需预先创建物理上扩展的张量，从而节省了大量内存和传输开销。
 
-### 43.4.4 `ggml_backend_cann_transform_q4_0()`：量化权重适配
+### 42.4.4 `ggml_backend_cann_transform_q4_0()`：量化权重适配
 
 源码路径：`ggml/src/ggml-cann/ggml-cann.cpp` - `ggml_backend_cann_transform_q4_0`（858-894行）
 
@@ -701,7 +701,7 @@ static void ggml_backend_cann_transform_q8_0(ggml_tensor * tensor, const void * 
 
 这个函数与Q4_0版本逻辑一致，将GGML的Q8_0格式（量化值与缩放因子混合）转换为昇腾NPU偏好的的“SoA”布局，以适应其硬件加速需求。
 
-### 43.4.5 `ggml_backend_cann_supports_op()`：能力声明与`ggml_cann_rope()`：RoPE实现
+### 42.4.5 `ggml_backend_cann_supports_op()`：能力声明与`ggml_cann_rope()`：RoPE实现
 
 **`ggml_backend_cann_supports_op()`：能力声明**
 
@@ -800,7 +800,7 @@ void ggml_cann_rope_cache_preload(ggml_backend_cann_context & ctx, ggml_tensor *
 
 在ACL图捕获模式下，为了避免在捕获流上执行主机到设备的内存复制，CANN后端会在图捕获前预先计算并加载RoPE所需的全部缓存数据。这样，图执行时无需进行任何主机交互，大幅减少了延迟。缓存参数（如`rope_cache.cached`）用于跟踪缓存是否有效，避免重复加载。
 
-### 43.4.6 `ggml_backend_cann_graph_compute()`：ACL图的捕获与执行
+### 42.4.6 `ggml_backend_cann_graph_compute()`：ACL图的捕获与执行
 
 源码路径：`ggml/src/ggml-cann/ggml-cann.cpp` - `ggml_backend_cann_graph_compute`（2325-2375行）
 
@@ -932,7 +932,7 @@ static void evaluate_and_capture_cann_graph(ggml_backend_cann_context * cann_ctx
 
 此外，它还支持**算子融合**优化（`ggml_cann_can_fuse`），检查并融合`ADD`和`RMS_NORM`这对经常出现的操作，以提升执行效率。
 
-### 43.4.7 `ggml_cann_op_add_rms_norm_fused()`：算子融合优化
+### 42.4.7 `ggml_cann_op_add_rms_norm_fused()`：算子融合优化
 
 源码路径：`ggml/src/ggml-cann/aclnn_ops.cpp` - `ggml_cann_op_add_rms_norm_fused`（约3997-4040行）
 
@@ -960,11 +960,11 @@ void ggml_cann_op_add_rms_norm_fused(ggml_backend_cann_context & ctx,
 
 这个函数展示了CANN后端的**算子融合优化**。在Transformer模型中，残差连接（Add）和RMS归一化（RMS_NORM）经常成对出现。CANN后端利用昇腾的`AddRmsNorm`融合算子，将这两个操作合并为一次ACLNN调用，从而减少了kernel启动开销和内存访问次数。
 
-## 43.5 OpenVINO 后端 —— Intel AI PC的『图优化大师』
+## 42.5 OpenVINO 后端 —— Intel AI PC的『图优化大师』
 
 OpenVINO后端采取了与CANN截然不同的策略：它不会逐个算子去“翻译”，而是将完整的GGML计算图作为一个整体进行编译和优化。这类似于一位编译器专家，不是逐行翻译代码，而是分析整个程序的上下文，从而生成更加优化的机器码。`GgmlOvDecoder`正是这个“编译前端”，负责解析GGML图并暴露出所有必要的信息，供OpenVINO的“编译器”进行后续工作。
 
-### 43.5.1 `GgmlOvDecoder`：GGML 与 OpenVINO 之间的桥梁
+### 42.5.1 `GgmlOvDecoder`：GGML 与 OpenVINO 之间的桥梁
 
 `GgmlOvDecoder`类是整个OpenVINO后端的核心解码器，它将GGML计算图转换为OpenVINO可以理解和操作的中间表示。这个转换流程由一系列紧密协作的方法组成。
 
@@ -1140,7 +1140,7 @@ void GgmlOvDecoder::update_io(ggml_cgraph * cgraph) {
 
 这些方法共同构成了一个完整的“图信息提取管线”，让OpenVINO能够从GGML的静态计算图描述中洞察所有必要的上下文信息。
 
-### 43.5.2 `translate_graph()`：整图转换的核心流程
+### 42.5.2 `translate_graph()`：整图转换的核心流程
 
 源码路径：`ggml/src/ggml-openvino/openvino/translate_session.cpp` - `TranslateSession::translate_graph`（529-620行）
 
@@ -1418,7 +1418,7 @@ OutputVector translate_glu_geglu(const NodeContext & context) {
 
 这两个翻译器将GGML的GLU系列算子（GEGLU、SwiGLU、REGLU）映射为OpenVINO的Slice、Gelu/Sigmoid/Relu和Multiply等基础算子组合。它们处理单输入（自动拆分）和双输入两种模式，并根据参数决定是否交换两个分支。
 
-### 43.5.3 `apply_transformations()`：图优化Pass
+### 42.5.3 `apply_transformations()`：图优化Pass
 
 源码路径：`ggml/src/ggml-openvino/openvino/translate_session.cpp` - `TranslateSession::apply_transformations`（622-662行）
 
@@ -1460,7 +1460,7 @@ std::shared_ptr<Model> TranslateSession::apply_transformations(std::shared_ptr<M
 - **`EliminateZeroPoints`**：针对NPU的静态图优化，将Subtract(量化值, 零点)模式直接融入数据常量中，消除冗余的零点减法操作。
 - **`SqueezeMatmul`**：将4D激活形状压缩为3D再执行MatMul，以适配NPU的Dynamic Quantization特性。
 
-### 43.5.4 `ov_graph_compute()`：动/静态图的分派
+### 42.5.4 `ov_graph_compute()`：动/静态图的分派
 
 源码路径：`ggml/src/ggml-openvino/utils.cpp` - `ov_graph_compute`（47-68行）
 
@@ -1500,7 +1500,7 @@ enum ggml_status ov_graph_compute(ggml_cgraph * cgraph, ggml_backend_t backend) 
 
 - **静态图（NPU）**：模型在编译时尺寸完全固定，可以最大化利用NPU的并行效率和内存带宽，但无法接受形状不同的输入，因此需要配合分块预填充等技术来适配。它的执行路径`ov_graph_compute_static`同样复杂。针对NPU，它还会区分**prefill**（提示词预处理）和**decode**（逐token生成）两个阶段，并分别为这两个阶段创建两个独立的OpenVINO模型。由于prefill阶段的输入序列可能很长，而NPU要求静态形状，因此静态图路径会将长序列拆分为多个`chunk`（分块），每个chunk的大小由环境变量`GGML_OPENVINO_PREFILL_CHUNK_SIZE`控制（默认256），然后逐块执行推理。这也就是分块预填充策略。
 
-### 43.5.5 `require_quantize_to_buffers()`：量化权重的解包与重构
+### 42.5.5 `require_quantize_to_buffers()`：量化权重的解包与重构
 
 源码路径：`ggml/src/ggml-openvino/ggml-quants.cpp` - `process_weight_tensor`（594-657行）
 
@@ -1692,11 +1692,11 @@ ov::Output<ov::Node> make_int4_weights(ov::Tensor & weight,
 
 这个函数构建一个OpenVINO计算图节点，将提取的int4权重、缩放因子和零点组合成反量化后的权重节点。它根据是否有非零零点，选择不同的计算路径：非对称量化时使用“权重*缩放+偏差”，对称量化时使用“(权重-零点)*缩放”。最终输出为FP32精度。
 
-## 43.6 SYCL 后端 —— Intel GPU的『全能军工厂』
+## 42.6 SYCL 后端 —— Intel GPU的『全能军工厂』
 
 SYCL后端使用C++异构编程标准SYCL，为Intel的各种硬件（iGPU、dGPU、CPU）提供原生高性能加速。它的代码库非常庞大，就像一个“全能军工厂”，为GGML的每一个算子都精心打造了一款或多款SYCL内核。
 
-### 43.6.1 `ggml_sycl_compute_forward()`：算子调度中枢
+### 42.6.1 `ggml_sycl_compute_forward()`：算子调度中枢
 
 源码路径：`ggml/src/ggml-sycl/ggml-sycl.cpp` - `ggml_sycl_compute_forward`（约4002-4180行）
 
@@ -1729,7 +1729,7 @@ void ggml_sycl_compute_forward(ggml_backend_sycl_context& ctx, ggml_tensor* dst)
 
 这个函数是SYCL后端的算子调度中枢，它与CANN的`compute_forward`类似，但支持的算子数量更加庞大，覆盖了元素级操作、矩阵乘法、归一化、注意力等几乎所有常用算子。
 
-### 43.6.2 `ggml_sycl_get_best_fattn_kernel()`：Flash Attention决策
+### 42.6.2 `ggml_sycl_get_best_fattn_kernel()`：Flash Attention决策
 
 源码路径：`ggml/src/ggml-sycl/fattn.cpp` - `ggml_sycl_get_best_fattn_kernel`（89-171行）
 
@@ -1780,7 +1780,7 @@ static best_fattn_kernel ggml_sycl_get_best_fattn_kernel(const int device, const
 - **并行策略**：对于小批量的query（`ne01 == 1`）或较大的head size（`ne00 >= 256`），它选择`Vec`版本，该版本采用向量化指令，更适合此类工作负载。
 - **Tile优化**：对于大数据量或特定硬件（如支持XMX扩展的Intel GPU），它会选择`Tile`版本，该版本将KV cache分块加载到高速共享内存中，极大减少了显存访问，是大型注意力计算的首选。
 
-### 43.6.3 `ggml_sycl_op_mul_mat_q()`：量化矩阵乘法调度
+### 42.6.3 `ggml_sycl_op_mul_mat_q()`：量化矩阵乘法调度
 
 源码路径：`ggml/src/ggml-sycl/mmq.cpp` - `ggml_sycl_op_mul_mat_q`（2863-2909行）
 
@@ -1824,7 +1824,7 @@ void ggml_sycl_op_mul_mat_q(
 
 每个量化GEMM内核（如`ggml_mul_mat_q4_0_q8_1_sycl`）都会根据GPU的计算能力（compute capability）选择不同的分块参数（`mmq_x`、`mmq_y`、`nwarps`），并通过共享内存（Local Memory）高效地加载tile数据。
 
-### 43.6.4 `ggml_sycl_op_mul_mat()`：矩阵乘法的多路径调度
+### 42.6.4 `ggml_sycl_op_mul_mat()`：矩阵乘法的多路径调度
 
 源码路径：`ggml/src/ggml-sycl/ggml-sycl.cpp` - `ggml_sycl_op_mul_mat`（2263-2311行）
 
@@ -1889,7 +1889,7 @@ SYCL后端的矩阵乘法调度展示了其处理复杂生产环境的成熟度�
 
 分配的细节也很关键，代码会根据张量类型获取一个“行对齐”值（`get_row_rounding`），确保每个GPU处理的行数是该对齐值的倍数，以避免在边界条件上产生潜在的错误。最后，它会将实际的计算任务（`op`）针对每个设备分别调用，并通过SYCL流（`queue_ptr`）管理异步执行。
 
-### 43.6.5 `ggml_backend_sycl_split_buffer_type()`：多设备张量分割
+### 42.6.5 `ggml_backend_sycl_split_buffer_type()`：多设备张量分割
 
 源码路径：`ggml/src/ggml-sycl/ggml-sycl.cpp` - `ggml_backend_sycl_split_buffer_type`（1086-1116行）
 
@@ -1939,7 +1939,7 @@ ggml_backend_buffer_type_t ggml_backend_sycl_split_buffer_type(const float * ten
 
 重要的是，如果未指定分割比例（`tensor_split == nullptr`），后端会自动根据各设备的显存容量计算默认比例，这极大简化了多设备配置流程。
 
-### 43.6.6 `reorder_qw_*()`：权重重排优化
+### 42.6.6 `reorder_qw_*()`：权重重排优化
 
 源码路径：`ggml/src/ggml-sycl/ggml-sycl.cpp` - `reorder_qw_q4_0`（3187-3216行）
 
@@ -2011,7 +2011,7 @@ static void opt_for_reorder(void * tensor_extra) {
 
 这个函数是权重重排的决策点。它会在将权重张量数据传输到GPU显存后检查是否满足一系列条件，包括优化未禁用、设备支持重排、操作是MUL_MAT且src1的维度为1（即推理场景）。只有满足这些条件，它才会启动`reorder_qw`执行实际的重排，并将结果标记为已优化，避免在后续调用中重复执行。
 
-### 43.7 各后端实现列表
+### 42.6.7 各后端实现列表
 
 下表汇总了四个后端（BLAS、CANN、OpenVINO、SYCL）在关键接口上的实现对比，方便你快速查阅：
 
@@ -2025,7 +2025,7 @@ static void opt_for_reorder(void * tensor_extra) {
 | 算子支持查询 | `ggml_backend_blas_device_supports_op()` | `ggml_backend_cann_supports_op()` | `ggml_backend_openvino_device_supports_op()` | `ggml_backend_sycl_device_supports_op()` |
 | 设备注册 | `ggml_backend_blas_device_i` | `ggml_backend_cann_device_i` | `ggml_backend_openvino_device_i` | `ggml_backend_sycl_device_i` |
 
-### 各后端在GGML框架中的集成关系
+### 42.6.8 各后端在GGML框架中的集成关系
 
 为了更清晰地理解各后端如何嵌入到整个GGML框架中，我们可以用下面的架构图来展示它们之间的协作关系：
 
@@ -2076,7 +2076,7 @@ graph TD
 
 这张图清晰地展示了GGML的调度器通过统一的`ggml_backend_i`接口与各后端交互，而后端各自管理着自己的执行引擎（如CANN的ACLNN算子、OpenVINO的编译模型、SYCL的Kernel库），形成了一套灵活的插件式架构。
 
-### 图计算流程示意图
+### 42.6.9 图计算流程示意图
 
 以下是一个时序图，展示了GGML调度器如何将计算图（cgraph）分派给不同的后端执行：
 
@@ -2107,7 +2107,7 @@ sequenceDiagram
     Y-->>S: 完成
 ```
 
-## 43.8 设计中的取舍
+## 42.7 设计中的取舍
 
 - **为什么BLAS后端不适用于小型矩阵？**
   BLAS库（如OpenBLAS、MKL）在调用时存在固定开销，包括线程同步、参数校验等。对于维度低于 `min_batch=32` 的小矩阵，这些开销可能超过直接计算所需的时间，从性能角度看是“负优化”。因此，`supports_op()` 会将此类小型操作排除在外，交由其他更合适的后端处理。
@@ -2125,7 +2125,7 @@ sequenceDiagram
   Intel GPU的XMX（Xe Matrix Extensions）加速单元偏爱一种特定的数据在内存中的排布格式，以便通过DP4A等指令高效地加载数据块。 `reorder_qw_*`函数将GGML标准的量化权重布局转换为这种XMX友好的格式。虽然转换是一次性的开销，但代价是所换来的每个矩阵乘法的速度提升，在多次推理中能够被充分摊销，是典型的“空间换时间”优化。
   **这种设计的trade-off是什么？** 重排需要额外的设备内存空间，并且要求权重张量在加载后保持不变（不可变）。因此，SYCL后端必须谨慎选择何时触发重排——`opt_for_reorder()`仅在MUL_MAT操作且src1维度为1（即推理场景）时启用，避免对动态权重场景造成不必要的开销。
 
-## 43.9 动手练习
+## 42.8 动手练习
 
 **练习1：BLAS后端的能力边界与性能**
 
@@ -2247,7 +2247,7 @@ sequenceDiagram
   - OpenVINO在什么情况下会使用OpenCL USM远程内存？这对性能有什么影响？
   - 哪个后端的内存管理最简单？为什么？（提示：BLAS）
 
-## 43.10 本章小结
+## 42.9 本章小结
 
 这一章我们深入探讨了GGML框架中四个各具特色的后端：BLAS、CANN、OpenVINO和SYCL。
 

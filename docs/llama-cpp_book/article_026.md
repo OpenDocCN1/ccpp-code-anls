@@ -1,7 +1,7 @@
 
 
 
-# 第25章：GGML 模型构建器全景图谱 —— 从中央厨房到百模大战的架构演进
+# 第26章 ：GGML 模型构建器全景图谱 —— 从中央厨房到百模大战的架构演进
 
 ## 学习目标
 
@@ -12,11 +12,11 @@
 - 理解 NoPE 步进、滑动窗口注意力（ISWA/SWA）、M-RoPE、Q/K 归一化前置等架构差异如何体现在构图选择上
 - 了解 `inp_out_ids`、`rope_factors`、`build_cvec`、`build_lora_mm` 等高层 API 在不同模型变体间的复用模式
 
-## 25.1 生活类比
+## 26.1 生活类比
 
 想象 GGML 的模型构建世界是一家「中央厨房」，每个模型文件都是一份菜谱：`llm_build_*` 厨师团队 = 每个家族模型（如 llama、qwen、mistral）的专属厨师长，负责按菜谱组装一道道工序；`build_norm` = 食材清洗员（RMSNorm / LayerNorm），把上一道工序的产出标准化；`build_lora_mm` = 切配厨师，按照 `wq/wk/wv/up/gate/down` 等矩阵对食材（张量）做线性变换；`ggml_reshape_3d` = 整形刀，把扁平的肉片重新切成 [头维度, 头数, token数] 的三维形状；`ggml_view_3d` = 玻璃窗（零拷贝视图），不搬动食材，只贴标签，让不同厨师从不同角度看同一块肉；`ggml_rope_ext / ggml_rope_multi` = 调料旋钮，按 token 位置给食材「加入时间风味」（位置编码）；`build_attn` = 主厨的秘制炒锅（Flash Attention / 标准注意力），把 QKV 三种食材快速翻炒；`build_ffn / build_moe_ffn` = 二级烹饪工序：稠密 FFN 是单人小炒，MoE 是多位厨师分工的「大锅炒」；`build_cvec` = 风味修正师（控制向量），在菜品出锅前微调风味；`inp_out_ids` = 出菜筛选器，只把最后几道菜（最后 token）呈给顾客；`template <bool embed/iswa>` = 「双模菜谱」，同一份菜谱可以做出两种版本（语言模型 / 嵌入模型，普通 KV / ISWA）；`if constexpr` = 厨房的「炒菜开关」，按下哪一档就启动哪条工序。就像每家餐厅都有专属厨师团队处理招牌菜，llama.cpp 也为每个模型家族安排了专属的 `llm_build_*` 构造函数，把架构差异转化为 GGML 计算图的统一语言。
 
-## 25.2 源码地图
+## 26.2 源码地图
 
 src/models/llama.cpp
 ├── template <bool embed>
@@ -147,11 +147,11 @@ src/models/smallthinker.cpp
         template struct llm_build_smallthinker<false>;
         template struct llm_build_smallthinker<true>;
 
-## 25.3 llm_build_llama<embed>::llm_build_llama()：模板类统一构建嵌入与语言模型双模式计算图
+## 26.3 llm_build_llama<embed>::llm_build_llama()：模板类统一构建嵌入与语言模型双模式计算图
 
 LLaMA 是 llama.cpp 的「亲儿子」，也是最基础的 Transformer 解码器实现。`llm_build_llama` 通过 C++ 模板参数 `embed`（`bool` 类型）在编译期分化出两条完全独立的代码路径：`embed=false` 用于普通语言模型（自回归生成，需要 KV 缓存），`embed=true` 用于嵌入模式（编码任务，无需 KV 缓存）。这种设计避免了运行时分支，实现了零开销抽象。
 
-### 25.3.1 核心流程图：LLaMA 主循环数据流
+### 26.3.1 核心流程图：LLaMA 主循环数据流
 
 ```mermaid
 flowchart TD
@@ -187,7 +187,7 @@ flowchart TD
     Y -- 否 --> AA[结束]
 ```
 
-### 25.3.2 源码实现：`src/models/llama.cpp` - `llm_build_llama<embed>`（第7-101行）
+### 26.3.2 源码实现：`src/models/llama.cpp` - `llm_build_llama<embed>`（第7-101行）
 
 ```cpp
 llm_build_llama<embed>::llm_build_llama(const llama_model & model, const llm_graph_params & params) : llm_graph_context(params) {
@@ -234,7 +234,7 @@ llm_build_llama<embed>::llm_build_llama(const llama_model & model, const llm_gra
 
 **代码解析：** 这段代码定义了 LLaMA 家族的统一构建入口，通过 `template <bool embed>` 实现「一份代码、两种模式」的编译期分化。核心流程遵循标准的 Pre-Norm Transformer：输入嵌入 → 逐层 - RMSNorm → QKV 投影 → RoPE → Attention → 残差 → RMSNorm → FFN/MoE → 残差 → 输出 RMSNorm →（可选）LM Head。关键设计点包括：(1) `if constexpr (embed)` 编译期选择注意力输入类型，避免运行时分支；(2) `ffn_gate_inp == nullptr` 作为稠密/MoE 的运行时判定，极其简洁；(3) `hparams.use_kq_norm` 控制 Llama4 引入的 Q/K 后置归一化；(4) `inp_out_ids` 实现最后层的 token 级裁剪，节省计算量。
 
-### 25.3.3 显式模板实例化
+### 26.3.3 显式模板实例化
 
 **源码路径：`src/models/llama.cpp` - 全局作用域（第102-103行）**
 
@@ -246,11 +246,11 @@ template struct llm_build_llama<true>;   // 嵌入模型版本
 
 **代码解析：** 这段代码展示了 C++ 模板显式实例化的标准用法。如果没有这两行，模板定义在 `.cpp` 文件中将无法被其他编译单元链接到。这种模式在 llama.cpp 中大量存在，是「编译期多态、零运行时开销」的工程落地。
 
-## 25.4 llm_build_llama_iswa::llm_build_llama_iswa()：ISWA 滑动窗口注意力与 NoPE 步进的工程化实现
+## 26.4 llm_build_llama_iswa::llm_build_llama_iswa()：ISWA 滑动窗口注意力与 NoPE 步进的工程化实现
 
 ISWA (Intermittent Sliding Window Attention) 是 LLaMA 架构的一个重要变体，它引入了滑动窗口注意力机制，并允许某些层跳过 RoPE（NoPE），同时支持按层动态调整 RoPE 频率。这种设计在长上下文场景下能显著降低显存占用。
 
-### 25.4.1 核心流程图：ISWA 逐层动态配置
+### 26.4.1 核心流程图：ISWA 逐层动态配置
 
 ```mermaid
 flowchart TD
@@ -275,7 +275,7 @@ flowchart TD
     Q --> B
 ```
 
-### 25.4.2 源码实现：`src/models/llama-iswa.cpp` - `llm_build_llama_iswa`（第1-157行）
+### 26.4.2 源码实现：`src/models/llama-iswa.cpp` - `llm_build_llama_iswa`（第1-157行）
 
 ```cpp
 llm_build_llama_iswa::llm_build_llama_iswa(const llama_model & model, const llm_graph_params & params) : llm_graph_context(params) {
@@ -410,7 +410,7 @@ llm_build_llama_iswa::llm_build_llama_iswa(const llama_model & model, const llm_
 
 **代码解析：** 这段代码实现了 ISWA 变体的三大核心创新：(1) `build_attn_inp_kv_iswa()` 替换标准 KV 输入，启用滑动窗口注意力机制；(2) `use_rope = (il+1) % n_no_rope_layer_step != 0` 实现 NoPE 步进，让部分层跳过 RoPE 以降低计算量并缓解长序列位置外推问题；(3) MoE 层使用 `LLAMA_EXPERT_GATING_FUNC_TYPE_SIGMOID` 而非 SOFTMAX，这是 DeepSeek-V2/V3 等模型验证过的更稳定路由策略。值得注意的是，NoPE 层通过 `inp_attn_scale` 做温度缩放来补偿位置编码的缺失，这是一个巧妙的工程折中。
 
-### 25.4.3 ISWA 与标准 Llama 的关键差异对比
+### 26.4.3 ISWA 与标准 Llama 的关键差异对比
 
 本章我们对比了 ISWA 变体与基础 Llama 的核心差异：
 
@@ -424,11 +424,11 @@ llm_build_llama_iswa::llm_build_llama_iswa(const llama_model & model, const llm_
 | **MoE 门控函数** | `SOFTMAX` (默认) | `SIGMOID` (DeepSeek 风格) |
 | **共享专家** | 无（除非模型自带） | 显式构建 `ffn_shexp` 并与 `moe_out` 相加 |
 
-## 25.5 llm_build_qwen::llm_build_qwen()：QKV 打包视图拆分的零拷贝艺术
+## 26.5 llm_build_qwen::llm_build_qwen()：QKV 打包视图拆分的零拷贝艺术
 
 原始 Qwen 采用 QKV 权重打包存储、单次 GEMM 投影、视图拆分零拷贝的设计，这是「存储换计算」的经典权衡。
 
-### 25.5.1 核心流程图：Qwen 打包 QKV 拆分
+### 26.5.1 核心流程图：Qwen 打包 QKV 拆分
 
 ```mermaid
 flowchart TD
@@ -445,7 +445,7 @@ flowchart TD
     I --> J[残差 + FFN]
 ```
 
-### 25.5.2 源码实现：`src/models/qwen.cpp` - `llm_build_qwen`（第7-86行）
+### 26.5.2 源码实现：`src/models/qwen.cpp` - `llm_build_qwen`（第7-86行）
 
 ```cpp
 llm_build_qwen::llm_build_qwen(const llama_model & model, const llm_graph_params & params) : llm_graph_context(params) {
@@ -521,11 +521,11 @@ llm_build_qwen::llm_build_qwen(const llama_model & model, const llm_graph_params
 
 **代码解析：** 这段代码展示了 Qwen 原始版本的核心特征：**QKV 打包存储、视图拆分零拷贝**。`build_lora_mm(wqkv, cur)` 一次性完成 Q/K/V 三个投影的矩阵乘法，然后 `ggml_view_3d` 通过调整内存偏移量（`0/1/2 * n_embd`）将三个头「切」出来，完全避免了数据拷贝。这种设计在模型转换阶段要求将 HuggingFace 的分离 Q/K/V 权重拼接为单一 `wqkv` 张量，是典型的「存储换计算」权衡。
 
-## 25.6 llm_build_qwen2::llm_build_qwen2()：分离投影与输出偏置的标准化回归
+## 26.6 llm_build_qwen2::llm_build_qwen2()：分离投影与输出偏置的标准化回归
 
 Qwen2 回归到标准的分离 Q/K/V 投影设计，并引入可选的 `lm_head` 偏置。
 
-### 25.6.1 源码实现：`src/models/qwen2.cpp` - `llm_build_qwen2`（第13-139行）
+### 26.6.1 源码实现：`src/models/qwen2.cpp` - `llm_build_qwen2`（第13-139行）
 
 ```cpp
 // 关键差异片段：分离的 Q/K/V 投影
@@ -552,11 +552,11 @@ res->t_logits = cur;
 
 **代码解析：** Qwen2 回归到标准的分离 Q/K/V 投影设计，这与 HuggingFace 标准格式一致，便于模型转换。此外，它引入了可选的 `output_b` 偏置项，这是某些 Qwen2 变体（如 Code 版本）特有的输出层偏置，体现了 llama.cpp 对模型细微差异的兼容性设计。
 
-## 25.7 llm_build_qwen2moe::llm_build_qwen2moe()：双门控共享专家的 MoE 创新
+## 26.7 llm_build_qwen2moe::llm_build_qwen2moe()：双门控共享专家的 MoE 创新
 
 Qwen2MoE 引入了共享专家的双门控机制：`silu(x)/x` 近似 sigmoid 对共享专家输出做逐元素加权。
 
-### 25.7.1 核心流程图：Qwen2MoE 共享专家门控
+### 26.7.1 核心流程图：Qwen2MoE 共享专家门控
 
 ```mermaid
 flowchart TD
@@ -569,7 +569,7 @@ flowchart TD
     F --> G
 ```
 
-### 25.7.2 源码实现：`src/models/qwen2moe.cpp` - `llm_build_qwen2moe`（第4-128行）
+### 26.7.2 源码实现：`src/models/qwen2moe.cpp` - `llm_build_qwen2moe`（第4-128行）
 
 ```cpp
 // MoE 分支核心逻辑
@@ -617,11 +617,11 @@ for (int il = 0; il < n_layer; ++il) {
 
 **代码解析：** Qwen2MoE 的亮点在于**共享专家的双门控设计**：先对输入做 `silu(x)/x` 近似 sigmoid 门控，再与共享专家 FFN 输出做逐元素乘法。这种设计让共享专家的激活更加稀疏，类似于「专家内部的专家」。对比 BailingMoe 的简单相加、`ffn_moe_out_merged = moe_out + ffn_shexp`，Qwen2MoE 多了一层动态门控，增加了模型的表达能力。
 
-## 25.8 llm_build_qwen2vl::llm_build_qwen2vl()：M-RoPE 多模态位置编码的四段式设计
+## 26.8 llm_build_qwen2vl::llm_build_qwen2vl()：M-RoPE 多模态位置编码的四段式设计
 
 Qwen2-VL 引入 M-RoPE，将旋转维度切分为时间、高度、宽度、文本四段，通过 `ggml_rope_multi` 实现。
 
-### 25.8.1 核心流程图：M-RoPE 四段式位置编码
+### 26.8.1 核心流程图：M-RoPE 四段式位置编码
 
 ```mermaid
 flowchart TD
@@ -631,7 +631,7 @@ flowchart TD
     D --> E[build_attn]
 ```
 
-### 25.8.2 源码实现：`src/models/qwen2vl.cpp` - `llm_build_qwen2vl`（第7-113行）
+### 26.8.2 源码实现：`src/models/qwen2vl.cpp` - `llm_build_qwen2vl`（第7-113行）
 
 ```cpp
 // M-RoPE 关键片段
@@ -654,11 +654,11 @@ Kcur = ggml_rope_multi(ctx0, Kcur, inp_pos, nullptr,
 
 **代码解析：** Qwen2-VL 引入 **M-RoPE (Multimodal Rotary Position Embedding)**，通过 `ggml_rope_multi` 与 `sections[4]` 数组实现。`sections` 将旋转维度切分为 4 段：`[temporal, height, width, remaining]`，分别对应视频时间维度、图像高度、宽度和剩余文本维度。这是多模态模型处理时空位置信息的关键创新，单纯的 `ggml_rope_ext` 无法表达这种结构化位置信息。
 
-## 25.9 llm_build_qwen3::llm_build_qwen3()：Q/K 归一化前置的训练稳定性优化
+## 26.9 llm_build_qwen3::llm_build_qwen3()：Q/K 归一化前置的训练稳定性优化
 
 Qwen3 最显著的架构改进是 **Q/K RMSNorm 前置**（Pre-RoPE Normalization），在 `ggml_rope_ext` **之前**对 Q 和 K 分别做 RMSNorm。
 
-### 25.9.1 核心流程图：Qwen3 QK Norm 时序对比
+### 26.9.1 核心流程图：Qwen3 QK Norm 时序对比
 
 ```mermaid
 flowchart LR
@@ -670,7 +670,7 @@ flowchart LR
     end
 ```
 
-### 25.9.2 源码实现：`src/models/qwen3.cpp` - `llm_build_qwen3`（第1-87行）
+### 26.9.2 源码实现：`src/models/qwen3.cpp` - `llm_build_qwen3`（第1-87行）
 
 ```cpp
 // 核心差异：Q/K 归一化在 RoPE 之前
@@ -702,11 +702,11 @@ for (int il = 0; il < n_layer; ++il) {
 
 **代码解析：** Qwen3 最显著的架构改进是 **Q/K RMSNorm 前置**（Pre-RoPE Normalization）。对比 Llama/ISWA 的「RoPE 后归一化」（`hparams.use_kq_norm` 控制），Qwen3 在 `ggml_rope_ext` **之前**对 Q 和 K 分别做 RMSNorm。这种设计源自 Qwen2.5 技术报告，旨在稳定 RoPE 的输入分布，特别是在长上下文和大模型训练中防止注意力分数发散。工程上，这要求模型权重中必须包含 `attn_q_norm` 和 `attn_k_norm` 两个归一化层的权重。
 
-## 25.10 llm_build_qwen3moe::llm_build_qwen3moe()：MoE 专家权重缩放的精细化控制
+## 26.10 llm_build_qwen3moe::llm_build_qwen3moe()：MoE 专家权重缩放的精细化控制
 
 Qwen3MoE 在 Qwen3 的 Q/K 前置归一化基础上引入 MoE，关键点是显式传入专家级缩放张量。
 
-### 25.10.1 源码实现：`src/models/qwen3moe.cpp` - `llm_build_qwen3moe`（第1-99行）
+### 26.10.1 源码实现：`src/models/qwen3moe.cpp` - `llm_build_qwen3moe`（第1-99行）
 
 ```cpp
 // MoE 分支：显式传入专家权重缩放张量
@@ -725,11 +725,11 @@ ggml_tensor * moe_out = build_moe_ffn(cur, model.layers[il].ffn_gate_inp,
 
 **代码解析：** Qwen3MoE 在 Qwen3 的 Q/K 前置归一化基础上引入 MoE，关键点是 `build_moe_ffn` 最后三个参数显式传入了 `ffn_*_exps_s` 缩放张量。这是专家级别的权重缩放机制，允许每个专家有独立的缩放因子，配合 `expert_weights_scale` 全局缩放，实现更精细的专家负载均衡。注意 `norm_topk_prob=true`，表示对 top-k 概率做归一化。
 
-## 25.11 llm_build_qwen3vl::llm_build_qwen3vl()：DeepStack 多层视觉融合的层层递进
+## 26.11 llm_build_qwen3vl::llm_build_qwen3vl()：DeepStack 多层视觉融合的层层递进
 
 Qwen3-VL 独创 DeepStack 机制：视觉特征在前 `n_deepstack_layers` 层逐层注入残差流。
 
-### 25.11.1 核心流程图：DeepStack 视觉特征逐层注入
+### 26.11.1 核心流程图：DeepStack 视觉特征逐层注入
 
 ```mermaid
 flowchart TD
@@ -743,7 +743,7 @@ flowchart TD
     G --> B
 ```
 
-### 25.11.2 源码实现：`src/models/qwen3vl.cpp` - `llm_build_qwen3vl`（第5-84行）
+### 26.11.2 源码实现：`src/models/qwen3vl.cpp` - `llm_build_qwen3vl`（第5-84行）
 
 ```cpp
 // DeepStack 核心逻辑
@@ -770,11 +770,11 @@ for (int il = 0; il < n_layer; ++il) {
 
 **代码解析：** **DeepStack** 是 Qwen3-VL 独有的多模态融合机制：视觉编码器输出的 `t_inp_embd` 张量形状为 `[n_embd * n_deepstack_layers, n_tokens]`，通过 `ggml_view_2d` 按层切片（offset 递增 `(il+1)*n_embd`），在前 `n_deepstack_layers` 层的 FFN 之后、残差连接之前，将视觉特征逐层注入。这种「层层递进」的融合方式优于单次早期融合，能让视觉信息在不同抽象层级都参与语言建模。
 
-## 25.12 llm_build_qwen3vlmoe::llm_build_qwen3vlmoe()：MoE + DeepStack 双重增强的终极形态
+## 26.12 llm_build_qwen3vlmoe::llm_build_qwen3vlmoe()：MoE + DeepStack 双重增强的终极形态
 
 Qwen3-VL-Moe 将 Qwen3 的三大特性完美融合：Q/K 前置归一化、MoE 专家权重缩放、DeepStack 视觉融合。
 
-### 25.12.1 源码实现：`src/models/qwen3vl-moe.cpp` - `llm_build_qwen3vlmoe`（第12-437行）
+### 26.12.1 源码实现：`src/models/qwen3vl-moe.cpp` - `llm_build_qwen3vlmoe`（第12-437行）
 
 ```cpp
 // 结合 Qwen3MoE 的 Q/K 前置归一化 + MoE 专家缩放 + DeepStack 注入
@@ -807,11 +807,11 @@ for (int il = 0; il < n_layer; ++il) {
 
 **代码解析：** Qwen3-VL-Moe 将 Qwen3 的三大特性完美融合：Q/K 前置归一化、MoE 专家权重缩放、DeepStack 视觉融合。这是目前 Qwen 家族最复杂的架构之一，代码复用度极高——注意力路径完全复用 Qwen3，FFN 路径复用 Qwen3MoE，融合逻辑复用 Qwen3-VL。
 
-## 25.13 llm_build_bailingmoe::llm_build_bailingmoe()：标准 MoE + 共享专家的基线实现
+## 26.13 llm_build_bailingmoe::llm_build_bailingmoe()：标准 MoE + 共享专家的基线实现
 
 BailingMoe 采用标准的「路由专家 + 共享专家」设计，特点是使用 `n_rot` 作为头维度。
 
-### 25.13.1 源码实现：`src/models/bailingmoe.cpp` - `llm_build_bailingmoe`（第5-87行）
+### 26.13.1 源码实现：`src/models/bailingmoe.cpp` - `llm_build_bailingmoe`（第5-87行）
 
 ```cpp
 // 关键差异：reshape_3d 使用 n_rot 而非 n_embd_head
@@ -842,11 +842,11 @@ cur = ggml_add(ctx0, moe_out, ffn_shexp);
 
 **代码解析：** BailingMoe 的特点是**使用 `n_rot`（旋转维度）而非 `n_embd_head` 做 reshape_3d 的头维度**。这暗示该模型可能使用部分 RoPE（Partial RoPE），即只对头维度的一部分应用旋转位置编码。共享专家采用简单的加法合并，无额外门控，结构清晰直观。
 
-## 25.14 llm_build_bailingmoe2::llm_build_bailingmoe2()：QKV 打包 + 稠密/MoE 分层 + NextN 跳过
+## 26.14 llm_build_bailingmoe2::llm_build_bailingmoe2()：QKV 打包 + 稠密/MoE 分层 + NextN 跳过
 
 BailingMoe2 集成了多项工程化创新：NextN 预测层跳过、稠密/MoE 分层、QKV 打包 GQA 正确偏移、专家路由偏置。
 
-### 25.14.1 核心流程图：BailingMoe2 稠密/MoE 分层与 NextN 跳过
+### 26.14.1 核心流程图：BailingMoe2 稠密/MoE 分层与 NextN 跳过
 
 ```mermaid
 flowchart TD
@@ -863,7 +863,7 @@ flowchart TD
     J --> K[残差 + cvec]
 ```
 
-### 25.14.2 源码实现：`src/models/bailingmoe2.cpp` - `llm_build_bailingmoe2`（第4-116行）
+### 26.14.2 源码实现：`src/models/bailingmoe2.cpp` - `llm_build_bailingmoe2`（第4-116行）
 
 ```cpp
 // 第 1-30 行：NextN 预测层跳过
@@ -924,11 +924,11 @@ for (int il = 0; il < n_transformer_layers; ++il) {
 4. **专家路由偏置 `ffn_exp_probs_b`**：直接加到路由 logits 上，类似于专家层面的 bias 项，可用于负载均衡调整。
 5. **门控函数可配置**：`static_cast<llama_expert_gating_func_type>(hparams.expert_gating_func)` 支持运行时选择 SOFTMAX/SIGMOID 等。
 
-## 25.15 llm_build_chatglm::llm_build_chatglm()：双模式 QKV 与 SWIGLU 序列布局
+## 26.15 llm_build_chatglm::llm_build_chatglm()：双模式 QKV 与 SWIGLU 序列布局
 
 ChatGLM 通过 `wqkv == nullptr` 判断投影模式，并采用 SWIGLU + SEQ 内存布局。
 
-### 25.15.1 源码实现：`src/models/chatglm.cpp` - `llm_build_chatglm`（第1-96行）
+### 26.15.1 源码实现：`src/models/chatglm.cpp` - `llm_build_chatglm`（第1-96行）
 
 ```cpp
 // 核心差异：wqkv 存在性决定投影方式
@@ -964,11 +964,11 @@ for (int il = 0; il < n_layer; ++il) {
 
 **代码解析：** ChatGLM 的两大特色：(1) **双模式 QKV 兼容**：通过 `wqkv == nullptr` 判断是分离投影还是打包投影，同一代码同时支持两种权重布局；(2) **SWIGLU + SEQ 布局**：`LLM_FFN_SWIGLU` 配合 `LLM_FFN_SEQ` 表示 gate 与 up 权重在内存中连续排列（`[gate; up]`），这与标准 Llama 的 `LLM_FFN_SILU + LLM_FFN_PAR`（gate/up 分离存储）形成鲜明对比。SEQ 布局在某些硬件上更利于内存合并访问。
 
-## 25.16 llm_build_glm4::llm_build_glm4()：Post-Norm 架构与 M-RoPE 运行时二选一
+## 26.16 llm_build_glm4::llm_build_glm4()：Post-Norm 架构与 M-RoPE 运行时二选一
 
 GLM4 引入 Post-Norm（注意力后、FFN 后各加归一化），并支持 M-RoPE 与标准 RoPE 运行时切换。
 
-### 25.16.1 核心流程图：GLM4 Post-Norm 数据流
+### 26.16.1 核心流程图：GLM4 Post-Norm 数据流
 
 ```mermaid
 flowchart TD
@@ -982,7 +982,7 @@ flowchart TD
     H --> I[残差 cur = cur + ffn_inp]
 ```
 
-### 25.16.2 源码实现：`src/models/glm4.cpp` - `llm_build_glm4`（第4-139行）
+### 26.16.2 源码实现：`src/models/glm4.cpp` - `llm_build_glm4`（第4-139行）
 
 ```cpp
 // 核心特征 1：M-RoPE 运行时选择
@@ -1028,11 +1028,11 @@ for (int il = 0; il < n_transformer_layers; ++il) {
 
 **代码解析：** GLM4 引入了 **Post-Norm 架构**：在注意力输出后、FFN 输出后各增加一次 RMSNorm（`attn_post_norm`、`ffn_post_norm`）。这与标准 Pre-Norm（仅在子层输入前归一化）不同，Post-Norm 有助于深层网络的梯度流动稳定性，但会改变残差流的尺度。同时，GLM4 通过 `hparams.use_mrope()` 运行时决定是否使用 M-RoPE，并强制要求多模态输入必须配合 M-RoPE（否则 `GGML_ABORT`），这是类型安全的运行时守卫。
 
-## 25.17 llm_build_glm4_moe::llm_build_glm4_moe()：Post-Norm + MoE + Q/K 前置归一化的大杂烩
+## 26.17 llm_build_glm4_moe::llm_build_glm4_moe()：Post-Norm + MoE + Q/K 前置归一化的大杂烩
 
 GLM4-Moe 同时拥有 Post-Norm、Q/K 前置归一化、M-RoPE 可选、稠密/MoE 分层、共享专家、专家路由偏置、NextN 跳过、门控函数可配置。
 
-### 25.17.1 源码实现：`src/models/glm4-moe.cpp` - `llm_build_glm4_moe`（第8-148行）
+### 26.17.1 源码实现：`src/models/glm4-moe.cpp` - `llm_build_glm4_moe`（第8-148行）
 
 ```cpp
 // 结合 GLM4 Post-Norm + Qwen3 风格 Q/K 前置归一化 + MoE
@@ -1095,11 +1095,11 @@ for (int il = 0; il < n_transformer_layers; ++il) {
 
 **代码解析：** GLM4-Moe 是架构大杂烩的典范：它同时拥有 **Post-Norm**（attn_post/ffn_post）、**Q/K 前置归一化**（attn_q_norm/attn_k_norm）、**M-RoPE 可选**、**稠密/MoE 分层**（n_layer_dense_lead）、**共享专家**、**专家路由偏置**、**NextN 跳过**、**门控函数可配置**。这种组合展示了 llama.cpp 构建器系统的极致灵活性——每个正交特性都有对应的张量字段和构建逻辑，通过条件判断自由组合。
 
-## 25.18 llm_build_baichuan::llm_build_baichuan()：7B/13B 双分支 RoPE 与 ALiBi 兼容
+## 26.18 llm_build_baichuan::llm_build_baichuan()：7B/13B 双分支 RoPE 与 ALiBi 兼容
 
 Baichuan 同一构建器支持 7B（RoPE）与 13B（ALiBi）两种位置编码策略。
 
-### 25.18.1 源码实现：`src/models/baichuan.cpp` - `llm_build_baichuan`（第6-96行）
+### 26.18.1 源码实现：`src/models/baichuan.cpp` - `llm_build_baichuan`（第6-96行）
 
 ```cpp
 // 核心差异：根据 model.type 选择位置编码策略
@@ -1128,11 +1128,11 @@ for (int il = 0; il < n_layer; ++il) {
 
 **代码解析：** Baichuan 7B 与 13B 共用同一构建器，但 **13B 完全移除 RoPE**（`inp_pos = nullptr`，switch 中不调用 `ggml_rope_ext`）。这是 Baichuan 13B 采用 ALiBi (Attention with Linear Biases) 位置编码的体现——ALiBi 不需要显式的位置嵌入，而是在注意力分数上直接加线性偏置。llama.cpp 的注意力内核 `build_attn` 内部会根据 `rope_factors` 与缩放因子隐式处理 ALiBi，这里只需「不调用 RoPE」即可。
 
-## 25.19 llm_build_internlm2::llm_build_internlm2()：标准 Pre-Norm + lm_head 偏置的教科书实现
+## 26.19 llm_build_internlm2::llm_build_internlm2()：标准 Pre-Norm + lm_head 偏置的教科书实现
 
 InternLM2 极其标准，唯一亮点是输出层支持可选偏置 `output_b`。
 
-### 25.19.1 源码实现：`src/models/internlm2.cpp` - `llm_build_internlm2`（第1-117行）
+### 26.19.1 源码实现：`src/models/internlm2.cpp` - `llm_build_internlm2`（第1-117行）
 
 ```cpp
 // 标准 Pre-Norm 流程，分离 wq/wk/wv + 可选 bias
@@ -1153,11 +1153,11 @@ res->t_logits = cur;
 
 **代码解析：** InternLM2 极其标准，唯一亮点是输出层支持可选偏置 `output_b`（与 Qwen2 类似）。这种「标准骨架 + 微小差异」的模式是 llama.cpp 支持百余模型的关键：绝大多数代码复用基础设施，仅在关键节点插入差异化逻辑。
 
-## 25.20 llm_build_hunyuan_dense::llm_build_hunyuan_dense()：Q/K 归一化后置的混元稠密版
+## 26.20 llm_build_hunyuan_dense::llm_build_hunyuan_dense()：Q/K 归一化后置的混元稠密版
 
 混元稠密版的 Q/K 归一化发生在 **RoPE 之后**（Post-RoPE），与 Qwen3 的「RoPE 之前」形成对比。
 
-### 25.20.1 源码实现：`src/models/hunyuan-dense.cpp` - `llm_build_hunyuan_dense`（第1-100行）
+### 26.20.1 源码实现：`src/models/hunyuan-dense.cpp` - `llm_build_hunyuan_dense`（第1-100行）
 
 ```cpp
 // 关键差异：RoPE 之后做 Q/K 归一化（Post-RoPE Norm）
@@ -1184,11 +1184,11 @@ for (int il = 0; il < n_layer; ++il) {
 
 **代码解析：** 混元稠密版的 Q/K 归一化发生在 **RoPE 之后**（Post-RoPE），这与 Qwen3 的「RoPE 之前」形成对比。两种时序各有优劣：RoPE 后归一化能校正旋转后的分布偏移；RoPE 前归一化能稳定旋转输入。混元选择前者，可能是基于其特定的训练超参数与初始化方案调优而来。
 
-## 25.21 llm_build_hunyuan_moe::llm_build_hunyuan_moe()：双轨 FFN 并行相加的独特设计
+## 26.21 llm_build_hunyuan_moe::llm_build_hunyuan_moe()：双轨 FFN 并行相加的独特设计
 
 混元 MoE 采用「稠密 FFN + MoE 并行双轨相加」设计，稠密 FFN 使用共享专家权重。
 
-### 25.21.1 核心流程图：Hunyuan MoE 双轨并行
+### 26.21.1 核心流程图：Hunyuan MoE 双轨并行
 
 ```mermaid
 flowchart TD
@@ -1199,7 +1199,7 @@ flowchart TD
     D --> E
 ```
 
-### 25.21.2 源码实现：`src/models/hunyuan-moe.cpp` - `llm_build_hunyuan_moe`（第6-179行）
+### 26.21.2 源码实现：`src/models/hunyuan-moe.cpp` - `llm_build_hunyuan_moe`（第6-179行）
 
 ```cpp
 // 独特的双轨 FFN：稠密 + MoE 并行相加
@@ -1242,11 +1242,11 @@ for (int il = 0; il < n_layer; ++il) {
 
 **代码解析：** 混元 MoE 的核心创新是 **稠密 FFN 与 MoE 并行双轨相加** (`ffn_out = cur_moe + cur_mlp`)。注意稠密 FFN 使用的是 `ffn_*_shexp`（共享专家权重），这意味着「共享专家」在这里不是 MoE 的附属品，而是与路由专家平级的并行分支。且 `build_moe_ffn` 传入 `norm_topk_prob=true`，对 top-k 概率做归一化。这种设计保证了每层都有完整的稠密计算能力，MoE 只负责「增量知识」，降低了训练不稳定风险。
 
-## 25.22 llm_build_mistral3::llm_build_mistral3()：注意力温度缩放的 Llama4 风格实现
+## 26.22 llm_build_mistral3::llm_build_mistral3()：注意力温度缩放的 Llama4 风格实现
 
 Mistral3 引入注意力温度缩放 `inp_attn_scale`，RoPE 后对 Q 乘以可学习标量。
 
-### 25.22.1 源码实现：`src/models/mistral3.cpp` - `llm_build_mistral3`（第1-154行）
+### 26.22.1 源码实现：`src/models/mistral3.cpp` - `llm_build_mistral3`（第1-154行）
 
 ```cpp
 // 温度缩放：Llama4 风格
@@ -1269,11 +1269,11 @@ const float kq_scale = hparams.f_attention_scale == 0.0f ? 1.0f/sqrtf(float(n_em
 
 **代码解析：** Mistral3 引入两个缩放机制：(1) **注意力温度缩放** `inp_attn_scale`：RoPE 后对 Q 乘以可学习/可配置的标量，等效于调节注意力熵，Llama4 同款技术；(2) **自适应 `kq_scale`**：若 `f_attention_scale=0` 回退到经典 `1/sqrt(d_head)`，否则使用自定义缩放因子。这两个缩放可叠加，为长上下文和大批次训练提供数值稳定性保障。
 
-## 25.23 llm_build_arcee::llm_build_arcee()：ReLU² 无门控 FFN 的极简设计
+## 26.23 llm_build_arcee::llm_build_arcee()：ReLU² 无门控 FFN 的极简设计
 
 Arcee 采用 ReLU² 激活函数，完全移除 gate 分支，大幅减少参数量。
 
-### 25.23.1 源码实现：`src/models/arcee.cpp` - `llm_build_arcee`（第1-124行）
+### 26.23.1 源码实现：`src/models/arcee.cpp` - `llm_build_arcee`（第1-124行）
 
 ```cpp
 // 核心差异：ReLU-squared 激活函数，无 gate 分支
@@ -1287,11 +1287,11 @@ cur = build_ffn(cur,
 
 **代码解析：** Arcee 采用 **ReLU² (ReLU-squared) 激活函数**，且 **完全移除 gate 分支**（`build_ffn` 的 gate 相关参数均为 `NULL`）。标准 SwiGLU 是 `silu(gate) * up`，ArCEE 简化为 `relu(up)^2`。这种设计大幅减少参数量（去掉 gate 矩阵）和计算量，且 ReLU² 在某些任务上表现接近 SwiGLU，是「小模型高性能」的一个有力探索。`LLM_FFN_SEQ` 布局下，权重内存布局为 `[up; down]` 连续存储。
 
-## 25.24 llm_build_step35_iswa::llm_build_step35_iswa()：逐层动态配置与头级注意力门控
+## 26.24 llm_build_step35_iswa::llm_build_step35_iswa()：逐层动态配置与头级注意力门控
 
 Step35-ISWA 实现了极致的逐层动态化：每层独立头数、RoPE 频率、旋转维度、SWA 标志，并引入头级注意力门控。
 
-### 25.24.1 核心流程图：Step35-ISWA 头级门控机制
+### 26.24.1 核心流程图：Step35-ISWA 头级门控机制
 
 ```mermaid
 flowchart TD
@@ -1313,7 +1313,7 @@ flowchart TD
     O --> P[build_lora_mm wo]
 ```
 
-### 25.24.2 源码实现：`src/models/step35-iswa.cpp` - `llm_build_step35_iswa`（第1-80行）
+### 26.24.2 源码实现：`src/models/step35-iswa.cpp` - `llm_build_step35_iswa`（第1-80行）
 
 ```cpp
 for (int il = 0; il < n_layer; ++il) {
@@ -1378,11 +1378,11 @@ for (int il = 0; il < n_layer; ++il) {
 2. **头级注意力门控**：`wqkv_gate` 投影得到 `[n_head, n_tokens]` 的门控 logits，sigmoid 后 reshape 为 `[1, n_head, n_tokens]`，与注意力输出 `[head_dim, n_head, n_tokens]` 做逐头广播相乘。这是细粒度的注意力调制，类似于「每个头独立的 dropout/缩放」。
 3. **MoE + 共享专家双轨**：同 BailingMoe，路由专家 + 共享专家简单相加。
 
-## 25.25 llm_build_smallthinker<iswa>::llm_build_smallthinker()：模板化 ISWA 与预计算路由概率
+## 26.25 llm_build_smallthinker<iswa>::llm_build_smallthinker()：模板化 ISWA 与预计算路由概率
 
 SmallThinker 采用模板参数 `iswa` 统一标准/ISWA 两种模式，并在层开始时预计算 MoE 路由概率。
 
-### 25.25.1 核心流程图：SmallThinker 模板化编译期分支
+### 26.25.1 核心流程图：SmallThinker 模板化编译期分支
 
 ```mermaid
 flowchart TD
@@ -1399,7 +1399,7 @@ flowchart TD
     J --> K[残差 + cvec]
 ```
 
-### 25.25.2 源码实现：`src/models/smallthinker.cpp` - `llm_build_smallthinker<iswa>`（第4-89行）
+### 26.25.2 源码实现：`src/models/smallthinker.cpp` - `llm_build_smallthinker<iswa>`（第4-89行）
 
 ```cpp
 template <bool iswa>
@@ -1499,7 +1499,7 @@ template struct llm_build_smallthinker<true>;
 2. **预计算路由概率**：`probs = build_lora_mm(ffn_gate_inp, inpL)` 在层开始时（基于残差流输入 `inpL`）就计算好 MoE 路由概率，而非在 `build_moe_ffn` 内部基于 FFN 输入计算。这允许路由决策提前，且 `probs` 可在最后层裁剪时同步裁剪（`probs = ggml_get_rows(...)`）。
 3. **RELU 激活 + 传入 probs**：`build_moe_ffn` 的 `gate_inp` 设为 `nullptr`，激活函数用 `LLM_FFN_RELU` 而非主流 SwiGLU，门控函数从 `hparams.expert_gating_func` 运行时读取。这是为极致推理速度设计的「小模型」取舍。
 
-## 25.26 设计中的取舍
+## 26.26 设计中的取舍
 
 为什么不用运行时多态（虚函数）而用模板类？**模板类**（`template <bool embed>`）编译期展开，零运行时开销，内联优化机会最大，但会增加代码体积（代码膨胀），且要求模板定义在头文件或显式实例化。**虚函数**运行时分发，代码体积小，便于动态加载插件，但有 vtable 查找开销，难以内联优化热点路径。llama.cpp 的选择：核心构建器（`llm_build_llama`、`llm_build_smallthinker`）使用模板参数（`embed`、`iswa`），因为模型构建是「一次性」的离线/启动阶段，代码体积可接受，而推理热点路径（`build_attn`、`build_ffn` 等）已下沉到 GGML 算子层，构建器本身不在推理热路径上。对于模型家族级差异（Llama vs Qwen vs GLM），则使用独立的类（继承 `llm_graph_context`），通过工厂函数 `from_model_architecture` 运行时分发。这是「编译期多态处理模式变体，运行时多态处理架构变体」的分层策略。
 
@@ -1511,9 +1511,9 @@ Q/K 归一化时序：Pre-RoPE vs Post-RoPE 的深度对比？**Pre-RoPE**（Qwe
 
 GLM4 Post-Norm vs 标准 Pre-Norm 的架构取舍？**Post-Norm**（GLM4/GLM4-Moe）：每个子层输出后接 RMSNorm，残差流经历 `PreNorm → SubLayer → PostNorm → ResidualAdd`。梯度直接流过 PostNorm，缓解深层网络梯度消失；每层输出分布被强制标准化，训练更稳定；但残差流尺度被反复归一化，可能丢失层间信息量差异；推理时多两次归一化开销。**Pre-Norm**（Llama、Qwen、Baichuan 等主流）：仅在子层输入前归一化。残差流保持原始尺度，信息传递更直接；结构简单，推理快；但深层网络梯度易消失，需配合 Warmup、LayerScale 等技巧。GLM4 的工程妥协：既保留 Pre-Attention Norm，又在 Attention/FFN 后各加 Post-Norm，形成「双归一化」结构。这在 100B+ 规模模型中被验证有效，但在小模型上收益边际递减。
 
-## 25.27 动手练习
+## 26.27 动手练习
 
-### 练习 1：对比 Qwen3 与基础 Llama 的 Q/K 归一化顺序
+### 26.27.1 练习 1：对比 Qwen3 与基础 Llama 的 Q/K 归一化顺序
 
 阅读 `src/models/llama.cpp` 与 `src/models/qwen3.cpp`，回答以下问题：
 1. Llama 在哪一步调用 `ggml_rms_norm`？是在 `ggml_rope_ext` 之前还是之后？
@@ -1521,7 +1521,7 @@ GLM4 Post-Norm vs 标准 Pre-Norm 的架构取舍？**Post-Norm**（GLM4/GLM4-Mo
 3. 两者的判断条件分别是什么？Llama 用 `hparams.use_kq_norm`，Qwen3 用了哪些层张量？
 4. 这两种顺序差异会对模型训练稳定性产生什么影响？请结合 Llama4TextL2Norm 的设计意图分析。
 
-### 练习 2：追踪 BailingMoe2 的稠密/MoE 切换路径
+### 26.27.2 练习 2：追踪 BailingMoe2 的稠密/MoE 切换路径
 
 阅读 `src/models/bailingmoe2.cpp`，回答以下问题：
 1. `n_transformer_layers` 与 `n_layer`、`hparams.nextn_predict_layers` 的关系是什么？为什么要跳过最后几层？
@@ -1529,7 +1529,7 @@ GLM4 Post-Norm vs 标准 Pre-Norm 的架构取舍？**Post-Norm**（GLM4/GLM4-Mo
 3. `ffn_exp_probs_b` 在 `build_moe_ffn` 调用中扮演什么角色？它和 `LLAMA_EXPERT_GATING_FUNC_TYPE_*` 的关系是什么？
 4. QKV 视图中 K 偏移 `1 * sizeof(float) * n_embd`、V 偏移 `1 * sizeof(float) * (n_embd + n_embd_gqa)` 是如何保证 GQA 正确索引的？
 
-### 练习 3：梳理 ISWA 与模板化 ISWA 的差异
+### 26.27.3 练习 3：梳理 ISWA 与模板化 ISWA 的差异
 
 阅读 `src/models/llama-iswa.cpp` 与 `src/models/smallthinker.cpp`，回答以下问题：
 1. 两者都用 ISWA 注意力输入，但实现方式不同：Llama-ISWA 直接调用 `build_attn_inp_kv_iswa()`，SmallThinker 用 `template <bool iswa>` 包装。两种风格各自的优劣是什么？
@@ -1537,7 +1537,7 @@ GLM4 Post-Norm vs 标准 Pre-Norm 的架构取舍？**Post-Norm**（GLM4/GLM4-Mo
 3. SmallThinker 在循环一开始就计算了 `probs = build_lora_mm(ffn_gate_inp, inpL)`，这个 `probs` 在 MoE 调用中如何被复用？
 4. Llama-ISWA 使用 `LLAMA_EXPERT_GATING_FUNC_TYPE_SIGMOID`，SmallThinker 使用 `static_cast<llama_expert_gating_func_type>(hparams.expert_gating_func)`，这两种写法分别表达什么意图？
 
-### 练习 4：解析 DeepStack 多模态融合的张量视图
+### 26.27.4 练习 4：解析 DeepStack 多模态融合的张量视图
 
 阅读 `src/models/qwen3vl.cpp`，重点关注 DeepStack 注入逻辑，回答以下问题：
 1. `res->t_inp_embd` 是什么张量？它的形状和作用是什么？
@@ -1545,7 +1545,7 @@ GLM4 Post-Norm vs 标准 Pre-Norm 的架构取舍？**Post-Norm**（GLM4/GLM4-Mo
 3. `n_deepstack_layers` 是多少？融合发生在前几层还是所有层？
 4. 与 Qwen3-VL-MoE 相比，DeepStack 注入的位置（attn 前 / FFN 后）是否一致？
 
-### 练习 5：动手改造：把一个 LLaMA 变型模式改造为 ISWA
+### 26.27.5 练习 5：动手改造：把一个 LLaMA 变型模式改造为 ISWA
 
 假设你希望把 `src/models/llama.cpp` 中的 `llm_build_llama` 改造为支持 ISWA：
 1. 写出需要修改的代码片段（包括头部的注意力输入选择与循环内 `use_rope` 的判定）。
@@ -1553,7 +1553,7 @@ GLM4 Post-Norm vs 标准 Pre-Norm 的架构取舍？**Post-Norm**（GLM4/GLM4-Mo
 3. 改造后是否需要修改 `models.h` 中的类声明？需要新增 `template struct llm_build_llama_iswa<false>;` 这种显式实例化吗？
 4. 这种改造对显存占用与长上下文性能的影响是什么？请从 KV Cache 与 SWA 内存机制的角度分析。
 
-## 25.28 本章小结
+## 26.28 本章小结
 
 这一章中我们学习了 llama.cpp 中主流 Transformer 解码器家族的计算图构建实现。首先深入剖析了作为基准的 `llm_build_llama` 模板类，理解其通过 `embed` 参数统一语言模型与嵌入模式、通过 `ffn_gate_inp` 判定稠密/MoE 分支、通过 `use_kq_norm` 控制 Q/K 后置归一化的核心设计。其次分析了 ISWA 变体如何引入滑动窗口注意力、NoPE 步进、Sigmoid 门控等长上下文优化技术。接着系统梳理了 Qwen 家族从 QKV 打包视图拆分、分离投影、M-RoPE 多模态位置编码、Q/K 前置归一化，到 DeepStack 多层视觉融合、MoE 专家权重缩放的完整演进链条。随后对比了 BailingMoe 两代的标准 MoE 与工程化增强（NextN 跳过、稠密/MoE 分层、专家偏置），GLM/ChatGLM 系列的双模式 QKV、Post-Norm、M-RoPE 组合拳，以及 Baichuan 的 ALiBi 分支、InternLM2 的标准实现、Hunyuan 的双轨 FFN 相加、Mistral3 的温度缩放、Arcee 的 ReLU² 无门控等差异化设计。最后对比了 Step35-ISWA 的逐层动态配置与头级门控，与 SmallThinker 的模板化 ISWA、预计算路由概率、RELU 激活等极致工程化取舍。
 

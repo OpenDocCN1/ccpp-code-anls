@@ -1,6 +1,6 @@
 
 
-# 第35章 CPU 后端引擎（上）—— 跨国智能制造工厂的无尘车间
+# 第36章 CPU 后端引擎（上）—— 跨国智能制造工厂的无尘车间
 
 ## 学习目标
 
@@ -17,7 +17,7 @@
 -   掌握CPU后端扩展缓冲区类型（extra buffer types）的注册与调度机制
 -   理解src1激活值的在线量化（quantize_mat）与from_float转换流程
 
-## 35.1 生活类比
+## 36.1 生活类比
 
 想象GGML CPU后端是一个**跨国智能制造工厂**，它要在不同国家（x86/ARM/RISC-V）生产同样的产品（张量计算），但每个国家的工厂设备（SIMD指令集）不同。
 
@@ -31,7 +31,7 @@
 
 最后，工厂的**设备性能评级系统**（架构特性评分）会在开机时检测机床型号，自动选择最优生产线配置，而**特殊材料通道**（Extra Buffer Types）则确保不同物料走各自的物流通道。整个工厂的运作，就是为了在计算前将原料临时压缩（在线量化），节省存储空间，实现最高效的生产。
 
-## 35.2 源码地图
+## 36.2 源码地图
 
 ```
 ggml/src/ggml-cpu/
@@ -446,11 +446,11 @@ ggml/src/ggml-cpu/
         └── ggml_vec_dot_q2_K/q3_K/q4_K/q5_K/q6_K # K-quant点积
 ```
 
-## 35.3 CPU 后端核心设施 —— 引擎的“地基与调度室”
+## 36.3 CPU 后端核心设施 —— 引擎的“地基与调度室”
 
 我们先从工厂的“地基”开始，看看支撑整个引擎运转的**类型特征表（type traits）**。
 
-### ggml_get_type_traits_cpu —— 量化类型特征表的入口路由
+### 36.3.1 ggml_get_type_traits_cpu —— 量化类型特征表的入口路由
 
 GGML 的 CPU 后端像一座精密的`压缩机工厂`，每一种不同的`原料类型`（比如Q4_0、Q8_0）都需要对应的`专用压缩模具`，这套模具的映射关系就保存在**类型特征表（type traits）**中。`ggml_get_type_traits_cpu()` 就像一个智能仓库管理员，给它一个类型编号，它立刻把对应的`模具清单`（函数指针表）递给你——包括怎么把FP32压缩成Q8_0，怎么把Q4_0里的半字节解压出来，怎么用最高效的方式计算Q4_0×Q8_0这种`压缩后点积`。这个特征表是一切SIMD优化的`入口路由`，也是整个CPU后端的神经中枢。
 
@@ -465,7 +465,7 @@ const struct ggml_type_traits_cpu * ggml_get_type_traits_cpu(enum ggml_type type
 
 这段代码定义了一个极简的查询函数，它通过`枚举类型`直接索引全局静态数组，实现了`O(1)`时间复杂度的类型特征查找。`type_traits_cpu` 数组中每个元素都是一个结构体，里面存有该量化类型的`加工手册`，包括 `vec_dot`（点积函数）、`from_float`（转换函数）、`to_float`（反量化函数）等指针，这些指针指向的具体实现会根据编译时的目标架构（x86/ARM/RISC-V）和指令集（AVX/NEON/RVV）由宏和编译器自动选择，实现了`一处调用、处处受益`的架构无关设计。
 
-### ggml_new_i32/f32 —— 工厂的“基础五金工具”
+### 36.3.2 ggml_new_i32/f32 —— 工厂的“基础五金工具”
 
 张量工具函数（`ggml_new_i32/f32`、`ggml_set_i32/f32`等）是工厂里的`基础五金工具`，负责创建和修改张量。而 `ggml_cpu_fp32_to_fp16/bf16` 等函数则是`格式转换机`，能把FP32原料压制成FP16/BF16这种更紧凑的`半成品`，为后续的量化压缩做准备。
 
@@ -484,7 +484,7 @@ struct ggml_tensor * ggml_new_f32(struct ggml_context * ctx, float value) {
 
 这段代码展示了如何创建一个标量F32张量。它先通过 `ggml_new_tensor_1d` 在给定的 `ggml_context` 中分配一个包含单个元素的一维张量，然后调用 `ggml_set_f32` 将传入的 `value` 写入该张量。这是GGML中创建标量参数（如学习率、缩放因子等）的标准方式，体现了GGML`上下文分配器`的内存管理模式——所有张量都在一个预先分配的内存池中创建，极大地减少了动态内存分配的开销。
 
-### ggml_barrier —— 工厂的“流水线调度室”
+### 36.3.3 ggml_barrier —— 工厂的“流水线调度室”
 
 在多核CPU上工作，就像工厂里多条流水线并行运转。`ggml_graph_compute_thread()` 是每个`工人`（线程）的主要工作循环，它从`任务队列`中领取`加工图纸`（计算图节点）。为了避免不同流水线之间进度不一致导致`产品错位`，需要用 `ggml_barrier()` 实现`同步屏障`——所有工人必须完成当前批次的所有工序，才能一起进入下一个工序。这就好比体育比赛中的`集体项目`，必须等所有队员都完成当前动作，裁判才能吹哨进入下一轮。
 
@@ -538,7 +538,7 @@ graph TD
     G -->|是| E
 ```
 
-### ggml_numa_init —— 工厂的“多厂房布局”
+### 36.3.4 ggml_numa_init —— 工厂的“多厂房布局”
 
 当工厂横跨多个物理`厂房`（NUMA节点）时，原料存放在不同的`仓库`里。`ggml_numa_init()` 会检测这些仓库的位置，并根据 DISTRIBUTE/ISOLATE/NUMACTL 三种策略，智能地调度工人去`最近`的仓库取料，减少`搬运`（内存访问）时间。
 
@@ -602,7 +602,7 @@ void ggml_numa_init(enum ggml_numa_strategy numa_flag) {
 
 这段代码负责初始化NUMA拓扑信息。在Linux系统下，它通过扫描`/sys/devices/system/node/`和`/sys/devices/system/cpu/`目录下的虚拟文件系统，枚举出所有NUMA节点及其关联的CPU列表，同时获取当前进程运行的节点和CPU。这些拓扑信息为后续`set_numa_thread_affinity()`按NUMA策略绑定线程到特定CPU核心提供了`地图`。这个探测过程完全基于`sysfs`接口，无需特权，是典型的用户态硬件拓扑发现机制。
 
-### ggml_compute_forward_mul_mat_one_chunk —— 矩阵乘法的“分块加工车间”
+### 36.3.5 ggml_compute_forward_mul_mat_one_chunk —— 矩阵乘法的“分块加工车间”
 
 现在我们来到工厂最繁忙的车间——矩阵乘法加工车间。`ggml_compute_forward_mul_mat_one_chunk()` 是这个车间的核心工序，它负责将大矩阵切成小块，分发给不同工人并行加工。
 
@@ -693,11 +693,11 @@ graph TD
     K -->|否| M[继续下一节点]
 ```
 
-## 35.4 通用算子与一元运算 —— 张量的“元素级加工厂”
+## 36.4 通用算子与一元运算 —— 张量的“元素级加工厂”
 
 现在我们把眼光放到`元素级加工厂`，这里的每一台`机器`都负责对张量中的每个元素执行相同的`原子操作`。GGML通过模板编程将这类算子大规模泛化，从简单的加减乘除到复杂的归一化、注意力机制，都遵循一套统一的`流水线`。
 
-### ggml_compute_forward_unary —— 一元运算：一个输入，一个输出
+### 36.4.1 ggml_compute_forward_unary —— 一元运算：一个输入，一个输出
 
 `unary-ops.cpp` 中的 `ggml_compute_forward_unary()` 是模板化的元素级运算核心。它接收一个`函数指针`作为模板参数，通过底层的 `type_conversion_table` 将不同数据类型（F32/F16/BF16）统一到F32进行运算，再转换回目标类型。GELU、SiLU、ReLU 等激活函数都是通过这种方式实现的。
 
@@ -719,7 +719,7 @@ static inline void vec_unary_op(int64_t n, dst_t * y, const src0_t * x) {
 
 这段代码是一个`通用一元运算向量化框架`。它通过模板参数`op`将具体的数学运算（如绝对值、指数、激活函数）注入到循环内部，通过`type_conversion_table`将源类型和目标类型统一抽象，从而一份代码即可处理 F32、F16、BF16 等多种数据类型的组合。该设计通过`编译期模板特化`消除了大部分运行时开销，并且由于循环体极其简单，编译器可以轻松地进行`自动向量化`，将标量循环优化为SIMD指令。
 
-### ggml_compute_forward_add_non_quantized —— 二元运算：双输入融合
+### 36.4.2 ggml_compute_forward_add_non_quantized —— 二元运算：双输入融合
 
 `binary-ops.cpp` 则进一步处理两个张量的逐元素运算。`vec_binary_op_contiguous()` 是连续内存路径下的高效实现，而 `vec_binary_op_non_contiguous()` 则处理广播语义下的非连续访问。二者通过 `apply_binary_op()` 进行统一调度。
 
@@ -756,7 +756,7 @@ static void apply_binary_op(const ggml_compute_params * params, ggml_tensor * ds
 
 这段代码定义了连续内存路径下的二元运算核心逻辑。与一元运算类似，它同样通过模板参数注入`op`操作，通过类型转换表统一数据类型接口。该函数首先根据当前线程的索引计算其负责的行范围，然后针对每行，判断`src1`是否为连续行——如果是，则可以使用`vec_binary_op_contiguous`进行高效的向量化操作；否则，回退到`vec_binary_op_non_contiguous`处理非连续情况。由于输入`x`和`y`以及输出`z`在内存中都是`连续排列`的，编译器能生成极其高效的`向量化循环`，实现加、减、乘、除等元素操作的`吞吐最大化`。
 
-### ggml_compute_forward_soft_max_f32 —— 归一化与注意力：精密仪器车间
+### 36.4.3 ggml_compute_forward_soft_max_f32 —— 归一化与注意力：精密仪器车间
 
 `ops.cpp` 则实现了更复杂的神经网络算子。`ggml_compute_forward_soft_max_f32()` 是带ALiBi位置偏置、掩码和sink归一化的完整Softmax实现，`ggml_compute_forward_flash_attn_ext_f16()` 则是Flash Attention在CPU上的实现，利用在线softmax算法高效处理长序列。这些算子构成了Transformer推理的基础积木。
 
@@ -843,7 +843,7 @@ static void ggml_compute_forward_soft_max_f32(
 
 这段代码实现了带多个选项的完整Softmax前向计算。它依次处理`缩放`、`ALiBi位置偏置`、`掩码广播`和`sink token修正`，并利用工作区避免重复读取源数据。特别值得注意的是`在线softmax`技巧（维护运行最大值并进行修正），这使后续的Flash Attention实现可以流式处理KV缓存块而无需预先计算全局最大值，是长序列推理的关键优化。
 
-### ggml_compute_forward_flash_attn_ext_f16 —— Flash Attention：高效注意力计算
+### 36.4.4 ggml_compute_forward_flash_attn_ext_f16 —— Flash Attention：高效注意力计算
 
 源码路径：`ggml/src/ggml-cpu/ops.cpp` - `ggml_compute_forward_flash_attn_ext_f16()` （9012-9140行）
 
@@ -904,7 +904,7 @@ graph TD
     K --> L[写入最终输出]
 ```
 
-### ggml_compute_forward_rope_flt —— 旋转位置编码
+### 36.4.5 ggml_compute_forward_rope_flt —— 旋转位置编码
 
 源码路径：`ggml/src/ggml-cpu/ops.cpp` - `ggml_compute_forward_rope_flt()` （5764-5877行）
 
@@ -976,7 +976,7 @@ static void ggml_compute_forward_rope_flt(
 
 这段代码实现了ND旋转位置编码（RoPE）的前向（或反向）计算。它支持四种模式：普通RoPE、NeoX风格RoPE、多模态MRoPE以及视觉RoPE。核心是`ggml_rope_cache_init`和`ggml_mrope_cache_init`，它们会根据位置索引和YaRN校正算法提前计算好cos/sin值到缓存中，然后`rotate_pairs`函数使用缓存对输入数据的成对通道执行旋转变换。通过`sin_sign`参数巧妙实现了正向和反向传播的统一，而MRoPE则用不同的位置索引分别对文本/图像/高度/宽度维度应用不同频率。
 
-### ggml_compute_forward_concat —— 张量拼接
+### 36.4.6 ggml_compute_forward_concat —— 张量拼接
 
 除了上述复杂的算子，`ops.cpp`中还实现了大量基础数据操作算子。例如 `ggml_compute_forward_concat` 用于在指定维度上拼接两个张量，它通过类型分派选择了不同的实现路径：对于基础类型（I8/F16/F32）有专门优化的循环，对于量化类型则回退到通用的`concat_any`实现（逐元素字节复制）。
 
@@ -1008,11 +1008,11 @@ static void ggml_compute_forward_concat_f32(
 
 这段代码是`concat`操作的F32特化实现，用于将两个F32张量沿指定维度拼接。它通过`ggml_get_op_params_i32`获取拼接的维度，并计算目标张量中第二个输入张量的起始偏移`o[dim]`。核心是一个四重循环，其中前两重循环（i3, i1）遍历目标张量的所有元素，内层循环则根据当前索引相对于偏移量`o[dim]`的位置，决定从src0还是src1拷贝数据。这种实现方式确保了多线程（`ith`）能够并行处理不同的i2维度，从而加速拼接过程。对于其他数据类型，`ggml_compute_forward_concat`会分派到相应的特化实现（如`concat_f16`、`concat_i8`）或回退到逐字节copy的`concat_any`。
 
-## 35.5 量化矩阵乘与重排 —— 低位世界的“压缩与解压工厂”
+## 36.5 量化矩阵乘与重排 —— 低位世界的“压缩与解压工厂”
 
 大模型推理的性能瓶颈往往不在计算，而在`内存带宽`。为了降低带宽压力，GGML对权重进行量化（如4-bit），并在计算时巧妙地利用SIMD指令加速。这一节我们深入`量化矩阵乘`的流水线。
 
-### quantize_row_q8_0 —— 从FP32到低位宽的量化
+### 36.5.1 quantize_row_q8_0 —— 从FP32到低位宽的量化
 
 `quantize_row_q8_0()` 等函数将一行FP32数据转换为Q8_0格式。其核心逻辑是找到该行的`最大绝对值`，计算出`缩放因子d`，然后将每个浮点数除以d并四舍五入到整数。这样，原本需要4字节存储的FP32数据就压缩到了1字节的INT8，内存占用减少4倍。
 
@@ -1028,7 +1028,7 @@ void quantize_row_q8_0_generic(const float * GGML_RESTRICT x, void * GGML_RESTRI
 
 这段通用实现直接调用`quantize_row_q8_0_ref`作为后续所有SIMD优化版本的`正确性基准`。`_ref`后缀表明这是一个逐元素处理的参考实现，它不依赖任何特定的SIMD指令集，因此可以在所有平台上编译运行，确保在没有优化内核时功能仍然正确。
 
-### ggml_vec_dot_q4_0_q8_0_generic —— 量化点积：在压缩数据上直接计算
+### 36.5.2 ggml_vec_dot_q4_0_q8_0_generic —— 量化点积：在压缩数据上直接计算
 
 `ggml_vec_dot_q4_0_q8_0_generic()` 则是Q4_0与Q8_0量化数据之间的点积实现。其巧妙之处在于，它不在FP32域中进行计算，而是在`整数域`中直接进行乘加，最后再乘以`缩放因子d`还原。这让SIMD指令（如`_mm512_dpbusd_epi32`）能一次处理多个量化值，实现超高速运算。
 
@@ -1085,7 +1085,7 @@ graph TD
     G --> H[输出浮点结果]
 ```
 
-### make_block_q4_0x4 —— Repack：面向SIMD的布局优化
+### 36.5.3 make_block_q4_0x4 —— Repack：面向SIMD的布局优化
 
 对SIMD而言，数据的`内存布局`至关重要。`repack.cpp` 中的 `make_block_q4_0x4()` 等函数，将多个量化块从原始的`行优先`布局，重新排列为`交错（interleaved）`布局。这种布局能让CPU在加载数据到SIMD寄存器时，直接将属于相同行的数据打包在一起，从而最大程度利用向量寄存器宽度，并减少`数据混洗`（shuffle）指令的开销。
 
@@ -1144,7 +1144,7 @@ graph TD
 
 这个流程图清晰地展示了Repack机制的核心作用：它位于`原始布局`和`SIMD计算单元`之间，充当`预分拣系统`的角色。原始的权重数据按行优先存储，经过Repack变换后，变成了适合SIMD指令加载的交错布局。这种布局让SIMD叉车（向量加载指令）能够一次搬运多个行的数据，实现计算吞吐的最大化。
 
-### tensor_traits<BLOC_TYPE, INTER_SIZE, NB_COLS> —— 重排后调度的“插件”
+### 36.5.4 tensor_traits<BLOC_TYPE, INTER_SIZE, NB_COLS> —— 重排后调度的“插件”
 
 当权重被Repack为交错布局后，主调度器如何意识到这种变化并调用对应的优化内核呢？答案依然是`tensor_traits`。
 
@@ -1188,11 +1188,11 @@ bool compute_forward(struct ggml_compute_params * params, struct ggml_tensor * o
 
 这段代码是Repack后端`tensor_traits`的核心接口，它在Repack机制中扮演着“作业指导书”的角色。当主调度器（`ggml_compute_forward`）遇到一个MUL_MAT算子时，它会通过`ggml_cpu_extra_compute_forward`询问所有已注册的扩展缓冲区类型。Repack的`extra_buffer_type`会检查该算子的`src0`是否使用了Repack缓冲区类型，如果是，则返回这个`tensor_traits`实例。随后，主调度器调用`work_size()`来申请所需的临时工作区（主要用来存储`在线量化`后的激活值），并调用`compute_forward()`将实际的矩阵乘计算分发给重排后的专用实现。通过实现这两个虚函数，Repack后端得以无缝融入GGML的`扩展buffer类型`调度框架，让用户透明地获得更优的数据布局带来的性能提升。
 
-## 35.6 AMX 加速模块 —— 特种高精度机床
+## 36.6 AMX 加速模块 —— 特种高精度机床
 
 谈到高性能矩阵乘，Intel的`AMX`（Advanced Matrix Extensions）是当前服务器CPU（如Sapphire Rapids）上的`核武器`。与传统的SIMD指令不同，AMX引入了独立的`tile寄存器`和`TMUL`指令，能一次执行16x16的矩阵乘累加。
 
-### ggml_tile_config_init —— AMX 的坐标：tile寄存器
+### 36.6.1 ggml_tile_config_init —— AMX 的坐标：tile寄存器
 
 AMX拥有8个二维`tile寄存器`（TMM0-TMM7），每个能存储16x64字节的数据。在量化场景下，这些tile可以精细地配置为不同的`行列尺寸`。`ggml_tile_config_init()` 将这些寄存器配置为不同尺寸，以配合特定量化格式（如Q8_0为16x64字节的tile）。
 
@@ -1229,7 +1229,7 @@ inline void ggml_tile_config_init(void) {
 
 这段代码负责初始化AMX的`tile配置`。它通过 `_tile_loadconfig` 指令，为8个tile寄存器分配了不同的`行数和列字节数`：前两个`8x64`适合存放行数较少的A矩阵分块，后两个`16x32`适合存放B矩阵或部分结果，最后四个`16x64`则作为主要的`累加器`。这种精细的配置使AMX能灵活适配多种量化格式的矩阵乘法内核。
 
-### pack_B —— 从VNNI到AMX的内核演进
+### 36.6.2 pack_B —— 从VNNI到AMX的内核演进
 
 `mmq.cpp` 中的 `pack_B()` 和 `tinygemm_kernel_vnni` / `tinygemm_kernel_amx` 是核心内核。`pack_B()` 负责将权重重排为VNNI指令友好的布局，而 `tinygemm_kernel_vnni` 利用AVX512的`_mm512_dpbusd_epi32`指令，一次处理8字节的INT8数据并累加为INT32。AMX版本则利用`tile`版本的指令，在`tile寄存器`中执行完整的16x16矩阵乘。AMX的优势在于使用`二维寄存器`，大幅减少了循环迭代次数，从而提升了乘法的`计算密度`。
 
@@ -1267,7 +1267,7 @@ void pack_B(void * RESTRICT packed_B, const block_q4_K * RESTRICT B, int KB) {
 
 这段代码实现了`block_q4_K`权重的打包函数，它在AMX GEMM的数据流中扮演着“预处理关键工位”的角色。它首先调用`pack_qs`将量化值重排为VNNI指令友好的布局，然后将原本紧凑打包的`6位缩放因子`和`最小值偏移`解包为独立的字节，并进一步按`列优先`（SoA）重新组织。这样`_mm512_dpbusd_epi32`或AMX的tile指令就能直接从连续地址加载这些参数，无需在计算核心内进行额外的位操作，从而使计算密集的`tinygemm_kernel`保持流水线满负荷。如果没有这个预打包步骤，每次矩阵乘都需要在每个内核调用中反复解码这些紧凑的元数据，导致严重的性能瓶颈。
 
-### ggml_backend_amx_mul_mat —— AMX矩阵乘法主引擎
+### 36.6.3 ggml_backend_amx_mul_mat —— AMX矩阵乘法主引擎
 
 源码路径：`ggml/src/ggml-cpu/amx/mmq.cpp` - `ggml_backend_amx_mul_mat()` （2440-2562行）
 
@@ -1340,11 +1340,11 @@ graph TD
     G2 --> F
 ```
 
-## 35.7 KleidiAI 与 Spacemit —— 架构专属的“定制加速器”
+## 36.7 KleidiAI 与 Spacemit —— 架构专属的“定制加速器”
 
 除了Intel的AMX，GGML还为ARM和RISC-V架构提供了高度优化的后端。
 
-### init_kleidiai_context —— KleidiAI：ARM的AI引擎
+### 36.7.1 init_kleidiai_context —— KleidiAI：ARM的AI引擎
 
 `KleidiAI`是ARM官方维护的高性能AI内核库。GGML通过`kleidiai.cpp`将其集成到CPU后端。KleidiAI支持ARM最新的`SME`（可扩展矩阵扩展）指令集，它能一次处理二维矩阵块，与AMX类似。`detect_num_smcus()` 会通过读取`SMIDR_EL1`寄存器来检测CPU上的SMU（SME计算单元）数量，以决定有多少线程可以安全地使用SME指令。`init_kleidiai_context()` 则探测CPU特性，并初始化内核表。
 
@@ -1413,7 +1413,7 @@ graph TD
     I --> J[设置SME线程上限]
 ```
 
-### forward_mul_mat_q4 —— Spacemit IME：RISC-V的向量引擎
+### 36.7.2 forward_mul_mat_q4 —— Spacemit IME：RISC-V的向量引擎
 
 `Spacemit IME`是专为RISC-V Spacemit处理器优化的后端。它依赖RISC-V的`向量扩展`（RVV）指令集，并设计了针对性的`4x16`矩阵乘内核。`ime.cpp` 中的 `tensor_traits` 会将Q4_0等权重`repack`为适合RVV内核的`16行交错`布局，而`ime1_kernels.cpp` 中的 `SQ4BitGemmM4Kernel_CompInt8_*` 则利用`RVV的向量-矩阵乘指令`高效执行量化矩阵乘法。
 
@@ -1500,11 +1500,11 @@ graph TD
     H --> I[输出结果]
 ```
 
-## 35.8 llamafile SGEMM —— 通用矩阵乘基准
+## 36.8 llamafile SGEMM —— 通用矩阵乘基准
 
 上述的AMX、KleidiAI、Spacemit都是针对特定硬件深度定制的`特种部队`。而对于更广泛的x86/ARM平台，GGML集成了`llamafile`的`tinyBLAS`，作为一条提供稳定高性能的`通用高速公路`。
 
-### tinyBLAS::matmul —— tinyBLAS的设计哲学
+### 36.8.1 tinyBLAS::matmul —— tinyBLAS的设计哲学
 
 `tinyBLAS`摒弃了`通用BLAS`库（如OpenBLAS）的过度泛化，专注于`小矩阵乘`这一GGML的核心场景。它通过`模板特化`在编译期为不同架构（AVX/NEON/VSX）生成最合适的代码路径。
 
@@ -1576,7 +1576,7 @@ graph TD
     M --> N[输出结果]
 ```
 
-### llamafile_sgemm —— 跨平台调度器
+### 36.8.2 llamafile_sgemm —— 跨平台调度器
 
 源码路径：`ggml/src/ggml-cpu/llamafile/sgemm.cpp` - `llamafile_sgemm()` （3826-4010行）
 
@@ -1627,11 +1627,11 @@ bool llamafile_sgemm(const struct ggml_compute_params * params, int64_t m, int64
 
 这段代码是llamafile SGEMM的`总调度器`。它根据`A矩阵的数据类型`（FP32、Q8_0、Q4_0等）和编译时的架构宏（`__AVX512F__`、`__ARM_NEON`等），选择不同的`tinyBLAS`特化模板实例化，再分派给对应的`matmul()`执行。这种两层分派（先按类型，再按架构）实现了`类型`与`平台`的彻底解耦，让llamafile SGEMM成为一块可以随时接入任何CPU后端的`即插即用高性价比`矩阵乘法方案。
 
-## 35.9 HBM 与架构特性探测 —— 后端的“环境感知雷达”
+## 36.9 HBM 与架构特性探测 —— 后端的“环境感知雷达”
 
 要让代码在不同硬件上都能跑得又快又稳，GGML必须在运行时准确地感知CPU的能力。
 
-### cpuid_x86 —— 架构特性检测
+### 36.9.1 cpuid_x86 —— 架构特性检测
 
 `arch/`目录下每个平台都有一个`cpu-feats.cpp`。这些文件通过特定的系统调用或CPU指令，检测当前CPU支持哪些指令集。例如，x86平台使用`cpuid`指令获取`AVX512`、`AMX`等特性，ARM平台通过`getauxval`读取`AT_HWCAP`标志位，RISC-V则通过`riscv_hwprobe`系统调用查询`RVV`支持。
 
@@ -1682,7 +1682,7 @@ cpuid_x86() {
 
 这段代码是x86平台特性探测的核心。它封装了`cpuid`和`cpuidex`指令，通过多次调用CPUID指令并解析返回值，得到了CPU支持的丰富特性信息。包括`厂商ID`（用于区分Intel/AMD以启用特定优化）、`标准特性集`（如SSE/AVX/AVX512）以及`扩展特性集`（如ABM/SSE4a）。这些特性被保存为布尔查询成员函数（如`AVX2()`、`AMX_INT8()`），供`ggml_backend_cpu_x86_score()`查询。
 
-### riscv64_features —— RISC-V 的硬件探测
+### 36.9.2 riscv64_features —— RISC-V 的硬件探测
 
 源码路径：`ggml/src/ggml-cpu/arch/riscv/cpu-feats.cpp` - `riscv64_features` 构造函数 （6-22行）
 
@@ -1708,7 +1708,7 @@ struct riscv64_features {
 
 这段代码展示了如何在RISC-V平台检测RVV向量扩展。它直接使用Linux的`riscv_hwprobe`系统调用，查询`RISCV_HWPROBE_KEY_IMA_EXT_0`键对应的特性值，并检查是否设置了`RISCV_HWPROBE_IMA_V`标志位。这种方式比解析设备树或`/proc/cpuinfo`更高效、标准，是RISC-V硬件特性探测的`官方`途径。
 
-### ggml_backend_cpu_aarch64_score —— 架构评分：后端选择器
+### 36.9.3 ggml_backend_cpu_aarch64_score —— 架构评分：后端选择器
 
 检测到特性后，`ggml_backend_cpu_x86_score()` 等函数会基于编译时启用的`宏`（如`GGML_AVX2`）与运行时特性的匹配度，计算出一个`评分`。该评分用于在动态加载后端时，让调度器优先选择`分数最高`（即特性最匹配）的后端实现。这样，在支持AVX512的机器上会优先使用AVX512内核，在不支持的机器上自动回退到AVX2或标量实现。
 
@@ -1764,7 +1764,7 @@ graph TD
     G --> J[回退到较低级后端或标量实现]
 ```
 
-### ggml_backend_cpu_hbm_buffer_type —— 高带宽内存的“特殊通道”
+### 36.9.4 ggml_backend_cpu_hbm_buffer_type —— 高带宽内存的“特殊通道”
 
 除了上述的架构特性探测，GGML还通过`hbm.cpp`集成了对`高带宽内存（HBM）`的支持。这为拥有HBM的服务器平台（如Intel Sapphire Rapids）提供了一条高性能的存储通道。
 
@@ -1822,15 +1822,15 @@ ggml_backend_buffer_type_t ggml_backend_cpu_hbm_buffer_type(void) {
 
 这段代码展示了`hbm.cpp`的核心内容。它通过`hbw_posix_memalign`在HBM上分配内存，并注册了一个名为`CPU_HBM`的缓冲区类型。通过实现`alloc_buffer`和`free_buffer`接口，这个自定义缓冲区类型使得GGML可以在计算图中将张量数据存放到比普通DDR内存带宽更高的HBM中，从而提升内存密集型算子的性能。这个功能由`GGML_USE_CPU_HBM`编译宏控制。
 
-## 35.10 Traits 系统与扩展缓冲区 —— 调度的“插件市场”
+## 36.10 Traits 系统与扩展缓冲区 —— 调度的“插件市场”
 
 GGML的CPU后端之所以如此灵活，是因为它不仅仅是`硬编码`的实现，而是通过`traits`和`extra buffer types`提供了一套`插件机制`。
 
-### tensor_traits：计算能力的标签
+### 36.10.1 tensor_traits：计算能力的标签
 
 `tensor_traits`是一个纯虚基类。任何后端（如AMX、Repack、KleidiAI）都可以继承它，并实现`work_size()`和`compute_forward()`两个方法。这使得该后端能够针对特定张量类型执行自定义的计算逻辑，并申请所需的工作区内存。
 
-### extra_buffer_type：内存布局的控制者
+### 36.10.2 extra_buffer_type：内存布局的控制者
 
 `extra_buffer_type`则定义了特定类型`缓冲区`的特性。它通过`supports_op()`判断某个张量操作是否能在这种缓冲区上执行，通过`get_tensor_traits()`返回该操作对应的`tensor_traits`。GGML的`ggml_cpu_extra_compute_forward()`会遍历所有已注册的`extra_buffer_types`，找到能处理当前算子的`tensor_traits`并委托执行。这就是为什么AMX、KleidiAI等专用内核能无缝接入主调度循环的原因。
 
@@ -1875,7 +1875,7 @@ graph TD
     I --> K[使用内置通用实现]
 ```
 
-## 35.11 设计中的取舍
+## 36.11 设计中的取舍
 
 - **为什么不用统一的回调函数，而使用函数指针表（type traits）来管理量化运算？**
 
@@ -1901,7 +1901,7 @@ GGML对于同一种张量操作（如矩阵乘法、加法）往往同时维护�
 
 如本章所见，GGML为x86、ARM、RISC-V、PowerPC、s390x等多个架构维护了专属的量化内核和特性检测代码。这种“分而治之”的策略使得GGML能够在各种硬件上都能发挥出接近峰值性能，这是任何单一通用实现都无法企及的。然而，这种设计带来了巨大的维护成本：开发者需要为每种架构编写和维护高度特化的汇编或内建函数代码，并且需要不断跟进新指令集的出现。例如，AMX、SME等新特性的支持需要单独的实现和调度逻辑。取舍的结果是：GGML更倾向于在“性能”和“可维护性”之间寻找平衡，例如通过`arch-fallback.h`宏定义通用实现作为回退，确保在没有特定优化的平台上功能仍然正确。
 
-## 35.12 动手练习
+## 36.12 动手练习
 
 -   **阅读线程池与屏障实现**
     阅读 `ggml/src/ggml-cpu/ggml-cpu.c` 中线程池相关的代码：
@@ -2027,7 +2027,7 @@ GGML对于同一种张量操作（如矩阵乘法、加法）往往同时维护�
     2. 分析 `ggml_backend_cpu_hbm_buffer_type_alloc_buffer` 与普通CPU缓冲区类型在内存分配上的区别。
     3. 思考在何种硬件和计算场景下，使用HBM缓冲区能带来显著的性能提升？
 
-## 35.13 本章小结
+## 36.13 本章小结
 
 这一章我们深入ggml CPU后端的核心，探讨了从`类型路由`到`矩阵乘内核`的完整优化体系。首先，我们认识了`类型特征表`如何作为量化计算的全项目枢纽，以及线程池、屏障与NUMA调度如何让多核CPU协同工作。其次，我们剖析了`模板化算子框架`（unary/binary ops）如何用一份代码驾驭多种数据类型，并详解了Softmax、Flash Attention和RoPE等复杂算子的实现。随后，我们重点研究了`量化矩阵乘`的`四阶段流水线`（解码-乘加-缩放），并学习了`Repack机制`如何通过交错布局让SIMD指令发挥极致性能。我们进一步探索了针对特定硬件的三条优化路径：Intel AMX的`tile矩阵乘法`、ARM KleidiAI的`SME内核选择`、以及RISC-V Spacemit的`IME向量引擎`。最后，我们分析了llamafile `tinyBLAS`跨平台性能基线与`架构特性探测/评分`机制，理解了GGML如何动态调度不同指令集实现。最终，通过`tensor_traits`系统，我们看清了这些高度优化的后端是如何像`插件`一样无缝接入CPU后端的计算循环。
 

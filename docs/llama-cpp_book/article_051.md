@@ -1,5 +1,5 @@
 
-# 投机解码 —— 让推理"跑得更快"的秘密武器
+# 第51章 投机解码 —— 让推理"跑得更快"的秘密武器
 
 ## 学习目标
 
@@ -9,13 +9,13 @@
 - 熟悉 n-gram 映射与哈希结构：LCG 哈希、Fibonacci 哈希、固定容量表与统计决策逻辑
 - 掌握多种投机策略的状态机实现及其性能监控、统计收集与自动重置机制
 
-## 52.1 生活类比
+## 51.1 生活类比
 
 想象投机解码是一家**餐厅的预测备菜系统**。在一家繁忙的餐厅里，主厨（目标模型）是最终做菜的人，但每来一桌客人，主厨都要从头想一遍做什么菜、配什么料，这很耗时。聪明的餐厅经理引入了一套"预言家"机制：经验丰富的学徒厨师（草稿模型）会根据历史订单，快速猜测主厨接下来可能做什么菜，提前把食材备好（生成候选 token）；主厨只需要确认这些备菜对不对，对的直接上桌，不对的倒掉重来。这样一来，主厨省去了从零开始思考的时间，出菜速度自然大幅提升。
 
 而这个"预言家"家族有好几位成员，各有所长。有的是会猜菜的学徒（草稿模型），靠自己的"手艺"（小模型推理）提前备菜；有的是记性好的历史订单统计本（n-gram 缓存），记录着"顾客点了宫保鸡丁后，80% 会点米饭"这种模式；有的是把常见菜品组合贴在墙上的便签墙（n-gram 映射/哈希），用编号（哈希）快速查找，而不是翻遍整本账本。更聪明的是，如果连续几桌客人都不按预测的菜点（接受率低于 50%），经理就会撕掉旧的预测便签，重新观察新趋势，让预测系统始终保持活力。而这一切，都藏在一套统一的"经理工作流程"背后：开市准备（begin）→ 预估菜品（draft）→ 确认订单（accept）。
 
-## 52.2 源码地图
+## 51.2 源码地图
 
 ```
 common/speculative.h
@@ -161,11 +161,11 @@ common/ngram-mod.cpp
     └── size() / size_bytes()         # 容量与内存统计（行58-64）
 ```
 
-## 52.3 投机解码核心接口 —— 统一调度多种「预言术」引擎
+## 51.3 投机解码核心接口 —— 统一调度多种「预言术」引擎
 
 投机解码之所以能成为加速大模型推理的"秘密武器"，关键在于它把"如何猜测下一个 token"这件事抽象成了一套统一的接口。不管底层是用小模型猜（草稿模型），还是用历史统计规律猜（n-gram 缓存），还是用哈希表快速查（n-gram 映射），对上层调用者来说都只需要关心三个动作：开始一轮预测（begin）、生成候选 token（draft）、确认哪些候选被接受了（accept）。这套抽象层的存在，让 llama.cpp 可以在同一个推理循环里灵活组合多种策略，甚至同时启用多个策略轮流尝试，直到有一个成功产出候选。
 
-### 52.3.1 类型系统：八种「预言术」的名册
+### 51.3.1 类型系统：八种「预言术」的名册
 
 类型即图纸。在动手读任何策略实现之前，我们先看这套系统"身份证"长什么样——也就是枚举和它配套的字符串转换函数。
 
@@ -243,7 +243,7 @@ std::string common_speculative_type_name_str() {
 
 这段代码拼出一个逗号分隔的字符串，内容是所有支持的策略名。它主要用来生成帮助信息——当用户在命令行里写错策略名时，错误提示里可以列出全部可选项，比如 `supported types: none, draft, eagle3, ngram_simple, ...`。
 
-### 52.3.2 抽象基类 common_speculative_state：三阶段生命周期
+### 51.3.2 抽象基类 common_speculative_state：三阶段生命周期
 
 类型系统只是"名册"，真正让多种策略能被统一调度的，是下面这个抽象基类。它定义了所有策略必须实现的三阶段契约。
 
@@ -272,7 +272,7 @@ public:
 
 这段代码定义了投机解码的抽象基类。三个纯虚函数 `begin`、`draft`、`accept` 构成了策略的"最小完备集合"：begin 授予初始化权限，draft 授予生成候选权限，accept 授予统计反馈权限。注意 `draft` 的参数设计——它同时拿到了目标模型的 prompt、刚采样的 token 和投机参数，这意味着每个策略实现都可以根据自己的算法决定"要不要猜""猜几个""从哪儿开始猜"。
 
-### 52.3.3 主调度器 common_speculative 与工厂函数
+### 51.3.3 主调度器 common_speculative 与工厂函数
 
 有了基类和枚举，还需要一个"调度台"把多个策略实例管起来，以及一个"工厂"根据配置把实例造出来。
 
@@ -389,7 +389,7 @@ llama_tokens common_speculative_draft(
 
 这段代码是主调度器的核心——`common_speculative_draft()`。它按优先级轮询 `impls` 数组里的每一个策略实例，谁先产出非空的候选序列就立刻停下，并把"这次是谁猜的"记下来（`curr_impl`），供后续 `accept` 回调统计。这种"轮询直到成功"的设计，让多个策略可以按优先级组合：比如先试轻量的 n-gram（快），不行再试草稿模型（慢但准）。
 
-### 52.3.4 模块依赖图
+### 51.3.4 模块依赖图
 
 下面是投机解码模块的依赖关系全景图：
 
@@ -434,11 +434,11 @@ graph TD
 
 从图中可以看出清晰的分层：接口层暴露公共函数 → 调度层管理多个实例 → 抽象基类定义契约 → 具体策略各自实现 → n-gram 基础设施提供底层数据结构。草稿模型策略是唯一直接依赖 llama_context 的（因为它要真正跑模型推理），其他 n-gram 系策略都是纯数据结构操作。
 
-## 52.4 草稿模型投机解码 —— 「小模型猜大模型」的协作艺术
+## 51.4 草稿模型投机解码 —— 「小模型猜大模型」的协作艺术
 
 在"预言家"家族里，草稿模型是最直观也最强大的一员：它用一个小型、快速的语言模型（草稿模型）去猜大型目标模型的输出，提前生成一批候选 token，目标模型只需要逐个验证，省掉了自回归生成的大部分计算量。
 
-### 52.4.1 词汇表兼容性检查
+### 51.4.1 词汇表兼容性检查
 
 两个模型能不能协作，先决条件是它们"说同一种语言"。`common_speculative_are_compatible()` 就是这道关卡。
 
@@ -488,7 +488,7 @@ static bool common_speculative_are_compatible(
 
 这段代码执行四道兼容性检查。分词器类型、特殊 token、词表大小、逐 token 内容——任何一道不通过，两个模型就无法协作。注意第四道检查是逐个比对 token 字符串而非只看 ID，这是因为两个模型可能都用 BPE 但词表内容不同（比如一个经过额外训练），这种情况下 ID 相同但字符串不同，直接用 ID 对应会导致翻译错误。
 
-### 52.4.2 构造函数：草稿上下文与采样器初始化
+### 51.4.2 构造函数：草稿上下文与采样器初始化
 
 兼容性过关后，草稿模型状态类开始构造自己的"工作台"。
 
@@ -531,7 +531,7 @@ common_speculative_state_draft(
 
 这段代码是草稿模型状态类的构造函数。它做了三件事：分配批处理容器、配置一个轻量采样器（只用 Top-K，保证草稿模型跑得快）、检查词表兼容性。注意采样器配置刻意做减法——草稿模型不需要复杂的采样策略，Top-K 足够了，因为它的输出只是"候选"，最终决定权在目标模型手里。
 
-### 52.4.3 draft() 核心逻辑：KV 缓存复用与自回归采样
+### 51.4.3 draft() 核心逻辑：KV 缓存复用与自回归采样
 
 这是整个草稿模型策略的心脏——`draft()` 函数。它要解决的核心问题是：如何用最少的计算量，让草稿模型产出尽可能多的有效候选 token。
 
@@ -650,7 +650,7 @@ void draft(
 
 这段代码是草稿模型策略的核心解码流程。它的设计精妙之处在于 KV 缓存复用：草稿模型维护了自己的 `prompt_dft` 历史，每次生成前先和当前 prompt 比对，找到最长公共后缀（reuse_i / reuse_n），然后只对"新出现的部分"调用 `llama_decode`。这样，多轮生成时草稿模型不需要从头算 KV，复用率越高越省算力。`p_min` 参数则充当"早停闸门"——草稿模型对自己猜的结果越没信心，就越早停止生成，避免浪费目标模型的验证算力。
 
-### 52.4.4 词汇表翻译机制
+### 51.4.4 词汇表翻译机制
 
 当两个模型词表不兼容时，字符串级别的双向翻译是兜底方案。
 
@@ -693,7 +693,7 @@ std::string replace_to_tgt(const std::string & input) const {
 
 这段代码是反向翻译：把草稿模型的词表字符串翻译回目标模型的词表字符串。逻辑和 `replace_to_dft` 对称，但方向相反——查找的是 `pair.second`（草稿模型的词），替换成 `pair.first`（目标模型的词）。
 
-### 52.4.5 时序图
+### 51.4.5 时序图
 
 ```mermaid
  sequenceDiagram
@@ -728,11 +728,11 @@ std::string replace_to_tgt(const std::string & input) const {
 
 时序图展示了草稿模型策略在一个完整生成循环中的行为。可以看到，草稿模型的 `begin` 和 `accept` 都是空实现——因为它不维护跨轮的统计状态，所有状态都存在 `ctx_dft` 的 KV 缓存和 `prompt_dft` 历史里。
 
-## 52.5 n-gram 缓存算法 —— 基于统计的「历史复读机」
+## 51.5 n-gram 缓存算法 —— 基于统计的「历史复读机」
 
 草稿模型虽然准，但要额外加载一个小模型，内存和显存开销都不小。n-gram 缓存则完全不需要第二个模型——它纯粹依靠"历史重复模式"来猜，用统计学替代了模型推理。
 
-### 52.5.1 数据结构：common_ngram 与哈希函数
+### 51.5.1 数据结构：common_ngram 与哈希函数
 
 类型即图纸。n-gram 缓存的核心是一个固定长度为 4 的 token 数组，以及配套的哈希函数。
 
@@ -793,7 +793,7 @@ public:
 
 这两段代码是 n-gram 缓存的"地址系统"。单 token 哈希用 Fibonacci 哈希（乘以黄金分割相关的常数），能把 token ID 均匀打散到整个 size_t 空间。n-gram 哈希则把 4 个 token 的哈希值异或组合，作为 `unordered_map` 的键——这就是为什么 `common_ngram` 能直接当 `std::unordered_map` 的 key。
 
-### 52.5.2 滑动窗口统计：common_ngram_cache_update()
+### 51.5.2 滑动窗口统计：common_ngram_cache_update()
 
 ```cpp
 // 源码路径：common/ngram-cache.cpp - common_ngram_cache_update()（第5-48行）
@@ -843,7 +843,7 @@ void common_ngram_cache_update(common_ngram_cache & ngram_cache, int ngram_min, 
 
 这段代码用滑动窗口统计每个 n-gram 后续 token 的出现次数。数据结构是两级映射：`n-gram → (token → count)`。外层循环遍历 n-gram 尺寸（1~4），内层循环滑动窗口，每遇到一个 n-gram 就把它后面的 token 计数加一。`print_progress` 参数让它能处理大规模语料（比如从 HuggingFace 下载的整库文本），每 1000 万个 n-gram 打印一次进度。
 
-### 52.5.3 try_draft 双重验证：最低样本数与主导比例
+### 51.5.3 try_draft 双重验证：最低样本数与主导比例
 
 光有统计还不够，从统计里挑候选需要两道"置信度闸门"。
 
@@ -923,7 +923,7 @@ static llama_token try_draft(
 
 这段代码是联合验证版的候选选择。它和静态版最大的不同是：选择最高频 token 时，用的是 `count_primary * count_static` 的乘积作为权重，而不是只看主缓存的计数。这样做的目的是借助静态缓存（来自大规模语料库）来"背书"主缓存（来自当前会话）的统计——如果一个 token 在主缓存里出现 3 次，在静态缓存里出现 100 次，它的加权得分是 300，远高于只在主缓存里出现 5 次但静态缓存里没有的 token（得分 5）。这有效解决了"当前会话样本太少、统计不可靠"的问题。
 
-### 52.5.4 三级缓存主流程
+### 51.5.4 三级缓存主流程
 
 ```cpp
 // 源码路径：common/ngram-cache.cpp - common_ngram_cache_draft()（第142-190行）
@@ -975,7 +975,7 @@ void common_ngram_cache_draft(
 
 这段代码是三级缓存草稿生成的主流程。它的核心策略是"逐级降级"：先试 context 缓存（当前会话的统计，用 lax 阈值，因为样本新鲜、置信度高），不行再试 dynamic 缓存（历史会话的统计，用 strict 阈值，因为样本旧、需要更严的验证），最后试 static 缓存（大规模语料库，只用最基础的样本数和主导比例检查）。每一级都失败就停止生成，避免产出低质量候选。
 
-### 52.5.5 持久化与合并
+### 51.5.5 持久化与合并
 
 ```cpp
 // 源码路径：common/ngram-cache.cpp - common_ngram_cache_save()（第193-214行）
@@ -1033,7 +1033,7 @@ void common_ngram_cache_merge(common_ngram_cache & ngram_cache_target, common_ng
 
 这段代码把一个缓存合并到另一个缓存中。它遍历源缓存的每个 n-gram 条目，在目标缓存中查找对应的分区；如果目标里没有这个 n-gram，直接搬过去；如果有，就把相同 token 的计数累加。这在分布式统计场景下特别有用——多台机器各自处理一部分语料，最后把统计结果合并在一起。
 
-### 52.5.6 数据流图
+### 51.5.6 数据流图
 
 ```mermaid
  graph TD
@@ -1061,11 +1061,11 @@ void common_ngram_cache_merge(common_ngram_cache & ngram_cache_target, common_ng
 
 数据流图展示了 n-gram 缓存从统计到产出候选的完整路径。可以清楚看到"逐级降级"的策略：context 缓存优先（样本新鲜，用宽松阈值），dynamic 次之（样本旧，用严格阈值），static 兜底（只做最基本检查）。
 
-## 52.6 n-gram 映射与哈希 —— 「键值对」结构的模式速查
+## 51.6 n-gram 映射与哈希 —— 「键值对」结构的模式速查
 
 n-gram 缓存适合"短平快"的重复模式，但要处理更复杂的"上下文→后续"映射，需要更结构化的键值对系统。这就是 n-gram 映射和哈希表的用武之地。
 
-### 52.6.1 数据结构：common_ngram_map
+### 51.6.1 数据结构：common_ngram_map
 
 ```cpp
 // 源码路径：common/ngram-map.h - common_ngram_map_key / common_ngram_map_value（数据结构）
@@ -1109,7 +1109,7 @@ public:
 
 这段代码定义了 n-gram 映射的核心数据结构。和缓存不同，映射表显式区分"键"（n-gram，触发条件）和"值"（m-gram，预测结果），每个键最多记录 4 个候选值及其统计信息。`key_only` 模式用于 `NGRAM_MAP_K` 策略（只统计键的出现，不区分不同值），`key_only=false` 的 `NGRAM_MAP_K4V` 则完整统计键值对。
 
-### 52.6.2 LCG 哈希加速
+### 51.6.2 LCG 哈希加速
 
 ```cpp
 // 源码路径：common/ngram-map.cpp - common_ngram_map_hash()（第17-24行）
@@ -1125,7 +1125,7 @@ static uint32_t common_ngram_map_hash(const llama_tokens & tokens, size_t start,
 
 这段代码用 LCG（线性同余生成器）风格的哈希函数把 token 序列映射到 32 位整数。`LCG_FACTOR` 是一个大质数，乘法操作能让 token 序列的微小差异扩散到整个 32 位空间，再取模就能定位到 `key_map` 的槽位。这种哈希比直接用 `std::hash` 更可控，也更容易在 C 和 Python 实现之间保持一致。
 
-### 52.6.3 简单模式匹配：common_ngram_simple_draft()
+### 51.6.3 简单模式匹配：common_ngram_simple_draft()
 
 ```cpp
 // 源码路径：common/ngram-map.cpp - common_ngram_simple_draft()（第48-100行）
@@ -1168,7 +1168,7 @@ llama_tokens common_ngram_simple_draft(
 
 这段代码是简单 n-gram 匹配的完整实现。它的思路很直观：把"最近的 n 个 token + 刚采样的 token"作为模式，在历史里线性扫描找相同模式，找到后把模式后面紧跟的 m 个 token 原样复制出来作为草稿。时间复杂度 O(n²)，适用于短序列，但序列长了就会成为瓶颈——这也是为什么有了映射表版本。
 
-### 52.6.4 map_draft 核心逻辑与统计决策
+### 51.6.4 map_draft 核心逻辑与统计决策
 
 ```cpp
 // 源码路径：common/ngram-map.cpp - common_ngram_map_draft()（第196-405行，核心部分）
@@ -1268,7 +1268,7 @@ void common_ngram_map_draft(common_ngram_map & map,
 
 这段代码是映射表策略的核心逻辑。它的统计决策机制非常精妙：`max_occur < 2 * sum_occur` 这个检查，要求最高频候选的出现次数必须至少是其他候选总和的 2 倍，才认为这个模式"足够确定"。举个例子：如果"A, B"后面出现 C 5 次、D 2 次、E 1 次，那么 max_occur=5, sum_occur=3，5 < 2×3=6，不满足条件，不生成草稿；但如果出现 C 8 次、D 1 次，max_occur=8, sum_occur=1，8 >= 2，满足条件，生成草稿。这种设计确保了只有"压倒性"的模式才会被采纳，避免了低置信度预测污染候选序列。
 
-### 52.6.5 固定容量哈希表：common_ngram_mod
+### 51.6.5 固定容量哈希表：common_ngram_mod
 
 ```cpp
 // 源码路径：common/ngram-mod.cpp - common_ngram_mod 实现（第7-64行）
@@ -1308,7 +1308,7 @@ size_t common_ngram_mod::size_bytes() const {
 
 这段代码实现了固定容量哈希表。它的设计哲学是"用内存换速度"：预分配 4MB 的 entries 数组，通过组合哈希取模 O(1) 定位槽位，不处理冲突（直接覆盖）。`EMPTY`（-1）标记空槽位，`used` 计数监控占用率。当占用率超过 25% 时，`begin()` 会自动重置整个表——这是为了防止哈希冲突率随填充度上升而恶化。
 
-### 52.6.6 架构分层图
+### 51.6.6 架构分层图
 
 ```mermaid
  graph LR
@@ -1327,11 +1327,11 @@ size_t common_ngram_mod::size_bytes() const {
 
 架构分层图展示了 n-gram 映射和哈希的层次结构。简单匹配层是"朴素版"，适合短序列；映射表层通过键值对统计和 LCG 哈希加速，把查找从 O(n²) 降到接近 O(1)；固定容量哈希表 `common_ngram_mod` 则是更激进的"内存换速度"方案，用 4MB 预分配内存换取纯粹的 O(1) 查询。
 
-## 52.7 多种策略状态机实现 —— 「预言家」的七十二变
+## 51.7 多种策略状态机实现 —— 「预言家」的七十二变
 
 有了底层的 n-gram 基础设施，各种投机策略的状态类就可以各显神通了。它们都实现 `common_speculative_state` 的三阶段接口，但内部机制完全不同。
 
-### 52.7.1 简单 n-gram 状态类
+### 51.7.1 简单 n-gram 状态类
 
 ```cpp
 // 源码路径：common/speculative.cpp - common_speculative_state_ngram_simple（第376-396行）
@@ -1354,7 +1354,7 @@ public:
 
 这段代码是简单 n-gram 状态类。它的实现极其简洁：`begin` 和 `accept` 都是空操作（因为简单匹配不需要维护跨轮状态），`draft` 直接调用 `common_ngram_simple_draft`。这种"零状态"设计让它几乎没有内存开销，但也意味着它每次都要重新扫描整个历史。
 
-### 52.7.2 映射表状态类
+### 51.7.2 映射表状态类
 
 ```cpp
 // 源码路径：common/speculative.cpp - common_speculative_state_ngram_map_k（第399-418行）
@@ -1381,7 +1381,7 @@ public:
 
 这段代码是映射表状态类。它和简单版的关键区别在于维护了状态：`begin` 调用 `common_ngram_map_begin` 清理过期的 key/value 条目（基于 `size_last_begin` 判断哪些位置之前的条目已经"过期"），`accept` 调用 `common_ngram_map_accept` 根据实际接受的 token 数更新候选值的 `n_accepted` 统计。这三个回调形成了"清理 → 生成 → 反馈"的完整闭环。
 
-### 52.7.3 动态哈希表状态类：自动重置机制
+### 51.7.3 动态哈希表状态类：自动重置机制
 
 ```cpp
 // 源码路径：common/speculative.cpp - common_speculative_state_ngram_mod（第421-498行，核心部分）
@@ -1440,7 +1440,7 @@ public:
 
 这段代码是动态哈希表状态类。它有两个精妙的自动管理机制：`begin()` 里检查占用率，超过 25% 就重置（防止哈希冲突率恶化）；`accept()` 里追踪接受率，连续 3 次低于 50% 就重置（说明当前 n-gram 模式和当前任务不匹配，需要重新学习）。`LLAMA_TRACE` 环境变量控制详细日志，方便调试。这种"自己监控自己、自己调整自己"的设计，让 ngram_mod 无需人工调参就能适应不同的任务场景。
 
-### 52.7.4 缓存状态类
+### 51.7.4 缓存状态类
 
 ```cpp
 // 源码路径：common/speculative.cpp - common_speculative_state_ngram_cache（第501-561行，核心部分）
@@ -1500,7 +1500,7 @@ public:
 
 这段代码是三级缓存状态类。它的独特之处在于持久化：构造时从磁盘加载 static 和 dynamic 缓存，推理过程中增量更新 context 缓存，会话结束后还可以把 dynamic 缓存写回磁盘。`cache_size` 追踪已处理的 token 数量，确保增量更新只处理新增部分，避免重复统计。
 
-### 52.7.5 EAGLE-3 占位实现
+### 51.7.5 EAGLE-3 占位实现
 
 ```cpp
 // 源码路径：common/speculative.cpp - common_speculative_state_eagle3（第353-373行）
@@ -1522,7 +1522,7 @@ public:
 
 这段代码是 EAGLE-3 策略的占位实现。EAGLE-3 是一种更高级的投机解码算法（通过特征序列预测而非简单草稿），但目前在 common 模块里还只是骨架——三个方法都是空操作或 TODO。这说明架构已经为它预留了位置，具体实现在后续版本中会逐步补全。
 
-### 52.7.6 工厂函数与策略组装
+### 51.7.6 工厂函数与策略组装
 
 ```cpp
 // 源码路径：common/speculative.cpp - get_common_ngram_map() / create_state_ngram_cache()（第571-587行）
@@ -1546,7 +1546,7 @@ static common_speculative_state_ngram_cache create_state_ngram_cache(
 
 这两个工厂辅助函数是 `common_speculative_init()` 的"零件车间"。`get_common_ngram_map()` 根据配置参数（n/m 大小、是否仅键模式、最小命中次数）创建映射表对象；`create_state_ngram_cache()` 创建缓存状态实例（当前 `n_draft` 硬编码为 8，`save_static`/`save_dynamic` 暂时为 false，都是 TODO 待完善）。它们的存在让 `common_speculative_init()` 的 switch 分支保持简洁——具体的构造细节封装在工厂里，调度器只管"造出来、管起来"。
 
-## 52.8 设计中的取舍
+## 51.8 设计中的取舍
 
 **为什么不用单一策略而要抽象出 `common_speculative` 调度层？**
 
@@ -1568,7 +1568,7 @@ static common_speculative_state_ngram_cache create_state_ngram_cache(
 
 因为词汇表不兼容是常见现象而非异常——两个不同来源的模型（比如目标模型是 Llama-3，草稿模型是 Mistral）几乎必然词表不同。字符串翻译（`replace_to_dft`/`replace_to_tgt`）是"尽力而为"的兜底：对用户配置的替换对做字符串级映射，覆盖大部分常见差异（比如词边界符 `▁` 的有无）。虽然翻译不可能 100% 准确（多义词会翻错），但"错翻但能跑"远好过"直接放弃加速"。这是典型的工程折中：不追求完美，但保证可用。
 
-## 52.9 动手练习
+## 51.9 动手练习
 
 - 阅读 `common/speculative.cpp` 第 222-322 行（common_speculative_state_draft.draft()）。
   回答问题：
@@ -1606,7 +1606,7 @@ static common_speculative_state_ngram_cache create_state_ngram_cache(
   2. 在生成 100 个 token 后，统计两种策略的：平均草稿长度、接受率（n_acc_tokens/n_gen_tokens）、调用耗时（t_draft_us）。
   3. 根据统计结果，设计一个动态切换策略：当某种策略连续 10 次接受率低于 30% 时，自动切换到另一种。
 
-## 52.10 本章小结
+## 51.10 本章小结
 
 这一章中我们深入剖析了 llama.cpp 的投机解码系统，理解了它如何通过"猜-验"机制大幅加速大模型推理。首先，我们看到投机解码通过 `common_speculative_state` 抽象基类定义了 `begin`/`draft`/`accept` 三阶段生命周期，配合 `common_speculative_type` 枚举的八种策略和 `common_speculative` 主调度器的轮询机制，实现了对多种策略的统一调度。其次，我们掌握了草稿模型投机解码的核心——通过独立上下文 `ctx_dft` 生成候选 token，利用 KV 缓存复用（reuse_i/reuse_n）避免重复解码，并通过 `p_min` 概率阈值实现早停；词汇表不兼容时还有 `replace_to_dft`/`replace_to_tgt` 字符串翻译兜底。接着，我们精通了 n-gram 缓存算法的三级架构（context/dynamic/static）和双重验证机制（最低样本数 + 主导比例），理解了 `count_primary * count_static` 加权如何借助静态缓存提升统计可靠性。然后，我们熟悉了 n-gram 映射的 LCG 哈希加速、`max_occur < 2 * sum_occur` 统计显著性检查，以及 `common_ngram_mod` 固定容量哈希表的 O(1) 查询与自动重置机制。最后，我们看到各种策略状态类如何通过统一接口实现差异化内部逻辑，以及 `common_speculative_init()` 工厂函数如何完成策略的组装与分发。
 

@@ -2,7 +2,7 @@
 
 
 
-# 第68章 模型处理工具链 —— 模型压缩与部署的"瑞士军刀"
+# 第69章 模型处理工具链 —— 模型压缩与部署的"瑞士军刀"
 
 > **说明**：本章原按「模型处理与转换工具」细纲编写，因其内容与量化、imatrix、拆分、LoRA 合并、参数拟合等工具高度契合。若你期待的是 perplexity、llama-bench 等纯评估工具，可跳跃至后续章节；本章将带你深入模型压缩与参数整备的"工程内功"。
 
@@ -16,7 +16,7 @@
 - 了解 fit-params 工具如何基于可用内存自动推荐推理参数配置
 - 掌握工具类中公共辅助函数（KV读取、字符串处理、内存管理）的设计模式
 
-## 68.1 生活类比
+## 69.1 生活类比
 
 想象这套模型处理工具链是一家**精密的汽车改装厂**：
 
@@ -30,7 +30,7 @@
 
 **fit-params** = **智能车位规划师**。根据车库实际大小（可用内存），自动规划最佳停车方案（context 长度、GPU 层数分配）。输出结果像「停车指示牌」，直接告诉司机（用户）该怎么停（参数怎么设）。
 
-## 68.2 源码地图
+## 69.2 源码地图
 
 ```
 tools/quantize/quantize.cpp
@@ -127,7 +127,7 @@ tools/fit-params/fit-params.cpp
 └── main()                           # 调用 llama_params_fit()
 ```
 
-## 68.3 量化选项与参数解析 —— 命令行上的「刀法清单」
+## 69.3 量化选项与参数解析 —— 命令行上的「刀法清单」
 
 量化工具的第一印象是「可选刀法」。入口先用 `QUANT_OPTIONS` 维护一张量化类型清单：Q1_0/Q4_0/Q4_K/IQ 系列/F16/BF16 等。每种类型都绑定 `llama_ftype` 枚举和一段说明文本，用于帮助输出和合法性校验。这让用户不是在「自由填类型字符串」，而是在受支持的「刀法表」里选一种压缩方式。
 
@@ -139,7 +139,7 @@ tools/fit-params/fit-params.cpp
 
 剪层和输入输出路径也是量化入口的一部分：`--prune-layers` 由 `parse_layer_prune()` 解析逗号分隔层号并排序去重；输入模型和输出模型路径与 ftype 的解析是兼容两种写法的：`<input> <ftype>` 或 `<input> <output> <ftype>`。这一步的关键作用是：把用户意图先翻译成一份结构化、可执行的量化任务单。
 
-### 68.3.0 数据结构：`tensor_type_option`、`quant_option` 与 `llama_model_quantize_params`
+### 69.3.1 数据结构：`tensor_type_option`、`quant_option` 与 `llama_model_quantize_params`
 
 源码路径：`tools/quantize/quantize.cpp`（数据结构定义）、`llama.h`（`llama_model_quantize_params`）
 
@@ -179,7 +179,7 @@ struct llama_model_quantize_params {
 
 这三个结构构成了量化工具配置层的「数据契约」：`tensor_type_option` 承载单条 `tensor=type` 覆盖，`quant_option` 描述可选压缩工艺，`llama_model_quantize_params` 则是组装后的完整任务单，被 `main()` 填满后传给 `llama_model_quantize()` 执行。
 
-### 68.3.1 `striequals()`：不区分大小写的字符串比较
+### 69.3.2 `striequals()`：不区分大小写的字符串比较
 
 源码路径：`tools/quantize/quantize.cpp` - `striequals()`（83-92行）
 
@@ -197,7 +197,7 @@ static bool striequals(const char * a, const char * b) {
 
 这段代码定义了 `striequals()`，它通过逐字符转小写后比较，避免了临时字符串分配，适合命令行解析中频繁的类型名匹配。
 
-### 68.3.2 `try_parse_ftype()`：量化类型解析器
+### 69.3.3 `try_parse_ftype()`：量化类型解析器
 
 源码路径：`tools/quantize/quantize.cpp` - `try_parse_ftype()`（94-119行）
 
@@ -231,7 +231,7 @@ static bool try_parse_ftype(const std::string & ftype_str_in, llama_ftype & ftyp
 
 这段代码实现了 `try_parse_ftype()`，它先用大写形式在名称表中查找，再回退到整数枚举匹配，使得用户既可输入 "Q4_K_M" 也可输入对应编号，极大降低了记忆负担。
 
-### 68.3.3 `usage()`：帮助信息与量化选项表打印
+### 69.3.4 `usage()`：帮助信息与量化选项表打印
 
 源码路径：`tools/quantize/quantize.cpp` - `usage()`（121-182行）
 
@@ -298,7 +298,7 @@ static void usage(const char * executable) {
 
 这段代码定义了 `usage()`，它负责在用户参数错误或主动求助时，打印完整的帮助信息与量化选项表。`[[noreturn]]` 属性确保调用后不会返回，直接 `exit(1)` 结束进程。遍历 `QUANT_OPTIONS` 时对 COPY 类型特殊处理缩进，避免枚举值 0 被误认为有效输入。
 
-### 68.3.4 `parse_ggml_type()`：ggml 类型字符串解析
+### 69.3.5 `parse_ggml_type()`：ggml 类型字符串解析
 
 源码路径：`tools/quantize/quantize.cpp` - `parse_ggml_type()`（347-354行）
 
@@ -318,7 +318,7 @@ static ggml_type parse_ggml_type(const char * arg) {
 
 这段代码实现了 `parse_ggml_type()`，它是张量级类型覆盖的基础，把用户输入的字符串（如 `q8_0`、`f16`）转换为 `ggml_type` 枚举，供后续 `tt_overrides` 使用。
 
-### 68.3.5 `parse_tensor_type()`：单条张量类型覆盖解析
+### 69.3.6 `parse_tensor_type()`：单条张量类型覆盖解析
 
 源码路径：`tools/quantize/quantize.cpp` - `parse_tensor_type()`（356-378行）
 
@@ -355,7 +355,7 @@ static bool parse_tensor_type(const char * data, std::vector<tensor_type_option>
 
 这段代码实现了 `parse_tensor_type()`，它解析 `tensor_name=ggml_type` 格式（如 `attn_q=q8_0`），把张量名与量化类型绑定后追加到配置向量，供量化时逐张量覆盖。
 
-### 68.3.6 `parse_tensor_type_file()`：批量张量类型文件解析
+### 69.3.7 `parse_tensor_type_file()`：批量张量类型文件解析
 
 源码路径：`tools/quantize/quantize.cpp` - `parse_tensor_type_file()`（380-389行）
 
@@ -378,7 +378,7 @@ static bool parse_tensor_type_file(const char * filename, std::vector<tensor_typ
 
 这段代码实现了 `parse_tensor_type_file()`，它从文件中读取批量张量类型配置，每行/每条由空格或换行分隔，逐条调用 `parse_tensor_type()` 完成解析，适合长列表场景。
 
-### 68.3.7 `parse_layer_prune()`：层剪枝列表解析
+### 69.3.8 `parse_layer_prune()`：层剪枝列表解析
 
 源码路径：`tools/quantize/quantize.cpp` - `parse_layer_prune()`（391-407行）
 
@@ -410,7 +410,7 @@ static bool parse_layer_prune(const char * data, std::vector<int> & prune_layers
 
 这段代码实现了 `parse_layer_prune()`，它把逗号分隔的层号字符串（如 `0,2,5`）解析为整数向量，排序去重后供量化时跳过指定层。
 
-### 68.3.8 `main()`：命令行参数解析与量化配置组装
+### 69.3.9 `main()`：命令行参数解析与量化配置组装
 
 源码路径：`tools/quantize/quantize.cpp` - `main()`（409-529行）
 
@@ -624,7 +624,7 @@ int main(int argc, char ** argv) {
 
 这段代码是量化工具的入口，逐行解析命令行开关，把用户在命令行上的各种「刀法选择」组装成一份完整的 `llama_model_quantize_params`，然后交由底层执行真正的量化。两种路径写法的兼容逻辑（自动推导输出路径 vs 显式指定）是入口解析的关键设计点。
 
-### 68.3.9 流程图：命令行解析与量化配置组装
+### 69.3.10 流程图：命令行解析与量化配置组装
 
 ```mermaid
 flowchart TD
@@ -647,7 +647,7 @@ flowchart TD
     N --> O["打印耗时统计"]
 ```
 
-## 68.4 imatrix 通道接入 —— 让量化「知道哪里更重要」
+## 69.4 imatrix 通道接入 —— 让量化「知道哪里更重要」
 
 量化并不是盲目压缩，而是要借助「重要性地图」。这里的重要性矩阵（imatrix）记录的是激活平方统计，用于提示哪些权重更敏感。量化工具把它作为可选输入，通过 `--imatrix` 注入；`--include-weights` 和 `--exclude-weights` 进一步做白名单/黑名单过滤。
 
@@ -659,7 +659,7 @@ GGUF 版本的 imatrix 读取核心是成对张量解析：文件中每个条目
 
 过滤逻辑决定最终参与量化的张量范围：`prepare_imatrix()` 先加载，再按 `excluded_weights` 删除匹配项；如果有 `included_weights`，就重建一个只包含命中的新表。元数据还会被反写进量化结果，包括 imatrix 文件名、dataset、entry 数、chunk 数等 KV override。
 
-### 68.4.1 `load_legacy_imatrix()`：旧格式 imatrix 加载器
+### 69.4.1 `load_legacy_imatrix()`：旧格式 imatrix 加载器
 
 源码路径：`tools/quantize/quantize.cpp` - `load_legacy_imatrix()`（184-236行）
 
@@ -728,7 +728,7 @@ static int load_legacy_imatrix(const std::string & imatrix_file, std::vector<std
 
 这段代码定义了 `load_legacy_imatrix()`，它按「顺序解包」的方式读取旧版 `.dat` 格式 imatrix，逐 entry 解析名称、调用次数与浮点值，最后除以 `ncall` 完成归一化，确保旧脚本产出的数据仍可被新工具读取。
 
-### 68.4.2 `load_imatrix()`：GGUF 格式 imatrix 加载器
+### 69.4.2 `load_imatrix()`：GGUF 格式 imatrix 加载器
 
 源码路径：`tools/quantize/quantize.cpp` - `load_imatrix()`（238-321行）
 
@@ -814,7 +814,7 @@ static int load_imatrix(const std::string & imatrix_file, std::vector<std::strin
 
 这段代码定义了 `load_imatrix()`，它统一了新旧两种 imatrix 文件的加载路径：先尝试 GGUF 读入，失败自动回退 legacy；GGUF 版本按后缀把 `*.in_sum2` 与 `*.counts` 配对，逐张量归一化得到 `sum2 / count`，并读取 datasets/chunk 元数据。
 
-### 68.4.3 `prepare_imatrix()`：imatrix 过滤器
+### 69.4.3 `prepare_imatrix()`：imatrix 过滤器
 
 源码路径：`tools/quantize/quantize.cpp` - `prepare_imatrix()`（323-345行）
 
@@ -857,7 +857,7 @@ static int prepare_imatrix(const std::string & imatrix_file,
 
 这段代码实现了 `prepare_imatrix()`，它在加载后根据用户提供的 include/exclude 列表裁剪 imatrix 的作用域，确保量化只参考用户关心的张量。
 
-### 68.4.4 模块依赖图：imatrix 通道接入
+### 69.4.4 模块依赖图：imatrix 通道接入
 
 ```mermaid
 flowchart LR
@@ -877,7 +877,7 @@ flowchart LR
     K --> L["写入 KV override 元数据"]
 ```
 
-## 68.5 imatrix 主动采集 —— 在推理时「看见激活分布」
+## 69.5 imatrix 主动采集 —— 在推理时「看见激活分布」
 
 imatrix 的本质不是静态配置，而是运行时采出来的。采集器 `IMatrixCollector` 通过计算图回调挂在模型推理路径上，遇到 `GGML_OP_MUL_MAT` 和 `GGML_OP_MUL_MAT_ID` 时，它会读取相关输入张量，对普通 dense 层和 MoE expert 层分别维护统计。
 
@@ -893,7 +893,7 @@ imatrix 的本质不是静态配置，而是运行时采出来的。采集器 `I
 
 采集过程还负责「按块落盘」：代码基于 chunk_size = n_ctx / n_parallel 统计已经处理到第几块，达到 `n_out_freq` 或 `n_save_freq` 阈值时触发 `save_imatrix()`。
 
-### 68.5.1 `filter_tensor_name()`：张量名称过滤
+### 69.5.1 `filter_tensor_name()`：张量名称过滤
 
 源码路径：`tools/imatrix/imatrix.cpp` - `filter_tensor_name()`（99-113行）
 
@@ -918,7 +918,7 @@ static std::string filter_tensor_name(const char * name) {
 
 这段代码定义了 `filter_tensor_name()`，它剥离设备前缀（如 `CUDA0#blk.0.attn_k.weight#0` → `blk.0.attn_k.weight`），统一张量名称，避免同一张量因后端不同而被拆成多条统计。
 
-### 68.5.2 `process_tensor_name()`：层号与短名解析
+### 69.5.2 `process_tensor_name()`：层号与短名解析
 
 源码路径：`tools/imatrix/imatrix.cpp` - `process_tensor_name()`（116-142行）
 
@@ -945,7 +945,7 @@ static void process_tensor_name(const std::string & input, std::string & layer, 
 
 这段代码实现了 `process_tensor_name()`，它从 `blk.0.attn_q.weight` 这类全名中提取层号 `0` 和短名 `attn_q`，用于后续统计展示的分层聚合。
 
-### 68.5.3 `IMatrixCollector`：默认构造、`set_params()` 与 `get_mstats()`
+### 69.5.3 `IMatrixCollector`：默认构造、`set_params()` 与 `get_mstats()`
 
 源码路径：`tools/imatrix/imatrix.cpp` - `IMatrixCollector()`（71行）、`set_params()`（72行）、`get_mstats()`（84行）
 
@@ -959,7 +959,7 @@ const std::unordered_map<std::string, Stats> & get_mstats() const { return m_sta
 
 这段代码展示了 `IMatrixCollector` 的基础封装：默认构造使用 `= default` 避免自定义构造带来的初始化遗漏；`set_params()` 以移动语义注入参数；`get_mstats()` 返回 const 引用而非拷贝，遵循最小权限原则，避免大对象复制。
 
-### 68.5.4 `IMatrixCollector::collect_imatrix()`：GGML 回调采集核心
+### 69.5.4 `IMatrixCollector::collect_imatrix()`：GGML 回调采集核心
 
 源码路径：`tools/imatrix/imatrix.cpp` - `collect_imatrix()`（219-496行）
 
@@ -1103,7 +1103,7 @@ bool IMatrixCollector::collect_imatrix(struct ggml_tensor * t, bool ask, void * 
 
 这段代码定义了 `collect_imatrix()`，它是 imatrix 采集器的核心回调，负责在模型推理过程中捕获每个张量的激活平方统计。`ask=true` 阶段做筛选（只收 `blk.*` 与 `output.weight`），非 ask 阶段对 MoE 与 dense 两种算子分别维护统计，并在达到 chunk 阈值时触发周期性保存。
 
-### 68.5.5 `ik_collect_imatrix()`：回调静态包装
+### 69.5.5 `ik_collect_imatrix()`：回调静态包装
 
 源码路径：`tools/imatrix/imatrix.cpp` - `ik_collect_imatrix()`（840-843行）
 
@@ -1115,7 +1115,7 @@ static bool ik_collect_imatrix(struct ggml_tensor * t, bool ask, void * user_dat
 
 这段代码定义了 `ik_collect_imatrix()`，它作为 GGML 回调的静态包装，把计算图回调转发到全局 `g_collector` 实例，使得 `compute_imatrix()` 可以用统一方式注册回调。
 
-### 68.5.6 `softmax()` 与 `log_softmax()`：数值稳定的概率计算
+### 69.5.6 `softmax()` 与 `log_softmax()`：数值稳定的概率计算
 
 源码路径：`tools/imatrix/imatrix.cpp` - `softmax()`（865-879行）、`log_softmax()`（882-889行）
 
@@ -1146,7 +1146,7 @@ static results_log_softmax log_softmax(int n_vocab, const float * logits, int to
 
 这两段代码实现了 `softmax()` 与 `log_softmax()`。`softmax()` 先减去最大值再做指数，避免了直接 `exp` 时的上溢；`log_softmax()` 同样先减最大值，返回对数概率、原始 logit 与概率三项，供 PPL 计算使用。
 
-### 68.5.7 `process_logits()`：多线程 PPL 计算
+### 69.5.7 `process_logits()`：多线程 PPL 计算
 
 源码路径：`tools/imatrix/imatrix.cpp` - `process_logits()`（891-928行）
 
@@ -1179,7 +1179,7 @@ static void process_logits(
 
 这段代码实现了 `process_logits()`，它利用多线程并行计算每个 token 的负对数似然，从而高效地评估模型困惑度。`counter` 作为共享索引配合互斥锁实现动态任务分配。
 
-### 68.5.8 `compute_imatrix()`：激活统计主流程
+### 69.5.8 `compute_imatrix()`：激活统计主流程
 
 源码路径：`tools/imatrix/imatrix.cpp` - `compute_imatrix()`（930-1143行）
 
@@ -1204,7 +1204,7 @@ static bool compute_imatrix(llama_context * ctx, const common_params & params, c
 
 这段代码定义了 `compute_imatrix()`，它是 imatrix 采集的主流程：分词、分块、多序列解码、回调采集激活平方统计，并在分块边界触发落盘。
 
-### 68.5.9 时序图：imatrix 采集流程
+### 69.5.9 时序图：imatrix 采集流程
 
 ```mermaid
 sequenceDiagram
@@ -1231,7 +1231,7 @@ sequenceDiagram
     M->>C: 最终 save_imatrix()
 ```
 
-## 68.6 imatrix 读写与统计展示 —— 既会算，也会看
+## 69.6 imatrix 读写与统计展示 —— 既会算，也会看
 
 保存格式不是单一的，而是 GGUF 和 legacy 双轨并行：默认优先写 GGUF，如果用户指定 `--output-format dat`，就改走 `save_imatrix_legacy()`，文件名带 `.at_N` 后缀时表示按 chunk 保存中间结果。
 
@@ -1245,7 +1245,7 @@ legacy 格式更像「紧凑二进制日志」：先写 entry 数，再逐条写
 
 统计计算与可视化：`compute_statistics()` 计算每张量的 sum、mean、min、max、std、active ratio、entropy、z 分布等；`compute_cossim()` 额外算相邻层同名张量之间的余弦相似度；`show_statistics()` 负责把这些统计按层聚合、按排序规则打印成表格。
 
-### 68.6.1 `IMatrixCollector::save_imatrix_legacy()`：Legacy 格式保存
+### 69.6.1 `IMatrixCollector::save_imatrix_legacy()`：Legacy 格式保存
 
 源码路径：`tools/imatrix/imatrix.cpp` - `save_imatrix_legacy()`（498-578行）
 
@@ -1312,7 +1312,7 @@ void IMatrixCollector::save_imatrix_legacy(int32_t ncall) const {
 
 这段代码定义了 `save_imatrix_legacy()`，它负责将采集到的激活统计以 legacy 二进制格式持久化，逐 entry 写入名称、调用次数、归一化值数组，并附带 chunk 数与数据集名。
 
-### 68.6.2 `IMatrixCollector::save_imatrix()`：GGUF 格式保存
+### 69.6.2 `IMatrixCollector::save_imatrix()`：GGUF 格式保存
 
 源码路径：`tools/imatrix/imatrix.cpp` - `save_imatrix()`（580-657行）
 
@@ -1385,7 +1385,7 @@ void IMatrixCollector::save_imatrix(int32_t n_chunk) const {
 
 这段代码定义了 `save_imatrix()`，它负责将采集到的激活统计以 GGUF 格式持久化：先估算总内存建 `ggml_context`，再为每个张量创建 `in_sum2` / `counts` 两个张量，写入 `general.type=imatrix` 等元数据后调用 `gguf_write_to_file` 写盘。
 
-### 68.6.3 `IMatrixCollector::load_imatrix()`：GGUF 格式加载（类方法）
+### 69.6.3 `IMatrixCollector::load_imatrix()`：GGUF 格式加载（类方法）
 
 源码路径：`tools/imatrix/imatrix.cpp` - `load_imatrix()`（748-837行）
 
@@ -1464,7 +1464,7 @@ bool IMatrixCollector::load_imatrix(const char * file_name) {
 
 这段代码定义了 `IMatrixCollector::load_imatrix()`，它按 GGUF 格式读取已有 imatrix 文件，把 `*.in_sum2` 与 `*.counts` 配对后合并到当前 `m_stats`，并更新 `m_last_chunk`，支持多文件增量加载。
 
-### 68.6.4 `IMatrixCollector::load_imatrix_legacy()`：Legacy 格式加载
+### 69.6.4 `IMatrixCollector::load_imatrix_legacy()`：Legacy 格式加载
 
 源码路径：`tools/imatrix/imatrix.cpp` - `load_imatrix_legacy()`（659-746行）
 
@@ -1517,7 +1517,7 @@ bool IMatrixCollector::load_imatrix_legacy(const char * fname) {
 
 这段代码定义了 `load_imatrix_legacy()`，它按 legacy 格式顺序读取 entry，把归一化值乘回 `chunk_size` 后累加到 `m_stats`，并根据最大 count 估算 `m_last_chunk`，保证旧格式数据能无缝合并。
 
-### 68.6.5 `compute_statistics()`：统计指标计算
+### 69.6.5 `compute_statistics()`：统计指标计算
 
 源码路径：`tools/imatrix/imatrix.cpp` - `compute_statistics()`（145-221行）
 
@@ -1579,7 +1579,7 @@ static void compute_statistics(std::vector<tensor_statistics> & tstats, const st
 
 这段代码定义了 `compute_statistics()`，它对每个张量的激活值计算 sum、mean、min、max、std、active ratio、entropy、z 分布等统计指标，为后续展示提供数据基础。
 
-### 68.6.6 `compute_cossim()`：相邻层余弦相似度
+### 69.6.6 `compute_cossim()`：相邻层余弦相似度
 
 源码路径：`tools/imatrix/imatrix.cpp` - `compute_cossim()`（224-248行）
 
@@ -1610,7 +1610,7 @@ static void compute_cossim(std::vector<tensor_statistics> & tstats) {
 
 这段代码定义了 `compute_cossim()`，它用正则匹配层号，把当前层张量与前一层同名张量的激活向量做余弦相似度，用于衡量层间表示的连续性。
 
-### 68.6.7 `tensor_comparer::operator()`：统计排序器
+### 69.6.7 `tensor_comparer::operator()`：统计排序器
 
 源码路径：`tools/imatrix/imatrix.cpp` - `tensor_comparer::operator()`（1200-1210行）
 
@@ -1625,7 +1625,7 @@ bool operator()(const tensor_statistics & a, const tensor_statistics & b) const 
 
 这段代码实现了 `tensor_comparer`，它先按张量短名升序、再按激活总量降序排列，使得统计展示既按层级聚合又突出敏感权重。
 
-### 68.6.8 `show_statistics()`：统计展示
+### 69.6.8 `show_statistics()`：统计展示
 
 源码路径：`tools/imatrix/imatrix.cpp` - `show_statistics()`（1450-1680行）
 
@@ -1643,7 +1643,7 @@ static bool show_statistics(const common_params & params) {
 
 这段代码定义了 `show_statistics()`，它负责在 `--show-statistics` 模式下加载 imatrix 文件，计算并打印详细统计表格与分层加权汇总，帮助用户直观理解各层张量的激活特性。
 
-### 68.6.9 `print_usage()`：imatrix 使用说明打印
+### 69.6.9 `print_usage()`：imatrix 使用说明打印
 
 源码路径：`tools/imatrix/imatrix.cpp` - `print_usage()`（26-31行）
 
@@ -1661,7 +1661,7 @@ static void print_usage(int, char ** argv) {
 
 这段代码定义了 `print_usage()`，它打印 imatrix 工具的示例用法，帮助用户快速理解命令行选项组合。
 
-### 68.6.10 `__main__`：imatrix 入口
+### 69.6.10 `__main__`：imatrix 入口
 
 源码路径：`tools/imatrix/imatrix.cpp` - `__main__`（1680-1810行）
 
@@ -1678,7 +1678,7 @@ int main(int argc, char ** argv) {
 
 这段代码定义了 imatrix 工具的入口，它根据是否启用统计模式分流：统计模式直接展示已有数据，采集模式则初始化后端、跑推理并落盘 imatrix。
 
-### 68.6.11 流程图：imatrix 读写与统计展示
+### 69.6.11 流程图：imatrix 读写与统计展示
 
 ```mermaid
 flowchart TD
@@ -1694,7 +1694,7 @@ flowchart TD
     K --> L["周期性 save_imatrix 落盘"]
 ```
 
-## 68.7 GGUF 拆分和合并 —— 模型仓库里的「装箱/拼箱」
+## 69.7 GGUF 拆分和合并 —— 模型仓库里的「装箱/拼箱」
 
 这个工具解决的是大模型「太大装不下」的现实问题：支持把一个 GGUF 按张量数或字节大小拆成多个分片，也支持把多个分片再合并回一个完整文件。
 
@@ -1708,7 +1708,7 @@ flowchart TD
 
 合并则更像「反向装配」：先打开第 0 个分片，读出 `split count` 作为总分片数，逐个读取分片元数据并把所有张量追加到输出上下文。
 
-### 68.7.0 `split_params` 结构体
+### 69.7.1 `split_params` 结构体
 
 源码路径：`tools/gguf-split/gguf-split.cpp`
 
@@ -1740,7 +1740,7 @@ struct split_params {
 
 `split_params` 是整个 gguf-split 工作流的「配置载体」：`split_params_parse_ex()` 把命令行选项翻译进这个结构体，`gguf_split()` 和 `gguf_merge()` 再从中读取行为模式与限制条件。两个 enum 分别控制「做什么」与「怎么切」，默认值保证了最常见的「按张量数拆分」行为。
 
-### 68.7.1 `split_print_usage()`：拆分帮助信息
+### 69.7.2 `split_print_usage()`：拆分帮助信息
 
 源码路径：`tools/gguf-split/gguf-split.cpp` - `split_print_usage()`（49-63行）
 
@@ -1767,7 +1767,7 @@ static void split_print_usage(const char * executable) {
 
 这段代码定义了 `split_print_usage()`，它打印 gguf-split 工具的完整帮助信息，涵盖拆分/合并模式、张量数/字节大小上限、dry-run 等选项。
 
-### 68.7.2 `split_str_to_n_bytes()`：人类可读尺寸解析
+### 69.7.3 `split_str_to_n_bytes()`：人类可读尺寸解析
 
 源码路径：`tools/gguf-split/gguf-split.cpp` - `split_str_to_n_bytes()`（66-80行）
 
@@ -1791,7 +1791,7 @@ static size_t split_str_to_n_bytes(std::string str) {
 
 这段代码定义了 `split_str_to_n_bytes()`，它把 `128M` / `4G` 这类人类可读尺寸字符串转换为字节数，只支持 M/G 单位并校验正值，是 `--split-max-size` 的底层解析器。
 
-### 68.7.3 `split_params_parse_ex()`：命令行解析核心
+### 69.7.4 `split_params_parse_ex()`：命令行解析核心
 
 源码路径：`tools/gguf-split/gguf-split.cpp` - `split_params_parse_ex()`（82-145行）
 
@@ -1856,7 +1856,7 @@ static void split_params_parse_ex(int argc, const char ** argv, split_params & p
 
 这段代码定义了 `split_params_parse_ex()`，它是命令行解析的核心，负责把 `--split`/`--merge`/`--split-max-tensors`/`--split-max-size`/`--dry-run` 等选项翻译为 `split_params` 结构，并校验互斥关系。
 
-### 68.7.4 `split_params_parse()`：参数解析包装器
+### 69.7.5 `split_params_parse()`：参数解析包装器
 
 源码路径：`tools/gguf-split/gguf-split.cpp` - `split_params_parse()`（147-157行）
 
@@ -1876,7 +1876,7 @@ static bool split_params_parse(int argc, const char ** argv, split_params & para
 
 这段代码定义了 `split_params_parse()`，它是 `split_params_parse_ex()` 的包装器，负责捕获 `invalid_argument` 异常，打印错误信息与用法后退出，避免异常向上传播。
 
-### 68.7.5 `split_strategy::split_strategy()`：分片规划构造函数
+### 69.7.6 `split_strategy::split_strategy()`：分片规划构造函数
 
 源码路径：`tools/gguf-split/gguf-split.cpp` - `split_strategy()`（159-208行）
 
@@ -1933,7 +1933,7 @@ split_strategy(const split_params & params,
 
 这段代码定义了 `split_strategy` 的构造函数，它负责根据用户设定的大小或张量阈值，将输入 GGUF 文件的张量规划到多个输出分片中。第一个分片复制全部元数据，最后统一回填 `SPLIT_COUNT`。
 
-### 68.7.6 `~split_strategy()`：析构函数
+### 69.7.7 `~split_strategy()`：析构函数
 
 源码路径：`tools/gguf-split/gguf-split.cpp` - `~split_strategy()`（210-214行）
 
@@ -1947,7 +1947,7 @@ split_strategy(const split_params & params,
 
 这段代码定义了 `split_strategy` 的析构函数，它遍历释放所有输出 `gguf_context`，防止分片规划过程中产生的上下文泄漏。
 
-### 68.7.7 `should_split()`：拆分判断
+### 69.7.8 `should_split()`：拆分判断
 
 源码路径：`tools/gguf-split/gguf-split.cpp` - `should_split()`（216-223行）
 
@@ -1964,7 +1964,7 @@ bool should_split(int i_tensor, size_t next_size) {
 
 这段代码定义了 `should_split()`，它是分片策略的判断核心：`MODE_SIZE` 按累计字节数超限切分，`MODE_TENSOR` 按张量数量阈值切分。
 
-### 68.7.8 `print_info()`：拆分信息展示
+### 69.7.9 `print_info()`：拆分信息展示
 
 源码路径：`tools/gguf-split/gguf-split.cpp` - `print_info()`（225-235行）
 
@@ -1987,7 +1987,7 @@ void print_info() {
 
 这段代码定义了 `print_info()`，它在 dry-run 或正式写出前打印分片计划概览，展示每个分片的张量数与总大小（MB）。
 
-### 68.7.9 `split_strategy::write()`：分片写出执行
+### 69.7.10 `split_strategy::write()`：分片写出执行
 
 源码路径：`tools/gguf-split/gguf-split.cpp` - `write()`（237-257行）
 
@@ -2024,7 +2024,7 @@ void write() {
 
 这段代码实现了 `write()`，它将规划好的分片元数据和张量数据实际写出到多个文件，确保每个分片都满足 GGUF 的对齐要求。
 
-### 68.7.10 `zeros()`：零字节填充
+### 69.7.11 `zeros()`：零字节填充
 
 源码路径：`tools/gguf-split/gguf-split.cpp` - `zeros()`（268-273行）
 
@@ -2039,7 +2039,7 @@ static void zeros(std::ofstream & file, size_t n) {
 
 这段代码定义了 `zeros()`，它向文件写入指定数量的二进制零字节，用于 GGUF 张量数据的对齐填充，避免垃圾数据被后续读取。
 
-### 68.7.11 `copy_file_to_file()`：文件块复制
+### 69.7.12 `copy_file_to_file()`：文件块复制
 
 源码路径：`tools/gguf-split/gguf-split.cpp` - `copy_file_to_file()`（259-265行）
 
@@ -2054,7 +2054,7 @@ void copy_file_to_file(std::ifstream & f_in, std::ofstream & f_out, const size_t
 
 这段代码定义了 `copy_file_to_file()`，它负责在输入与输出文件之间复制指定偏移量与长度的字节块，是拆分过程中张量数据搬运的基础。
 
-### 68.7.12 `gguf_split()`：拆分主函数
+### 69.7.13 `gguf_split()`：拆分主函数
 
 源码路径：`tools/gguf-split/gguf-split.cpp` - `gguf_split()`（275-301行）
 
@@ -2088,7 +2088,7 @@ static void gguf_split(const split_params & split_params) {
 
 这段代码定义了 `gguf_split()`，它是拆分主流程：加载输入 GGUF、构造 `split_strategy` 规划分片、打印计划，并在非 dry-run 时调用 `write()` 实际写出。
 
-### 68.7.13 `gguf_merge()`：合并主函数
+### 69.7.14 `gguf_merge()`：合并主函数
 
 源码路径：`tools/gguf-split/gguf-split.cpp` - `gguf_merge()`（303-420行）
 
@@ -2201,7 +2201,7 @@ static void gguf_merge(const split_params & split_params) {
 
 这段代码定义了 `gguf_merge()`，它按「反向装配」的方式：先读第 0 个分片获取 `split count`，逐个加载分片元数据并追加所有张量到输出上下文，最后写回元数据与张量数据，实现无损合并。
 
-### 68.7.14 `__main__`：gguf-split 入口
+### 69.7.15 `__main__`：gguf-split 入口
 
 源码路径：`tools/gguf-split/gguf-split.cpp` - `__main__`（422-434行）
 
@@ -2221,7 +2221,7 @@ int main(int argc, const char ** argv) {
 
 这段代码定义了 gguf-split 的入口，它解析参数后根据 `operation` 字段分发到 `gguf_split()` 或 `gguf_merge()`。
 
-### 68.7.15 架构分层图：gguf-split
+### 69.7.16 架构分层图：gguf-split
 
 ```mermaid
 graph TD
@@ -2252,7 +2252,7 @@ graph TD
     G --> I
 ```
 
-### 68.7.16 流程图：gguf-split 拆分与合并主流程
+### 69.7.17 流程图：gguf-split 拆分与合并主流程
 
 ```mermaid
 flowchart TD
@@ -2276,7 +2276,7 @@ flowchart TD
     Q --> K
 ```
 
-## 68.8 LoRA 合并执行器 —— 把增量「焊回」底座模型
+## 69.8 LoRA 合并执行器 —— 把增量「焊回」底座模型
 
 这个工具的目标很明确：把 LoRA 增量直接融进 base model。输入是一个基础 GGUF 模型和一个或多个 LoRA adapter，输出是一个新的 F16 GGUF 文件。
 
@@ -2292,7 +2292,7 @@ flowchart TD
 
 合并过程不是离线字符串拼接，而是真正的 GGML 计算：使用 `ggml_new_graph()` 搭一个小计算图，最后把结果 cast 到输出需要的类型，写回文件。
 
-### 68.8.1 `get_kv_str()`：获取字符串元数据
+### 69.8.1 `get_kv_str()`：获取字符串元数据
 
 源码路径：`tools/export-lora/export-lora.cpp` - `get_kv_str()`（24-27行）
 
@@ -2305,7 +2305,7 @@ static std::string get_kv_str(struct gguf_context * ctx_gguf, const std::string 
 
 这段代码定义了 `get_kv_str()`，它从 GGUF 上下文中安全读取字符串类型的键值，键不存在时返回空字符串，避免了空指针解引用风险。
 
-### 68.8.2 `get_kv_f32()`：获取浮点元数据
+### 69.8.2 `get_kv_f32()`：获取浮点元数据
 
 源码路径：`tools/export-lora/export-lora.cpp` - `get_kv_f32()`（29-32行）
 
@@ -2318,7 +2318,7 @@ static float get_kv_f32(struct gguf_context * ctx_gguf, const std::string & key)
 
 这段代码定义了 `get_kv_f32()`，它从 GGUF 上下文中安全读取浮点类型的键值，键不存在时返回 0.0f，提供类型安全的元数据访问。
 
-### 68.8.3 `zeros()`：零字节填充
+### 69.8.3 `zeros()`：零字节填充
 
 源码路径：`tools/export-lora/export-lora.cpp` - `zeros()`（34-39行）
 
@@ -2331,7 +2331,7 @@ static void zeros(std::ofstream & file, size_t n) {
 
 这段代码定义了 `zeros()`，它向文件写入指定数量的二进制零字节，用于 GGUF 文件的对齐填充，确保张量数据边界对齐。
 
-### 68.8.4 `ggml_ne_string()`：张量维度字符串化
+### 69.8.4 `ggml_ne_string()`：张量维度字符串化
 
 源码路径：`tools/export-lora/export-lora.cpp` - `ggml_ne_string()`（41-50行）
 
@@ -2348,7 +2348,7 @@ static std::string ggml_ne_string(const ggml_tensor * t) {
 
 这段代码定义了 `ggml_ne_string()`，它将张量的所有维度格式化为逗号分隔的字符串，用于日志输出和调试显示。
 
-### 68.8.5 `load_gguf()`：GGUF 加载封装
+### 69.8.5 `load_gguf()`：GGUF 加载封装
 
 源码路径：`tools/export-lora/export-lora.cpp` - `load_gguf()`（52-62行）
 
@@ -2366,7 +2366,7 @@ static struct gguf_context * load_gguf(std::string & fname, struct ggml_context 
 
 这段代码定义了 `load_gguf()`，它封装了 `gguf_init_from_file` 调用，设置 `no_alloc=true` 仅加载元数据，并在加载失败时抛出异常，确保文件必须存在。
 
-### 68.8.6 `file_input`：GGUF 文件读取封装
+### 69.8.6 `file_input`：GGUF 文件读取封装
 
 源码路径：`tools/export-lora/export-lora.cpp` - `file_input()`（76-93行）、`get_tensor()`（95-99行）、`read_tensor_data()`（101-114行）、`~file_input()`（116-119行）
 
@@ -2408,7 +2408,7 @@ void read_tensor_data(std::string name, std::vector<uint8_t> & buf) {
 
 这段代码定义了 `file_input` 类，它负责管理单个 GGUF 文件的输入，包括元数据、张量映射和原始数据读取，并通过析构函数自动释放资源。
 
-### 68.8.7 `lora_merge_ctx`：合并上下文
+### 69.8.7 `lora_merge_ctx`：合并上下文
 
 源码路径：`tools/export-lora/export-lora.cpp` - `lora_merge_ctx()`（149-176行）、`~lora_merge_ctx()`（350-355行）
 
@@ -2450,7 +2450,7 @@ lora_merge_ctx(
 
 这段代码定义了 `lora_merge_ctx` 的构造与析构：构造时加载 base model 与 adapters、校验元数据、初始化输出上下文与 CPU 后端；析构时按依赖顺序释放 gallocr、backend、ctx_out 与 ctx_out_ggml，避免顺序颠倒导致的 use-after-free。
 
-### 68.8.8 `check_metadata_lora()`：适配器兼容性校验
+### 69.8.8 `check_metadata_lora()`：适配器兼容性校验
 
 源码路径：`tools/export-lora/export-lora.cpp` - `check_metadata_lora()`（178-192行）
 
@@ -2474,7 +2474,7 @@ void check_metadata_lora(file_input * adapter) {
 
 这段代码定义了 `check_metadata_lora()`，它校验 adapter 的 `general.type=adapter`、`adapter.type=lora`，并要求与 base model 的 `general.architecture` 一致，从元数据层面防止不兼容的适配器参与合并。
 
-### 68.8.9 `get_out_tensor_type()`：输出类型确定
+### 69.8.9 `get_out_tensor_type()`：输出类型确定
 
 源码路径：`tools/export-lora/export-lora.cpp` - `get_out_tensor_type()`（194-200行）
 
@@ -2490,7 +2490,7 @@ ggml_type get_out_tensor_type(struct ggml_tensor * t) {
 
 这段代码定义了 `get_out_tensor_type()`，它根据输入张量类型决定输出类型：F32 保持 F32，其余统一转为 F16，确保合并结果文件体积可控。
 
-### 68.8.10 `lora_merge_ctx::run_merge()`：合并主流程
+### 69.8.10 `lora_merge_ctx::run_merge()`：合并主流程
 
 源码路径：`tools/export-lora/export-lora.cpp` - `run_merge()`（202-259行）
 
@@ -2556,7 +2556,7 @@ void run_merge() {
 
 这段代码定义了 `run_merge()`，它负责协调整个合并流程：复制元数据、校验多 adapter 一致性、遍历 base 张量分类（复制或合并）、执行逐张量操作并回写文件头。
 
-### 68.8.11 `copy_tensor()`：直接复制张量
+### 69.8.11 `copy_tensor()`：直接复制张量
 
 源码路径：`tools/export-lora/export-lora.cpp` - `copy_tensor()`（261-267行）
 
@@ -2572,7 +2572,7 @@ void copy_tensor(struct ggml_tensor * base) {
 
 这段代码定义了 `copy_tensor()`，它负责把无 LoRA 适配的张量原样从 base model 复制到输出文件，并做对齐填充。
 
-### 68.8.12 `lora_merge_ctx::merge_tensor()`：单张量合并核心
+### 69.8.12 `lora_merge_ctx::merge_tensor()`：单张量合并核心
 
 源码路径：`tools/export-lora/export-lora.cpp` - `merge_tensor()`（269-348行）
 
@@ -2676,7 +2676,7 @@ void merge_tensor(struct ggml_tensor * base, struct ggml_tensor * out) {
 
 这段代码定义了 `merge_tensor()`，它负责将单个张量的 LoRA 增量通过 GGML 计算图融合进基础权重：加载 base 与 lora_a/lora_b 数据，构建 `delta = B*A^T`（token embedding 为 `B*A`）并缩放累加，最后执行图计算并写出结果。
 
-### 68.8.13 `print_usage()`：LoRA 合并帮助信息
+### 69.8.13 `print_usage()`：LoRA 合并帮助信息
 
 源码路径：`tools/export-lora/export-lora.cpp` - `print_usage()`（360-365行）
 
@@ -2691,7 +2691,7 @@ static void print_usage(int, char ** argv) {
 
 这段代码定义了 `print_usage()`，它打印 export-lora 工具的示例用法，提示输出模型为 F16 格式。
 
-### 68.8.14 `__main__`：export-lora 入口
+### 69.8.14 `__main__`：export-lora 入口
 
 源码路径：`tools/export-lora/export-lora.cpp` - `__main__`（367-383行）
 
@@ -2719,7 +2719,7 @@ int main(int argc, char ** argv) {
 
 这段代码定义了 export-lora 的入口，它解析命令行参数后构造 `lora_merge_ctx` 并调用 `run_merge()`，用 try/catch 确保异常时安全退出。
 
-### 68.8.15 时序图：LoRA 合并流程
+### 69.8.15 时序图：LoRA 合并流程
 
 ```mermaid
 sequenceDiagram
@@ -2747,7 +2747,7 @@ sequenceDiagram
     C->>F: 回写元数据到文件头
 ```
 
-## 68.9 参数自动拟合 —— 根据显存「量体裁衣」
+## 69.9 参数自动拟合 —— 根据显存「量体裁衣」
 
 这个工具不是转换模型，而是替用户算出一组更合理的启动参数。它会根据当前机器可用内存，推荐上下文长度、GPU 层数、张量切分和 buffer override。
 
@@ -2755,7 +2755,7 @@ sequenceDiagram
 
 初始化链路很短但很典型：先 `common_init()`，再 `llama_backend_init()` 和 `llama_numa_init()`，之后直接调用拟合接口。输出是为「脚本化复用」设计的，打印形式接近可直接拼接的 CLI 片段，当有 tensor split 或多 buffer override 时，也会一起输出。
 
-### 68.9.1 `__main__`：fit-params 入口
+### 69.9.1 `__main__`：fit-params 入口
 
 源码路径：`tools/fit-params/fit-params.cpp` - `main()`（1-62行）
 
@@ -2809,7 +2809,7 @@ int main(int argc, char ** argv) {
 
 这段代码定义了 `main()`，它负责解析参数、初始化后端、调用 `llama_params_fit()` 并将拟合结果以 CLI 参数形式输出，方便用户直接嵌入启动命令。
 
-### 68.9.2 流程图：fit-params 参数拟合
+### 69.9.2 流程图：fit-params 参数拟合
 
 ```mermaid
 flowchart TD
@@ -2830,7 +2830,7 @@ flowchart TD
     M --> N
 ```
 
-## 68.10 设计中的取舍
+## 69.10 设计中的取舍
 
 **为什么 imatrix 要同时支持 GGUF 和 legacy 两种格式？** 因为历史脚本产出的 `.dat` 文件仍在广泛使用，如果强制迁移会导致用户存量数据作废。双格式支持让新工具既能读取旧数据，也能写出新格式，实现了平滑过渡。其代价是代码量增加：加载器需要维护两套解析逻辑，且 legacy 格式缺少元数据（如 chunk_size），需要回退估算。
 
@@ -2840,7 +2840,7 @@ flowchart TD
 
 **为什么 fit-params 的输出设计成可直接拼接的 CLI 片段？** 因为该工具的定位是「智能参数建议器」，用户通常需要将其输出嵌入到自动化脚本或启动命令中。直接输出 `-c 2048 -ngl 35` 这样的格式，可以被 shell 无歧义地接收，避免了额外的解析步骤。其代价是牺牲了人类可读性（没有键名前缀），但换来了脚本集成的便利性。
 
-## 68.11 动手练习
+## 69.11 动手练习
 
 - 阅读 `tools/quantize/quantize.cpp` 第 83-92 行的 `striequals()` 和第 409-529 行的 `main()`：
   1. `striequals()` 如何实现不区分大小写比较？为什么逐个字符比较而非直接转小写后比较？
@@ -2887,7 +2887,7 @@ flowchart TD
 
 - **额外挑战**：尝试为本章涉及的每个工具各画一张 Mermaid 图，并与正文中的图对比，思考是否准确反映了代码的执行顺序。
 
-## 68.12 本章小结
+## 69.12 本章小结
 
 这一章中我们学习/了解/讨论了模型处理工具链的核心工程实现。首先，我们剖析了 llama-quantize 的命令行解析与量化配置组装，理解了 `QUANT_OPTIONS` 如何作为「刀法清单」引导用户选择压缩方案；其次，我们深入 imatrix 的双格式兼容机制，掌握了 `load_imatrix`/`prepare_imatrix` 如何过滤和归一化重要性数据；接着，我们探索了 `IMatrixCollector` 的 GGML 回调采集原理，以及 `softmax`/`log_softmax` 在 PPL 计算中的数值稳定性设计；然后，我们分析了 gguf-split 的 `split_strategy` 分片规划与合并流程，以及 LoRA 合并中 `merge_tensor` 的 GGML 计算图实现；最后，我们通过 fit-params 理解了参数自动拟合的资源感知能力。
 

@@ -2,7 +2,7 @@
 
 
 
-# 第74章 MTMD 多模态处理核心 —— 国际货运中心的"总指挥调度室"
+# 第75章 MTMD 多模态处理核心 —— 国际货运中心的"总指挥调度室"
 
 ## 学习目标
 
@@ -14,7 +14,7 @@
 - 学会使用 `mtmd_bitmap` 等抽象处理图像与音频原始数据，并理解其内存管理策略
 - 掌握智能指针包装类（deleter 模式）与 C API 资源管理的最佳实践
 
-## 74.1 生活类比
+## 75.1 生活类比
 
 想象 MTMD 是一个**国际货运中心**（多模态处理中心）：
 - **`mtmd_context`** = 货运中心的**总指挥调度室**，同时管理「图像集装箱码头」（视觉编码器）和「音频货运站」（音频编码器），确保不同模态的货物（数据）能统一换算成标准集装箱（嵌入向量）；
@@ -27,7 +27,7 @@
 
 ---
 
-## 74.2 源码地图
+## 75.2 源码地图
 
 ```text
 tools/mtmd/
@@ -73,11 +73,11 @@ tools/mtmd/
 
 ---
 
-## 74.3 MTMD 公共 C API 与 RAII 封装 —— 多模态世界的"智能集装箱系统"
+## 75.3 MTMD 公共 C API 与 RAII 封装 —— 多模态世界的"智能集装箱系统"
 
 `mtmd.h` 是整个多模态模块的“对外大门”，它定义了三个核心数据结构：`mtmd_bitmap`（原始数据容器）、`mtmd_input_chunk`（单个输入块）、`mtmd_input_chunks`（输入块集合）。为了让 C++ 用户免受手动内存管理之苦，头文件还提供了基于 `std::unique_ptr` + 自定义 `deleter` 的 RAII 包装类。
 
-### 74.3.1 核心数据结构三剑客
+### 75.3.1 核心数据结构三剑客
 
 我们先来看 C API 层面的三个基础结构体，它们是多模态数据流转的“身份证”。
 
@@ -108,7 +108,7 @@ typedef struct mtmd_input_chunks {
 
 > **代码解析**：这段代码定义了多模态数据流转的最小单元。**`mtmd_bitmap`** 负责承载原始字节（图像为 RGB，音频为 float PCM），**`mtmd_input_chunk`** 通过 `type` 字段区分模态，内部用互斥的智能指针持有对应模态的 token 数据，**`mtmd_input_chunks`** 则是一个有序容器，记录了完整对话轮次中文本与媒体交替出现的顺序。这种“类型标签 + 互斥字段”设计避免了联合体的复杂性，同时保证内存紧凑。
 
-### 74.3.2 C++ RAII 智能指针：内存安全的"自动门"
+### 75.3.2 C++ RAII 智能指针：内存安全的"自动门"
 
 C API 要求调用者手动 `free`，极易泄漏。`mtmd.h` 为此提供了四个 `deleter` 仿函数与三个 RAII 包装类。
 
@@ -186,7 +186,7 @@ public:
 
 > **代码解析**：这段代码实现了**类型即图纸**的思想：通过 `unique_ptr` + `deleter` 模式，将 C 风格的“手动管理”升级为 C++ 风格的“栈上自动释放”。`bitmap` 类的四个构造函数覆盖了“空对象、接管裸指针、移动语义、从数据创建”四大场景；`bitmaps::c_ptr()` 解决了 C++ 容器到 C 数组指针的桥接问题；`input_chunks` 则提供了类 STL 的访问接口。所有析构函数均为 `= default`，依赖 `unique_ptr` 的析构器链式调用 `deleter`，实现零开销抽象。
 
-### 74.3.3 核心 C API 与全局函数
+### 75.3.3 核心 C API 与全局函数
 
 **源码路径：`tools/mtmd/mtmd.cpp` - `mtmd_init_from_file` / `mtmd_free`（第 463-476 行）**
 
@@ -249,7 +249,7 @@ void mtmd_bitmap_free(mtmd_bitmap *bitmap) { if (bitmap) delete bitmap; }
 
 > **代码解析**：这段代码构建了**资源全生命周期管理**闭环：`mtmd_init_from_file` 通过异常安全创建上下文，`mtmd_tokenize` 封装了分词器的构造与调用，`mtmd_bitmap_init*` 系列负责原始数据到内部容器的拷贝与格式标记。所有 `*_free` 函数均做空指针检查，配合 RAII 实现“零泄漏”。
 
-### 74.3.4 Chunk 访问与深拷贝接口
+### 75.3.4 Chunk 访问与深拷贝接口
 
 **源码路径：`tools/mtmd/mtmd.cpp` - `mtmd_input_chunk_get_n_tokens` / `mtmd_input_chunk_get_n_pos`（第 1159-1180 行）**
 
@@ -322,11 +322,11 @@ mtmd_audio_tokens clone() {
 
 ---
 
-## 74.4 MTMD 核心上下文 —— 多模态推理的"交通指挥中心"
+## 75.4 MTMD 核心上下文 —— 多模态推理的"交通指挥中心"
 
 `mtmd_context` 是多模态模块的“大脑”，它在构造时同时加载视觉与音频 CLIP 模型，校验嵌入维度兼容性，并根据 `projector_type` 动态分派预处理器。
 
-### 74.4.1 构造函数：双引擎装配与维度校验
+### 75.4.1 构造函数：双引擎装配与维度校验
 
 **源码路径：`tools/mtmd/mtmd.cpp` - `mtmd_context::mtmd_context()`（第 147-222 行）**
 
@@ -370,7 +370,7 @@ mtmd_context::mtmd_context(const char *mmproj_fname,
 
 > **代码解析**：这段代码完成了**“双引擎装配”**：一次性调用 `clip_init` 加载视觉/音频编码器，随后进行**三层维度校验**——视觉≠音频、文本≠视觉/音频，任何不匹配直接抛异常。这是多模态模型能否正常工作的前提：LLM 的输入嵌入维度必须与投影器输出维度完全一致。
 
-### 74.4.2 init_vision()：视觉预处理器的"选美大赛"
+### 75.4.2 init_vision()：视觉预处理器的"选美大赛"
 
 **源码路径：`tools/mtmd/mtmd.cpp` - `mtmd_context::init_vision()`（第 224-354 行）**
 
@@ -434,7 +434,7 @@ void mtmd_context::init_vision() {
 
 > **代码解析**：这段代码展示了**策略模式**的教科书级应用：`projector_type` 枚举驱动 `switch` 分派，每个分支实例化对应的预处理器子类，并配置该模型特有的 `img_beg/img_end/slice_tmpl` 等特殊标记模板。注意 MiniCPM-V 根据版本号选择不同切片模板（2.5 vs 2.6），Qwen 系列统一使用动态尺寸预处理器但标记不同。
 
-### 74.4.3 init_audio()：音频预处理器的"调音师"
+### 75.4.3 init_audio()：音频预处理器的"调音师"
 
 **源码路径：`tools/mtmd/mtmd.cpp` - `mtmd_context::init_audio()`（第 356-400 行）**
 
@@ -476,11 +476,11 @@ void mtmd_context::init_audio() {
 
 ---
 
-## 74.5 Tokenization 与 Chunk 切分 —— 文本与媒体的"分词手术刀"
+## 75.5 Tokenization 与 Chunk 切分 —— 文本与媒体的"分词手术刀"
 
 `mtmd_tokenizer` 是多模态输入的“分词手术刀”，它按 `media_marker`（默认 `<__media__>`）切割文本，交替生成文本 chunk 与媒体 chunk。
 
-### 74.5.1 构造与主流程 tokenize()
+### 75.5.1 构造与主流程 tokenize()
 
 **源码路径：`tools/mtmd/mtmd.cpp` - `mtmd_tokenizer::mtmd_tokenizer()` / `tokenize()`（第 508-577 行）**
 
@@ -525,7 +525,7 @@ int32_t mtmd_tokenizer::tokenize(mtmd_input_chunks *output) {
 
 > **代码解析**：这段代码实现了**“分拣流水线”**：`split_text` 保留分隔符，遍历片段时遇到标记消费 bitmap、遇到文本调用 `add_text`。`bitmaps` 向量与标记数量必须严格对应，否则报错。BOS/EOS 自动插入到首尾文本 chunk，保证模型看到完整序列。
 
-### 74.5.2 文本合并与媒体双通道
+### 75.5.2 文本合并与媒体双通道
 
 **源码路径：`tools/mtmd/mtmd.cpp` - `add_text` / `add_media`（第 579-794 行）**
 
@@ -625,9 +625,9 @@ int32_t mtmd_tokenizer::add_audio_media(const mtmd_bitmap *bitmap) {
 
 ---
 
-## 74.6 多模态资源编码与图像预处理基座 —— 数据整形的"美容工坊"
+## 75.6 多模态资源编码与图像预处理基座 —— 数据整形的"美容工坊"
 
-### 74.6.1 编码与查询接口
+### 75.6.1 编码与查询接口
 
 **源码路径：`tools/mtmd/mtmd.cpp` - `mtmd_encode_chunk` / `mtmd_encode` / `mtmd_decode_use_*`（第 985-1062 行）**
 
@@ -690,7 +690,7 @@ bool mtmd_decode_use_non_causal(mtmd_context *ctx) {
 
 > **代码解析**：编码层面的**策略分派**很关键：LLaVA/MiniCPM/GLM/InternVL 因历史实现限制只能逐张编码，其余模型支持批量编码。解码模式查询函数直接映射 `projector_type`，供上层决定位置编码与注意力掩码。
 
-### 74.6.2 图像预处理基类与工具集
+### 75.6.2 图像预处理基类与工具集
 
 **源码路径：`tools/mtmd/mtmd-image.h` - `mtmd_image_preprocessor` 基类（第 17-23 行）**
 
@@ -743,11 +743,11 @@ static clip_image_size calc_size_preserved_ratio(const clip_image_size &inp, int
 
 ---
 
-## 74.7 专用图像预处理器家族 —— 各显神通的"整形外科医生"
+## 75.7 专用图像预处理器家族 —— 各显神通的"整形外科医生"
 
 不同模型对图像分辨率、切片策略要求迥异，MTMD 通过继承体系实现了 9 种预处理器。
 
-### 74.7.1 LLaVA-UHD：高分辨率的"切片大师"
+### 75.7.1 LLaVA-UHD：高分辨率的"切片大师"
 
 **源码路径：`tools/mtmd/mtmd-image.cpp` - `mtmd_image_preprocessor_llava_uhd::preprocess` / `get_slice_instructions`（第 386-697 行）**
 
@@ -812,7 +812,7 @@ slice_instructions mtmd_image_preprocessor_llava_uhd::get_slice_instructions(con
 >    - 无 `pinpoints` → `get_best_grid` 搜索最接近原图长宽比的网格（如 2x2, 3x1 等），`get_refine_size` 计算能被网格整除的细化尺寸，再切片。
 > 3. **网格信息**：`grid_x/grid_y` 记录切片布局，供 M-RoPE 位置编码使用。
 
-### 74.7.2 其他预处理器速览
+### 75.7.2 其他预处理器速览
 
 | 预处理器 | 核心策略 | 典型模型 |
 |----------|----------|----------|
@@ -829,11 +829,11 @@ slice_instructions mtmd_image_preprocessor_llava_uhd::get_slice_instructions(con
 
 ---
 
-## 74.8 音频预处理与特征提取 —— 声音世界的"频谱分析师"
+## 75.8 音频预处理与特征提取 —— 声音世界的"频谱分析师"
 
 音频侧通过 **梅尔频谱图** 将波形压缩为二维时频表示，分为 Whisper 与 Conformer 两大流派。
 
-### 74.8.1 缓存构建：FFT 的"备忘录"
+### 75.8.1 缓存构建：FFT 的"备忘录"
 
 **源码路径：`tools/mtmd/mtmd-audio.cpp` - `mtmd_audio_cache` 三大填充函数（第 16-104 行）**
 
@@ -868,7 +868,7 @@ void mtmd_audio_cache::fill_mel_filterbank_matrix(int n_mel, int n_fft, int samp
 
 > **代码解析**：缓存层将**昂贵的三角函数与滤波器组构建前置**，`initialize()` 阶段一次性计算，后续每帧 FFT/IFFT 直接查表，实现了“空间换时间”。
 
-### 74.8.2 Whisper 预处理器：标准梅尔频谱流水线
+### 75.8.2 Whisper 预处理器：标准梅尔频谱流水线
 
 **源码路径：`tools/mtmd/mtmd-audio.cpp` - `mtmd_audio_preprocessor_whisper::preprocess`（第 330-401 行）**
 
@@ -916,7 +916,7 @@ bool mtmd_audio_preprocessor_whisper::preprocess(const float *samples, size_t n_
 > - **分块策略**：固定 3000 帧（约 30 秒），便于固定显存分配。
 > - **存储布局**：`mel-major`（频带优先），与 CLIP 视觉 `channel-first` 习惯一致。
 
-### 74.8.3 Conformer 预处理器：中心填充 + 预强调 + 自然对数
+### 75.8.3 Conformer 预处理器：中心填充 + 预强调 + 自然对数
 
 **源码路径：`tools/mtmd/mtmd-audio.cpp` - `mtmd_audio_preprocessor_conformer::preprocess`（第 415-453 行）**
 
@@ -934,7 +934,7 @@ bool mtmd_audio_preprocessor_conformer::preprocess(const float *samples, size_t 
 
 > **代码解析**：Conformer 更贴近语音识别学术标准：预强调增强高频，中心填充避免边界伪影，自然对数符合数学惯例。
 
-### 74.8.4 流式 ISTFT：从频谱重建波形
+### 75.8.4 流式 ISTFT：从频谱重建波形
 
 **源码路径：`tools/mtmd/mtmd-audio.cpp` - `mtmd_audio_streaming_istft`（第 459-551 行）**
 
@@ -966,11 +966,11 @@ std::vector<float> mtmd_audio_streaming_istft::flush() {
 
 ---
 
-## 74.9 MTMD Helper 高层评估与资源加载 —— 解码"模型输入"的最后一公里
+## 75.9 MTMD Helper 高层评估与资源加载 —— 解码"模型输入"的最后一公里
 
 `mtmd-helper` 是上层应用（如 `llama-mtmd-cli`）的直接调用层，封装了“加载资源 → Tokenize → Encode → Decode”的完整流水线。
 
-### 74.9.1 decode_embd_batch：M-RoPE 位置的"编排师"
+### 75.9.1 decode_embd_batch：M-RoPE 位置的"编排师"
 
 **源码路径：`tools/mtmd/mtmd-helper.cpp` - `decode_embd_batch` 类（第 155-246 行）**
 
@@ -1036,7 +1036,7 @@ llama_batch get_view(int offset, int n_tokens) {
 > - 内存中 `pos` 采用**通道优先**存储：`[t0...tn, y0...yn, x0...xn, 0...0]`（长度 4*n_tokens）。
 > - `get_view` 为微批次切片时，必须将这 4 个通道对应的片段**拼接成通道交织**格式：`[t_off, y_off, x_off, 0, t_off+1, y_off+1, x_off+1, 0, ...]`，否则 llama.cpp 内核会读错位置。这就是 `pos_view` 重组的由来。
 
-### 74.9.2 资源加载：格式无关的"海关检验"
+### 75.9.2 资源加载：格式无关的"海关检验"
 
 **源码路径：`tools/mtmd/mtmd-helper.cpp` - `mtmd_helper_bitmap_init_from_buf`（第 462-486 行）**
 
@@ -1064,7 +1064,7 @@ mtmd_bitmap *mtmd_helper_bitmap_init_from_buf(mtmd_context *ctx,
 
 > **设计亮点**：**“先音频后图像”**的检测顺序避免了误判（图像文件极不可能以音频 magic bytes 开头）。音频走 `miniaudio` 解码重采样到模型要求采样率，图像走 `stb_image` 统一输出 RGB 三通道，屏蔽了上层对格式的感知。
 
-### 74.9.3 评估流水线：Chunk 级分派与批量解码
+### 75.9.3 评估流水线：Chunk 级分派与批量解码
 
 **源码路径：`tools/mtmd/mtmd-helper.cpp` - `mtmd_helper_eval_chunk_single` / `mtmd_helper_eval_chunks`（第 336-430 行）**
 
@@ -1158,7 +1158,7 @@ int32_t mtmd_helper_decode_image_chunk(mtmd_context *ctx, llama_context *lctx,
 
 ---
 
-## 74.10 多模态调试与测试 —— 模型行为的"显微镜"
+## 75.10 多模态调试与测试 —— 模型行为的"显微镜"
 
 **源码路径：`tools/mtmd/mtmd.cpp` - 调试接口簇（第 1267-1371 行）**
 
@@ -1227,7 +1227,7 @@ mtmd_input_chunks *mtmd_test_create_input_chunks() {
 
 ---
 
-## 74.11 设计中的取舍
+## 75.11 设计中的取舍
 
 | 设计决策 | 背景与权衡 | 选择理由 |
 |----------|------------|----------|
@@ -1239,22 +1239,22 @@ mtmd_input_chunks *mtmd_test_create_input_chunks() {
 
 ---
 
-## 74.12 动手练习
+## 75.12 动手练习
 
-### 练习 1：追踪多模态输入的完整生命周期
+### 75.12.1 练习 1：追踪多模态输入的完整生命周期
 阅读 `tools/mtmd/mtmd.cpp` 中 `mtmd_tokenizer` 的构造与核心方法（第508-978行），以及 `mtmd.h` 中的 RAII 包装类（第254-288行），回答以下问题：
 1. 当输入文本包含 `<__media__>` 标记时，`tokenize()` 如何交替生成文本 chunk 与媒体 chunk？`add_image_media()` 与 `add_audio_media()` 分别承担什么角色？
 2. `mtmd::bitmap` 的四个构造函数分别适用于什么场景？移动构造函数如何确保资源所有权的正确转移？
 3. `mtmd_input_chunk_get_n_pos()` 在处理 M-RoPE 图像时与普通文本有何不同？为什么要区分 n_tokens 和 n_pos？
 4. 如果模型同时启用了视觉与音频支持，`mtmd_context` 如何确保两种模态的嵌入维度兼容性？
 
-### 练习 2：分析 M-RoPE 位置编码与资源加载机制
+### 75.12.2 练习 2：分析 M-RoPE 位置编码与资源加载机制
 阅读 `tools/mtmd/mtmd-helper.cpp` 中 `decode_embd_batch` 的位置设置方法与资源加载函数，完成以下分析：
 1. 对比 `set_position_normal()` 与 `set_position_mrope_2d()`：对于一张 2x2 的图像 patch（共4个token），普通模式和 M-RoPE 模式下的 `pos[]` 数组内容分别是什么？
 2. 解释为什么 `mtmd_helper_bitmap_init_from_buf()` 需要先检测音频 magic bytes？如果误判会导致什么后果？
 3. `get_view()` 方法在处理 M-RoPE 时为什么要重新组织 `pos_view`？如果不重新组织会发生什么错误？
 
-### 练习 3：设计一个新的图像预处理策略
+### 75.12.3 练习 3：设计一个新的图像预处理策略
 假设你要为一个新模型 "MyVLM" 实现图像预处理，要求：输入图像必须调整为 448x448，且宽高比保持为原图（不足部分填充黑色），并支持可选的网格切片（2x2）。
 参考 `tools/mtmd/mtmd-image.h` 和 `mtmd-image.cpp` 中的 `mtmd_image_preprocessor_fixed_size`、`mtmd_image_preprocessor_dyn_size` 与 `mtmd_image_preprocessor_llava_uhd`：
 1. 你会选择继承哪个基类？为什么？需要重写哪些方法？
@@ -1262,7 +1262,7 @@ mtmd_input_chunks *mtmd_test_create_input_chunks() {
 3. 在 `mtmd_context::init_vision()` 中，如何根据 `projector_type` 注册你的新预处理器？
 4. 如果该模型需要 M-RoPE 位置编码，`batch_f32` 中的 `grid_x` 和 `grid_y` 应该如何设置以配合 `decode_embd_batch`？
 
-### 练习 4：调试资源内存管理与深拷贝
+### 75.12.4 练习 4：调试资源内存管理与深拷贝
 阅读 `tools/mtmd/mtmd.h` 第232-288行的 deleter 与 RAII 包装类，以及 `mtmd.cpp` 中的 `mtmd_input_chunk_copy` 与 `clone()` 方法：
 1. `mtmd::bitmap` 和 `mtmd::input_chunks` 使用了哪种智能指针模式？自定义 deleter 与默认 deleter 有何不同？
 2. `mtmd_input_chunk_copy()` 中对 `tokens_image` 和 `tokens_audio` 的深拷贝是如何实现的？为什么需要调用 `clone()` 而不是简单的指针复制？
@@ -1270,7 +1270,7 @@ mtmd_input_chunks *mtmd_test_create_input_chunks() {
 
 ---
 
-## 74.13 本章小结
+## 75.13 本章小结
 
 首先，我们剖析了公共 C API 与 C++ RAII 封装，理解 `mtmd_bitmap`/`mtmd_input_chunk`/`mtmd_input_chunks` 三大核心数据结构如何通过 `unique_ptr+deleter` 实现零泄漏资源管理。其次，我们深入 `mtmd_context` 构造流程，看它如何双引擎加载视觉/音频 CLIP、三层校验嵌入维度、并按 `projector_type` 分派 20+ 种预处理器。接着，我们跟随 `mtmd_tokenizer` 走完了“按标记切分→文本合并→图像双模式（切片/非切片）→音频分块”的完整 Tokenization 链路。随后，我们探访了图像预处理工坊：从 `img_tool` 通用操作到 LLaVA-UHD 自适应切片算法，再到 9 种模型专用预处理器的策略差异。音频侧则揭示了 Whisper/Conformer 两大梅尔频谱流水线的异同，以及流式 ISTFT 的重叠相加重建原理。最后，我们见证了 `mtmd-helper` 如何将 M-RoPE 位置编码、非因果注意力、微批次解码、格式无关资源加载串联成上层应用可直接调用的“评估流水线”。
 

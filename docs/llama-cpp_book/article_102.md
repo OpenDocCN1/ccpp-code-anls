@@ -1,5 +1,5 @@
 
-# 后端采样器与对话测试 —— "推理输出"的精确校验
+# 第102章 后端采样器与对话测试 —— "推理输出"的精确校验
 
 ## 学习目标
 
@@ -12,11 +12,11 @@
 - 掌握构造函数、op_size、max_err、输出格式转换等基础设施方法的覆盖范围
 - 能够扩展新的GGML算子测试用例并配置合适的误差阈值与梯度策略
 
-## 103.1 生活类比
+## 102.1 生活类比
 
 想象GGML后端算子测试体系是一所严谨的质检学院：test_case是考题模板，每个算子是一张试卷，包含build_graph（出题）、initialize_tensors（备料）、eval（阅卷）；test_result是考试成绩单，记录每次考试的时间、成绩、是否通过、错题原因；printer家族是多语种新闻发言人，同一份成绩单可翻译成口语（console）、档案文本（CSV）、数据库SQL（SQL）；四大评估模式是四位考官：eval是阅卷老师，比对标准答案，看对错；eval_perf是计时员，看做题速度，算FLOPs/带宽；eval_support是资格审查员，先确认考生有没有资格进考场；eval_grad是反向推导员，用微积分验证解析梯度是否与数值微分一致；哨兵张量是考场监控，在试卷前后放哨，检测是否有越界作弊（内存越界）；init_tensor_*家族是食材科，不同科目（算子）发不同原料，如三角矩阵给solve_tri，掩码给flash_attn；构造函数与vars()是准考证信息，每个算子类都通过自己的构造函数记录考生（参数配置），vars()生成唯一可读的准考证号；make_test_cases_*工厂是教务出卷组，系统批量生成考卷（地毯式覆盖）；export-graph-ops是实况摄像师，把真实模型的计算图录下来，变成离线可回放的考卷；main()是院长，统筹调度，汇总各考场结果，宣布整体通过情况。就像质检学院既能出标准考卷也能回放真实场景，test-backend-ops既能地毯式覆盖算子矩阵，也能通过--test-file精确复现线上出现的问题。
 
-## 103.2 源码地图
+## 102.2 源码地图
 
 tests/test-backend-ops.cpp
 ├── 辅助工具函数（1-460行）
@@ -133,7 +133,7 @@ tests/export-graph-ops.cpp
 ├── extract_graph_ops()                 # 从计算图提取算子
 └── main()                              # 加载模型并导出算子
 
-## 103.3 测试报告官与书记官 —— 给质检结果建档立案
+## 102.3 测试报告官与书记官 —— 给质检结果建档立案
 
 test_result封装单次算子测试的完整档案：后端名、算子名、参数字符串、执行模式以及supported/passed双状态位。性能字段齐备：time_us（微秒）、flops（算力）、bandwidth_gb_s（带宽）、memory_kb（显存占用）、n_runs（重复次数）。get_values()把所有字段一次性转字符串，供console/SQL/CSV三类打印器统一消费；get_field_type()区分STRING/BOOL/INT/FLOAT。test_operation_info记录更细粒度的诊断信息：出错组件、错误详情、非有限梯度索引与参数名、MAA误差、比较失败标记、大张量跳过标记。test_summary_info、testing_start_info、backend_init_info、backend_status_info、overall_summary_info分别承载测试开始、后端初始化、单后端状态、汇总与总览信息，每个结构体都带默认+参数化双构造。所有结构体遵循"数据+打印器"分离设计：数据结构体只负责聚合字段，通过printer接口输出。
 
@@ -220,7 +220,7 @@ std::vector<std::string> get_values() const {
 
 这段代码定义了test_result结构体，它是单次算子测试的完整档案，包含性能、状态、错误信息等关键指标。通过参数化构造函数，可以灵活创建不同场景的测试结果；get_fields()和get_field_type()提供字段元信息；get_values()将所有字段统一转为字符串，便于各种打印器消费。
 
-## 103.4 多格式输出打印机家族 —— 同一结果的三种发布渠道
+## 102.4 多格式输出打印机家族 —— 同一结果的三种发布渠道
 
 printer抽象基类定义统一输出接口：print_header、print_test_result、print_operation、print_summary、print_backend_init、print_failed_tests等，每个都提供默认空实现以便子类按需覆写。console_printer面向人类阅读：用\033[1;32mOK\033[0m/\033[1;31mFAIL\033[0mANSI色码标记结果，并对perf结果做TFLOP/GFLOP自适应缩写。console_printer::print_perf_console根据flops是否大于0切换显示模式：算力型算子显示FLOPs，内存型算子显示GB/s带宽。console_printer还覆写print_operation/print_summary/print_backend_status/print_testing_start/print_backend_init/print_overall_summary/print_failed_tests，形成一套完整的终端可视化面板。sql_printer生成CREATE TABLE IF NOT EXISTS test_backend_ops建表语句与INSERT INTO行，字段类型映射（STRING→TEXT、BOOL/INT→INTEGER、FLOAT→REAL）。csv_printer只输出get_fields_csv()预定义的核心字段子集（op_name、op_params、supported、error_message等），并处理双引号转义以符合CSV规范。output_format_str()与output_format_from_str()完成枚举与字符串的双向转换，驱动--output参数解析；create_printer工厂函数据此返回对应的unique_ptr<printer>。
 
@@ -480,7 +480,7 @@ static std::unique_ptr<printer> create_printer(output_formats format) {
 
 这段代码实现了多格式输出打印机家族。printer作为抽象基类，定义了统一的输出接口；console_printer面向人类阅读，使用ANSI颜色码和智能格式化；sql_printer生成可直接执行的SQL语句；csv_printer输出符合RFC 4180标准的CSV文件；output_format_*函数完成枚举与字符串的双向映射；create_printer工厂函数根据--output参数返回对应的打印器实例。
 
-## 103.5 test_case测试基类 —— 每张考卷的命题规则
+## 102.5 test_case测试基类 —— 每张考卷的命题规则
 
 test_case抽象基类约定所有算子测试的契约：build_graph(ctx)构建计算图、initialize_tensors(ctx)填充数据、vars()返回参数签名、op_desc()返回算子描述。四大评估模式：eval（正确性，与CPU参考比对）、eval_perf（性能基准）、eval_support（支持性探测）、eval_grad（梯度有限差分校验）。误差阈值体系分层可覆写：max_nmse_err()（默认1e-7）、max_maa_err()（默认1e-4）、max_err()与err()（默认走nmse）。梯度测试参数独立可调：grad_eps()（有限差分步长，默认1e-1f）、grad_precise()（是否4点法）、grad_nmax()（最多校验的梯度数量）、grad_expect()（离散梯度期望值）。哨兵张量机制：add_sentinel在测试图前后插入标记张量，用于检测后端越界写内存，仅在MODE_TEST下启用。重载的ggml_new_tensor_*系列辅助函数在创建张量后立即调用add_sentinel，保证哨兵与数据张量一一对应。fusion_test_nodes()声明哪些节点必须作为整图比较输出，run_whole_graph()告诉框架是否强制整图执行。test_example提供了一个最简继承样板，方便开发者仿写新算子。
 
@@ -615,7 +615,7 @@ private:
 
 这段代码定义了test_case抽象基类，它是所有算子测试的契约。通过纯虚函数build_graph()强制子类实现计算图构建；initialize_tensors()提供默认的均匀分布初始化；四大评估模式通过虚函数实现；哨兵机制通过add_sentinel和重载的ggml_new_tensor_*确保内存安全；fusion_test_nodes和run_whole_graph控制测试范围；test_example展示了最简继承模式。
 
-## 103.6 四大评估流程引擎 —— 正确性、性能、支持度、梯度的裁判
+## 102.6 四大评估流程引擎 —— 正确性、性能、支持度、梯度的裁判
 
 eval()正确性比对：初始化ggml_context，调用build_graph，先检查backend1/2是否支持图中所有op，再分配张量、调用initialize_tensors，最后通过ggml_backend_compare_graph_backend在两个后端间逐节点比对。eval()内部回调同时校验哨兵张量完整性、NaN/Inf检测与数值误差，任何异常都会汇总到test_result的passed与error_message。eval_perf()性能模式：先做一次warmup，再按算子特征估算n_runs（计算或访存驱动的重复次数），循环执行直到总耗时超过1秒，输出平均us、FLOPs、GB/s。eval_support()只做支持探测：构建图后调用ggml_backend_supports_op，把结果与device_desc、backend_reg_name一并写入test_result。eval_grad()梯度校验：构建forward与backward两份图，使用有限差分（grad_eps步长，grad_precise决定2点或4点）逐个参数验证解析梯度。matches_filter()支持两种过滤器语法：纯算子名精确匹配，或name(params)完整形式（含括号参数）精确匹配，逗号分隔多条过滤规则。
 
@@ -860,7 +860,7 @@ bool matches_filter(ggml_tensor * op, const char * op_names_filter) {
 
 这段代码实现了test_case的四大评估引擎。eval()是正确性评估的核心，通过双后端对比和哨兵机制确保数值正确性；eval_perf()通过warmup和自适应循环次数获得可靠的性能指标；eval_support()快速探测后端能力；eval_grad()使用有限差分验证解析梯度；matches_filter()支持灵活的测试用例过滤。四种模式协同工作，形成完整的测试体系。
 
-## 103.7 张量初始化与误差度量工具箱 —— 质检员的度量衡
+## 102.7 张量初始化与误差度量工具箱 —— 质检员的度量衡
 
 init_tensor_uniform(tensor, min, max)是默认初始化器，内部并发生成均匀分布随机数，再按tensor->type写回（FP32/FP16/I32/量化类型等）。针对KQ mask的init_tensor_kq_mask专门生成F16块级-INF/0掩码，确保注意力掩码测试有真实稀疏结构。init_tensor_tril为下三角生成非零对角线，用于solve_tri等三角矩阵算子的数值稳定性测试。init_set_rows_row_ids为set_rows/get_rows类算子生成每行互不重复的随机行索引子集，并兼容I32/I64两种索引类型。init_mul_mat_id_tensors把ids张量填充为模n_mats后打乱的随机专家ID，兼顾随机性与覆盖完整性。误差度量函数：nmse（归一化均方误差，mse(a,b)/mse(a,0)）、jdst（Jaccard distance，多重集合差异）、mean_abs_asymmetric（可按期望值过滤）。var_to_str模板与重载系列把字符串、原生数组、std::array、ggml_type、ggml_prec、ggml_op_pool、ggml_scale_mode、input_tensor向量、op_params数组全部统一转成格式化字符串。backend_has_feature通过ggml_backend_reg_get_proc_address动态查询ggml_backend_get_features接口，识别后端特定能力（如Blackwell原生FP4）。is_non_contiguous通过对比实际stride与理论连续stride，判定张量是否是视图；isinf_or_max判断Inf或FLT_MAX形式的无穷标记。
 
@@ -1147,7 +1147,7 @@ static bool backend_has_feature(ggml_backend_t backend, const char * feature_nam
 
 这段代码构成了测试框架的度量衡体系。init_tensor_*家族提供算子特定的初始化策略：均匀分布用于通用场景，KQ掩码生成稀疏结构用于注意力测试，下三角确保三角矩阵数值稳定，行索引生成避免重复。tensor_to_float在反量化后统一转换为float32便于比较。nmse/jdst/mean_abs_asymm提供多种误差度量。var_to_str重载系列确保所有类型能格式化为可读字符串。backend_has_feature和is_non_contiguous提供后端能力和张量布局的运时检测。这些工具共同支撑起测试框架的精确性和灵活性。
 
-## 103.8 本章小结
+## 102.8 本章小结
 
 本章我们学习了GGML后端算子测试框架的设计与实现。首先我们了解了test_result如何封装单次测试的完整档案；其次我们探讨了printer家族如何实现多格式输出；接着我们深入分析了test_case基类的四大评估模式；然后我们考察了张量初始化与误差度量工具箱；最后我们通过具体代码验证了这些机制在实际测试中的协同工作。
 

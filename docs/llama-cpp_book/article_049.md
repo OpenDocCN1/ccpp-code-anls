@@ -1,5 +1,5 @@
 
-# 50. 智能分拣中心：聊天 PEG 解析器的三段式架构与自动分析机制
+# 第49章 智能分拣中心：聊天 PEG 解析器的三段式架构与自动分析机制
 
 ## 学习目标
 
@@ -17,7 +17,7 @@
 
 了解 JSON 转义规范化与括号深度计算的实现细节，是理解流式解析鲁棒性的关键。`normalize_quotes_to_json` 将模型可能输出的 Python 单引号统一转换为 JSON 双引号，`json_brace_depth` 正确计算嵌套花括号的未闭合数量——这两个函数共同确保了即使在部分解析（流式场景）下，生成的 JSON 片段也是合法前缀。掌握 Gemma4 专用映射器处理特殊工具调用语法树的机制，则是理解「如何为特殊格式预留扩展通道」的范例：通过 `gemma4_to_json()` 递归转换 + `visit()` 遍历的组合，Gemma4 的嵌套标签结构被统一映射为标准工具调用格式。
 
-## 50.1 生活类比
+## 49.1 生活类比
 
 想象聊天 PEG 解析器是一个**智能包裹分拣中心**：每天从模型那里送来大量原始文本包裹，这些包裹有的装着推理内容（模型的「内心独白」），有的装着正文（给用户的回复），还有的装着工具调用指令（希望调用的外部能力）。这个分拣中心的运作流程是这样的——
 
@@ -25,7 +25,7 @@
 
 触发标记（trigger marker）则是**警报器**，平时安静地扫描，一旦检测到 `<tool_call>` 这类标记才激活复杂解析规则——就像分拣中心的安检门，只有当 X 光检测到可疑物品时才触发详细检查，而不是对每个包裹都做全面安检，从而节省资源。增量解析与 args_buffer 就像**暂存货架**：包裹只来一半时（流式输出尚未完成），先把零件放货架（args_buffer），等剩余部分到了再组装，同时用 closing_quote_pending 标志记住「我已经打开了一个引号但还没闭合」，确保流式输出的 JSON 前缀始终合法。`normalize_quotes_to_json` 是**包装标准化机**，把 Python 单引号统一换成 JSON 双引号，就像把不同规格的包裹统一换成标准纸箱。至于 Gemma4 映射器，那是一条**专用翻译通道**，针对特殊包装格式（嵌套标签语法），有专门的分拣员（visit 函数）和翻译规则（gemma4_to_json），先将特殊语法树递归转换为标准 JSON，再注入工具调用对象。整个系统协作天衣无缝，让模型输出的每一个字都被精确分类和结构化。
 
-## 50.2 源码地图
+## 49.2 源码地图
 
 ```
 common/chat-peg-parser.h
@@ -172,17 +172,16 @@ common/chat-auto-parser-helpers.cpp
 
 ---
 
-# 源码解析单元 1：装配流水线 —— common_chat_peg_builder 与 mapper 的标签驱动协作
 
-## 50.3 装配流水线 —— common_chat_peg_builder 与 mapper 的标签驱动协作
+## 49.3 装配流水线 —— common_chat_peg_builder 与 mapper 的标签驱动协作
 
-### 50.3.1 聊天 PEG 解析器核心 —— 从文本流到结构化数据的「装配流水线」
+### 49.3.1 聊天 PEG 解析器核心 —— 从文本流到结构化数据的「装配流水线」
 
 `common_chat_peg_builder` 是整个解析器生态的「总装配车间」，它不直接参与文本匹配，而是为 PEG 解析器规则添加语义标签。在分拣中心的比喻中，builder 就是那台「贴标签机」——它接收原子解析器（literal、until、schema 等），输出带有语义标记的解析规则。这些标签分为三个层次：内容层（REASONING、CONTENT）标记文本的语义类型；工具层（TOOL_OPEN、TOOL_NAME、TOOL_ARGS 等）标记工具调用的各个组成部分；参数层（TOOL_ARG_OPEN、TOOL_ARG_NAME、TOOL_ARG_VALUE 等）进一步细化到单个参数的名称和值。
 
 理解 builder 的关键在于区分 `tag()` 和 `atomic()` 两种包装器。`tag()` 仅为匹配到的文本添加一个语义标签，文本本身可以包含子解析器匹配的内容；`atomic()` 则将整个解析器标记为原子操作——在 PEG 语义中，这意味着该规则内的所有内容必须作为一个不可分割的整体匹配成功或失败，不允许部分匹配。为什么工具调用的边界（tool_open、tool_close、tool_id、tool_name）需要 atomic 包装？因为如果工具调用的开始标记（如 `<function=`）只匹配了一部分（例如模型输出了 `<fun` 就中断了），解析器应该将这次匹配视为整体失败，而不是留下一个「半开的工具调用」状态。原子化确保了流式解析中的状态机边界清晰：要么完整匹配一个工具调用边界，要么什么都不匹配。
 
-### 50.3.2 common_chat_peg_builder —— 解析器的「总装配车间」
+### 49.3.2 common_chat_peg_builder —— 解析器的「总装配车间」
 
 源码路径：`common/chat-peg-parser.h` - `common_chat_peg_builder`（48-142 行）
 
@@ -227,7 +226,7 @@ common_peg_parser tool_arg_json_value(const common_peg_parser & p) { return atom
 
 这段代码定义了 `common_chat_peg_builder` 的全部标签方法，是解析器生态的「总装配车间」。在分拣中心的比喻中，builder 就是那台「贴标签机」——它接收原子解析器（literal、until、schema 等），输出带有语义标记的解析规则。这些标签分为三个层次：内容层（REASONING、CONTENT）标记文本的语义类型；工具层（TOOL_OPEN、TOOL_NAME、TOOL_ARGS 等）标记工具调用的各个组成部分；参数层（TOOL_ARG_OPEN、TOOL_ARG_NAME、TOOL_ARG_VALUE 等）进一步细化到单个参数的名称和值。理解 builder 的关键在于区分 `tag()` 和 `atomic()` 两种包装器：`tag()` 仅为匹配到的文本添加语义标签，`atomic()` 则将整个解析器标记为原子操作——在 PEG 语义中，这意味着该规则内的所有内容必须作为一个不可分割的整体匹配成功或失败。为什么工具调用的边界（tool_open、tool_close、tool_id、tool_name）需要 atomic 包装？因为如果工具调用的开始标记只匹配了一部分，解析器应该将这次匹配视为整体失败，而不是留下一个「半开的工具调用」状态——原子化确保了流式解析中的状态机边界清晰：要么完整匹配一个工具调用边界，要么什么都不匹配。
 
-### 50.3.3 common_chat_peg_mapper —— AST 到结构化数据的「翻译官」
+### 49.3.3 common_chat_peg_mapper —— AST 到结构化数据的「翻译官」
 
 源码路径：`common/chat-peg-parser.cpp` - `common_chat_peg_mapper::map()`（80-255 行）
 
@@ -423,7 +422,7 @@ void common_chat_peg_mapper::map(const common_peg_ast_node & node) {
 
 代码中还处理了几个重要的边界情况。`json_brace_depth` 在工具关闭时自动补全未闭合的花括号——如果模型输出了一半的嵌套对象 `{"a": {"b":`，解析器会自动补上 `}}`。`normalize_container_value`（调用 `normalize_quotes_to_json`）将 Python 风格的单引号容器（如 `['a', 'b']`）转换为 JSON 双引号。对于部分解析（`node.is_partial`）中的容器值，直接透传已归一化的内容，避免在中间状态尝试 JSON 解析导致失败。
 
-### 50.3.4 文本工具函数 —— trim、json_brace_depth 与 normalize_quotes_to_json 的「标准化流水线」
+### 49.3.4 文本工具函数 —— trim、json_brace_depth 与 normalize_quotes_to_json 的「标准化流水线」
 
 源码路径：`common/chat-peg-parser.cpp` - 文本工具函数（8-166 行）
 
@@ -602,7 +601,7 @@ static std::string normalize_quotes_to_json(const std::string & input) {
 
 这组文本工具函数是分拣中心「标准化流水线」的基础零件，负责在 AST 映射前对文本进行清理和规范化。在分拣中心的比喻中，它们就像**包裹预处理台**——`trim_trailing_space` / `trim_leading_space` / `trim` 负责去除包裹边缘的 whitespace（就像修剪包裹上多余的填充物），`trim` 特殊限制了开头最多只去除一个空白，避免误删内容标记前的分隔符；`json_brace_depth` 是**括号深度计数器**，它在遍历字符串时维护一个状态机——用 `in_string` 标志跳过引号内的花括号，用 `escaped` 标志处理转义字符，最终返回未闭合的左花括号数量，这使得映射器在工具关闭时能自动补全嵌套对象的 `}`；`escape_json_string_inner` 是**JSON 转义机**，利用 `ordered_json(s).dump()` 获得标准的 JSON 转义字符串后剥掉外层引号，确保参数值中的特殊字符（换行、引号、反斜杠）都被正确转义；`normalize_quotes_to_json` 是最精密的**包装标准化机**，它逐字符遍历输入，用 `in_single_quoted` 和 `in_double_quoted` 双标志追踪当前字符串状态——遇到单引号就切换为双引号（开或闭），遇到双引号且在单引号字符串内就转义为 `\"`，遇到反斜杠就按所在字符串类型分发转义规则（单引号字符串内的 `\'` 转为无转义的 `'`，双引号字符串内的转义原样保留），最终将 Python 风格的单引号容器（如 `['a', 'b']`）统一转换为合法的 JSON 双引号形式。这组函数共同确保了即使在流式部分解析的场景下，映射器接收到的文本片段也是可安全拼接的 JSON 前缀。
 
-### 50.3.5 模块依赖图
+### 49.3.5 模块依赖图
 
 ```mermaid
 graph TD
@@ -625,17 +624,16 @@ graph TD
 
 ---
 
-# 源码解析单元 2：Gemma4 专属通道 —— common_chat_peg_gemma4_mapper 与 gemma4_to_json 的递归转换
 
-## 50.4 Gemma4 专属通道 —— common_chat_peg_gemma4_mapper 与 gemma4_to_json 的递归转换
+## 49.4 Gemma4 专属通道 —— common_chat_peg_gemma4_mapper 与 gemma4_to_json 的递归转换
 
-### 50.4.1 Gemma4 专用解析通道 —— 特殊格式的「定制化翻译官」
+### 49.4.1 Gemma4 专用解析通道 —— 特殊格式的「定制化翻译官」
 
 在分拣中心的比喻中，Gemma4 就像来自**特殊产地的包裹**——它使用嵌套标签语法来表示工具调用，而不是常见的 JSON 或 XML 格式。例如，Gemma4 的工具调用可能被包裹在自定义的标记中，参数名和值使用特殊的分隔符，甚至参数值本身可能是嵌套的结构。通用映射器（common_chat_peg_mapper）无法直接处理这种特殊语法，因为它的 map() 函数假设工具参数是以 JSON 对象或逐个 arg_name/arg_value 节点的形式出现的。因此，分拣中心为 Gemma4 开设了一条**专用翻译通道**——`common_chat_peg_gemma4_mapper`，它有专门的分拣员（visit 函数）和翻译规则（gemma4_to_json）。
 
 这条通道的核心策略是：先将 Gemma4 的特有语法树通过 `gemma4_to_json()` 函数递归转换为标准 JSON，然后再将 JSON 作为参数值注入工具调用对象。这种方式既保持了映射器的通用性（最终输出的 tool_calls 结构与标准格式完全一致），又为 Gemma4 提供了足够的灵活性。流式安全的 JSON 生成是这条通道的重要特性：通过 `is_partial` 标志决定是否添加闭合符号（如字符串的闭合引号、数组的 `]`、字典的 `}`），确保在部分解析时生成的 JSON 也是合法的前缀。工具调用的条件提取策略确保只在 tool-name 和 tool-args 都存在且 tool-name 非 partial 时才生成有效调用，避免产生不完整的工具调用。
 
-### 50.4.2 common_chat_peg_gemma4_mapper —— Gemma4 的专属翻译官
+### 49.4.2 common_chat_peg_gemma4_mapper —— Gemma4 的专属翻译官
 
 源码路径：`common/chat-peg-parser.cpp` - `common_chat_peg_gemma4_mapper::visit()`（939-983 行）
 
@@ -688,7 +686,7 @@ void common_chat_peg_gemma4_mapper::visit(const common_peg_ast_arena & arena, co
 
 条件提取逻辑是这条通道的关键安全措施：只有当 tool-name 和 tool-args 都存在，且 tool-name 节点的 `is_partial` 为 false（即工具名称已完整到达）时，才生成工具调用对象。如果工具名称还不完整（流式输出中常见），则直接跳过，不产生半成品调用——这避免了在流式输出中向用户暴露不完整的工具调用。参数的转换通过调用 `gemma4_to_json(arena, args_node.children[0])` 实现，将 tool-args 子树的第一个子节点（即参数内容的根节点）递归转换为标准 JSON 字符串。
 
-### 50.4.3 gemma4_to_json —— Gemma4 语法树的 JSON 转换器
+### 49.4.3 gemma4_to_json —— Gemma4 语法树的 JSON 转换器
 
 源码路径：`common/chat-peg-parser.cpp` - `gemma4_to_json()`（894-937 行）
 
@@ -802,7 +800,7 @@ static std::string gemma4_to_json(const common_peg_ast_arena & arena, common_peg
 
 这个函数的设计有两个精妙之处。第一是**递归组合**：复杂类型（数组、字典）通过递归调用 `gemma4_to_json()` 处理其子节点来构建，`gemma4-dict-kv` 节点则简单地拼接其所有子节点的转换结果（子节点已经包含了键和值两部分）。第二是**流式安全**：每个容器类型（字符串、数组、字典）在 `node.is_partial` 为 true 时省略闭合符号（引号、方括号、花括号），这确保了在流式输出中，即使 Gemma4 的工具调用尚未完成，已输出的部分也是合法的 JSON 前缀——就像包裹只封了一半的口，但里面的物品已经可以被部分查看。
 
-### 50.4.4 Gemma4 通道架构图
+### 49.4.4 Gemma4 通道架构图
 
 ```mermaid
 graph TD
@@ -830,15 +828,14 @@ graph TD
 
 ---
 
-# 源码解析单元 3：模板自动分析 —— autoparser 的逆向推断与差分侧写
 
-## 50.5 模板自动分析 —— autoparser 的逆向推断与差分侧写
+## 49.5 模板自动分析 —— autoparser 的逆向推断与差分侧写
 
-### 50.5.1 聊天模板自动分析器 —— 逆向推断输出格式的「诊断师」
+### 49.5.1 聊天模板自动分析器 —— 逆向推断输出格式的「诊断师」
 
 在分拣中心的比喻中， autoparser 就是那位**逆向工程侦探**——它不直接阅读模型模板的源码（那需要理解复杂的 Jinja 语法和模板语义），而是通过构造模板变体、对比输出差异，来推断模板的隐藏结构。具体来说，侦探会生成两个版本的模板输出——一个包含推理内容，一个不包含——然后使用 `calculate_diff_split` 计算它们的差分分割，从而定位推理标记的位置和内容。同样的技术应用于内容包裹识别（正文是否被标记包围）和工具调用格式检测（JSON、标签 JSON、标签标记三种格式）。这种差分分析的方法大大降低了实现难度，且具有更好的可移植性，可以适应不同模型的各种模板格式。
 
-### 50.5.2 autoparser —— 模板分析的「总调度」
+### 49.5.2 autoparser —— 模板分析的「总调度」
 
 源码路径：`common/chat-diff-analyzer.cpp` - `autoparser::analyze_template()`（164-213 行）
 
@@ -903,7 +900,7 @@ void autoparser::analyze_template(const common_chat_template & tmpl) {
 
 分析完成后，`collect_preserved_tokens()` 从各分析阶段的结果中收集所有发现的标记（如推理的起始/结束标记、内容的包裹标记、工具调用的各种前后缀），并去重后存入 preserved_tokens 列表——这些标记在后续的解析器构建中需要被「保留」，即在解析过程中原样输出，不被当作普通文本消费。最后，`workarounds` 向量中的每个兼容性补丁函数被调用，允许针对特定模型模板的已知问题进行修正（例如某些模板的工具调用格式与标准不完全一致）。详细的分析结果通过 LOG_DBG 输出，为开发者和调试者提供清晰的诊断信息。
 
-### 50.5.3 collect_preserved_tokens —— 保留标记的「收集员」
+### 49.5.3 collect_preserved_tokens —— 保留标记的「收集员」
 
 源码路径：`common/chat-diff-analyzer.cpp` - `autoparser::collect_preserved_tokens()`（215-246 行）
 
@@ -950,7 +947,7 @@ void autoparser::collect_preserved_tokens() {
 
 收集员的实现非常简洁但考虑周全。它定义了一个 `add_token` lambda，对每个传入的标记先做 `trim_whitespace` 去除首尾空白，然后检查是否为空——空标记（如某些模板中不存在的可选标记）直接跳过。去重通过 `std::find` 线性检查 preserved_tokens 向量，避免同一标记（如推理结束标记同时被 reasoning 和 content 阶段引用）被重复添加。收集的标记覆盖了全部分析维度：推理的起始/结束标记（reasoning.start/end）、内容的起始/结束标记（content.start/end）、工具调用的节标记（section_start/end）、每调用标记（per_call_start/end）、函数名的前后缀（name_prefix/name_suffix）和结束符（close）、参数块的起始/结束标记（arguments.start/end）、参数名的前后缀（name_prefix/name_suffix）、参数分隔符（separator）、参数值的前后缀（value_prefix/value_suffix），以及调用 ID 的前后缀（call_id.prefix/suffix）。这个清单确保了后续 `peg_generator::generate_parser()` 在序列化解析器时，能将 `data.preserved_tokens` 正确传递给运行时，使得解析器在流式处理中保留所有关键标记。
 
-### 50.5.4 calculate_diff_split —— 差异分割的「手术刀」
+### 49.5.4 calculate_diff_split —— 差异分割的「手术刀」
 
 源码路径：`common/chat-auto-parser-helpers.cpp` - `calculate_diff_split()`（85-156 行）
 
@@ -1041,7 +1038,7 @@ diff_split calculate_diff_split(const std::string & left, const std::string & ri
 
 算法的工作流程分为三个阶段。第一阶段是分段：将 left 和 right 分别切分为 TEXT（普通文本）和 MARKER（标记）交替的段序列。第二阶段是双向匹配：从两端同时向中间推进，如果左端的段等于右端的段，就归入 prefix；如果左尾的段等于右尾的段，就归入 suffix。第三阶段是剩余处理：当两端无法继续匹配时，将剩余部分累加为 remainder_left 和 remainder_right，然后在这些剩余字符串上计算字符级的公共前缀和公共后缀（仅当两端都是 TEXT 类型时才计算，避免切断标记），最终确定 left 和 right 的独有部分。算法还处理了几个边界情况：如果 left 和 right 完全相同，则整个 left 归入 prefix；如果 left 是 right 的前缀，则 right 的剩余部分归入 right 字段。
 
-### 50.5.5 analyze_reasoning —— 推理内容分析的「侦探」
+### 49.5.5 analyze_reasoning —— 推理内容分析的「侦探」
 
 `analyze_reasoning` 是侦探团队的第一个小组，专门负责**推理内容的精准定位**。在分拣中心的比喻中，这个小组的任务是回答一个问题：模型输出的哪些部分是「思考过程」（推理内容），哪些是「给用户的回复」（正文内容）？为了回答这个问题，小组使用了三种差分对比技术。
 
@@ -1051,7 +1048,7 @@ diff_split calculate_diff_split(const std::string & left, const std::string & ri
 
 `compare_reasoning_scope()` 进一步探究推理的范围：推理内容是否仅在工具调用时出现（TOOLS_ONLY 模式）？它构造两个变体——一个包含只有推理内容的 assistant 消息，另一个包含同时有推理内容和工具调用的 assistant 消息——如果推理内容只在第二个变体中出现，就将模式标记为 TOOLS_ONLY。这种模式下的推理内容不会在普通对话中出现，只有在工具调用场景中才会被激活。
 
-### 50.5.6 analyze_content —— 正文内容包裹的「识别师」
+### 49.5.6 analyze_content —— 正文内容包裹的「识别师」
 
 `analyze_content` 是侦探团队的第二个小组，负责**主内容的包裹识别**。在分拣中心的比喻中，这个小组的任务是判断正文内容是否被标记包围——也就是说，模型输出的正文是裸文本（PLAIN 模式）还是被特定的标签包裹（ALWAYS_WRAPPED 模式）。
 
@@ -1059,7 +1056,7 @@ diff_split calculate_diff_split(const std::string & left, const std::string & ri
 
 `is_always_wrapped()` 是一个简单的查询函数，它检查内容模式是否为 ALWAYS_WRAPPED 且起始和结束标记都非空。这个函数在后续的解析器构建阶段被频繁调用——例如在 `build_tool_parser_json_native()` 中，如果内容总是被包裹，就需要在工具调用解析器中包含内容包装器，确保工具调用之前的正文也能被正确解析。
 
-### 50.5.7 autoparser 分析流程架构图
+### 49.5.7 autoparser 分析流程架构图
 
 ```mermaid
 graph TD
@@ -1097,17 +1094,16 @@ graph TD
 
 ---
 
-# 源码解析单元 4：工具调用格式的分子级检测 —— analyze_tools 的多协议法医
 
-## 50.6 工具调用格式的分子级检测 —— analyze_tools 的多协议法医
+## 49.6 工具调用格式的分子级检测 —— analyze_tools 的多协议法医
 
-### 50.6.1 工具调用格式的分子级检测 —— 从 JSON 到 XML 的「格式法医」
+### 49.6.1 工具调用格式的分子级检测 —— 从 JSON 到 XML 的「格式法医」
 
 工具调用格式的分子级检测负责识别模型输出中工具调用的具体序列化形式。不同模型可能使用不同的格式：有些使用标准的 JSON 对象（如 `{"name": "func", "arguments": {...}}`），有些使用带标签的 JSON（如 `<tool_call>{"name": "func"}</tool_call>`），还有些使用纯标签格式（如 `<tool_call><function=name><param=key>value</param></function></tool_call>`）。检测过程通过对比包含工具调用和不包含工具调用的模板输出，自动推断出工具调用的格式模式和具体的标记。
 
 在分拣中心的比喻中，格式法医的工作就像**分子级别的格式鉴定**——他们不关心工具调用的具体内容（函数名是什么、参数值是什么），而是关心工具调用的「语法结构」：函数名被什么标记包裹？参数名和参数值之间用什么分隔？整个工具调用被什么标记包围？这些鉴定结果直接决定了后续解析器的构建方式。
 
-### 50.6.2 analyze_tool_call_format —— 工具调用格式的「法医」
+### 49.6.2 analyze_tool_call_format —— 工具调用格式的「法医」
 
 源码路径：`common/chat-diff-analyzer.cpp` - `analyze_tools::analyze_tool_call_format()`（618-670 行）
 
@@ -1176,43 +1172,43 @@ void analyze_tools::analyze_tool_call_format(const std::string &       haystack,
 
 鉴定过程使用了一个巧妙的 PEG 解析器 `in_json_haystack`，它检查在 `{` 或 `:` 之后是否紧跟着 `"needle"` 的模式——这正是 JSON 对象中键值对的典型结构。如果函数名 needle（如 `func1`）出现在这种结构中，就可以确定工具调用使用了 JSON 原生格式。确定格式模式后，方法首先清理推理标记（移除 reasoning.start 和 reasoning.end 之间的内容），然后将清理后的文本传递给具体的子分析函数：JSON 格式调用 `analyze_tool_call_format_json_native()`，非 JSON 格式调用 `analyze_tool_call_format_non_json()`。最后，方法放宽结束标记的空白要求——因为结束标记（如 `</tool_call>`）后面的空白不影响内容解析，去除空白可以避免在后续的标记比对中出现不必要的差异。
 
-### 50.6.3 analyze_tool_call_format_json_native —— JSON 格式的「结构鉴定师」
+### 49.6.3 analyze_tool_call_format_json_native —— JSON 格式的「结构鉴定师」
 
 `analyze_tool_call_format_json_native()` 是 JSON 格式的「结构鉴定师」，它负责从 JSON 格式的工具调用片段中提取字段信息和节标记。在分拣中心的比喻中，这就像法医对 JSON 格式的包裹进行详细的结构分析——他们要确定 name_field（函数名字段）、args_field（参数字段）、id_field（调用 ID 字段）等关键字段在 JSON 对象中的位置，以及工具调用在文本中的节起始和结束标记。
 
 鉴定师首先找到 JSON 对象的起始 `{` 和结束 `}` 位置，解析这个 JSON 结构，然后遍历其所有字段。通过检查字段值是否等于函数名 needle（确定 name_field）、字段值中是否包含参数名 needle（确定 args_field）、字段值是否包含 "call0000"（确定 id_field）、字段名是否包含 "id"（确定 gen_id_field），鉴定师逐步构建出完整的字段映射。如果函数名本身就是 JSON 对象的键（如 `{"func1": {...}}`），则设置 `fun_name_is_key = true`，此时不需要单独的 name_field。鉴定师还检查工具调用是否被包裹在数组中（`[...]`），如果是则设置 `tools_array_wrapped = true` 并调整节标记的范围。最终，根据各字段在原始文本中的位置，确定参数顺序（parameter_order）和节起始/结束标记。
 
-### 50.6.4 analyze_tool_call_format_non_json —— 非 JSON 格式的「标记提取师」
+### 49.6.4 analyze_tool_call_format_non_json —— 非 JSON 格式的「标记提取师」
 
 `analyze_tool_call_format_non_json()` 是非 JSON 格式的「标记提取师」，它负责从标签格式的工具调用片段中提取函数标记、节标记和每调用标记。在分拣中心的比喻中，这就像法医对标签格式的包裹进行结构分析——他们要确定函数名被什么标签包裹（如 `<function=name>` 中的 `<function=` 和 `>`）、整个工具调用被什么标签包围（如 `<tool_call>` 和 `</tool_call>`）。
 
 提取师首先使用 `fun_marker_parser` 来确定函数标记的格式——函数名可能被 `<...>` 或 `[...]` 类型的标签包裹。然后，它尝试用两种模式来解析工具调用的结构：一种是「双标记模式」（节标记 + 每调用标记 + 函数前缀 + 函数标记 + 剩余内容），另一种是「单标记模式」（节标记 + 函数标记 + 剩余内容）。根据哪种模式匹配成功，提取师分别从解析结果中提取 `sec_start`（节起始标记）、`call_start`（每调用起始标记）、`fun_pre`（函数名前缀）等标签，最终确定 `format.section_start`、`format.per_call_start`、`format.section_end`、`format.per_call_end` 等关键标记。
 
-### 50.6.5 check_per_call_markers —— 并行调用标记的「检测师」
+### 49.6.5 check_per_call_markers —— 并行调用标记的「检测师」
 
 `check_per_call_markers()` 是并行调用标记的「检测师」，它负责判断在支持并行工具调用的模板中，是否存在每调用级别的格式标记。在分拣中心的比喻中，这就像法医通过对比「一个工具调用」和「两个工具调用」的包裹，来判断每个工具调用是否有独立的包装——如果两个调用的包裹格式与一个调用的包裹格式相同（只是重复了两次），说明存在 per_call 级别的标记；如果两个调用的包裹被一个更大的节标记包围，则说明只有节级别的标记。
 
 检测师构造两个变体——一个包含一个工具调用，另一个包含两个工具调用——然后计算它们的差异分割。如果第二个工具调用的内容以节起始标记开头，说明节标记实际上应该是每调用标记——将 `format.section_start` 和 `format.section_end` 的值提升为 `per_call_start` 和 `per_call_end`，并将节标记清空。这种检测确保了在并行调用场景下，解析器能够正确地包装每个独立的工具调用。
 
-### 50.6.6 extract_function_markers —— 函数标记的「测绘师」
+### 49.6.6 extract_function_markers —— 函数标记的「测绘师」
 
 `extract_function_markers()` 是函数标记的「测绘师」，它负责提取函数名称的前缀（name_prefix）、后缀（name_suffix）以及调用结束符（close）。在分拣中心的比喻中，这就像法医通过对比两个不同函数名的调用（如 `func1` 和 `func2`），来精确测绘函数名在文本中的包裹结构——函数名前面有什么标记？后面有什么标记？参数结束后到工具调用结束之间有什么标记？
 
 测绘师构造两个变体——分别包含不同的函数名——计算它们的差异分割。如果两个函数名都出现在差异中，就通过 PEG 解析器提取函数名前面的部分（name_prefix）和后面的部分（name_suffix）。对于 JSON 格式，name_suffix 会延伸到第一个 `{` 或 `[`（参数的开始）之前；对于标签格式，name_suffix 会延伸到第一个标记（参数标记）之前。结束符（close）的提取则更复杂——它需要在最后一个参数值之后、工具调用结束标记之前找到内容，可能还需要借助「无工具调用」变体的差异来辅助定位。
 
-### 50.6.7 参数标记的「精密切片师」
+### 49.6.7 参数标记的「精密切片师」
 
 参数标记的提取由四个函数协作完成，就像一个**精密切片师团队**。`extract_argument_name_markers()` 通过对比两个不同参数名的变体，提取参数名称的前缀（name_prefix）和后缀（name_suffix）——参数名被什么标记包裹？`extract_argument_value_markers()` 通过对比同一参数不同值的变体，提取参数值的前缀（value_prefix）和后缀（value_suffix）——参数值前面有什么标记？后面有什么标记？`extract_argument_separator()` 通过对比单参数和双参数的变体，提取参数之间的分隔符（如 `, ` 或 `,\n`）。`extract_args_markers()` 则通过对比无参数和有参数的变体，提取参数块的开始和结束标记（主要针对 JSON 原生格式，如 `{` 和 `}`）。
 
 在分拣中心的比喻中，这个团队的工作就像是对包裹的内部结构进行微观分析——每个参数名和参数值都有自己的包装，这些包装的精确格式对于后续的解析器构建至关重要。例如，如果参数名被 `<param=` 和 `>` 包裹，参数值被 `</param>` 结束，那么解析器就需要按照这个精确的格式来匹配参数。
 
-### 50.6.8 extract_call_id_markers —— 调用 ID 的「三态定位师」
+### 49.6.8 extract_call_id_markers —— 调用 ID 的「三态定位师」
 
 `extract_call_id_markers()` 是调用 ID 的「三态定位师」，它负责确定 call_id 在工具调用中的位置。在分拣中心的比喻中，这就像法医需要判断包裹上的序列号（call_id）贴在包裹的哪个位置——是在函数名之前（PRE_FUNC_NAME）？在函数名和参数之间（BETWEEN_FUNC_AND_ARGS）？还是在参数之后（POST_ARGS）？
 
 定位师构造两个变体——分别包含不同的调用 ID（如 `call00001` 和 `call00009`）——计算它们的差异分割。通过检查函数名出现在 diff 的 prefix 还是 suffix 中，定位师可以判断 call_id 的位置：如果函数名只在 prefix 中且参数的大括号 `{` 在 suffix 中，则 call_id 在函数名和参数之间（BETWEEN_FUNC_AND_ARGS）；如果函数名和参数都在 prefix 中，则 call_id 在参数之后（POST_ARGS）；如果函数名只在 suffix 中，则 call_id 在函数名之前（PRE_FUNC_NAME）。每种位置下，定位师进一步提取 call_id 的前缀和后缀标记——前缀是 call_id 前面的标记，后缀是 call_id 后面的标记。
 
-### 50.6.9 工具调用格式检测架构图
+### 49.6.9 工具调用格式检测架构图
 
 ```mermaid
 graph TD
@@ -1246,13 +1242,12 @@ graph TD
 
 ---
 
-# 源码解析单元 5：工具调用解析器的组装 —— 将分析结果转化为运行时「解码器」
 
-## 50.7 工具调用解析器的组装 —— 将分析结果转化为运行时「解码器」
+## 49.7 工具调用解析器的组装 —— 将分析结果转化为运行时「解码器」
 
 分析阶段完成后，需要将分析结果转化为实际的 PEG 解析器。这一阶段的核心是 `analyze_tools::build_parser()`，它根据分析出的工具格式模式，分派到对应的解析器构建函数：`build_tool_parser_json_native()`、`build_tool_parser_tag_json()` 和 `build_tool_parser_tag_tagged()`。在分拣中心的比喻中，这就像侦探的分析报告被送到**流水线装配工**手中，装配工根据报告中的规格（格式模式、标记、字段名）搭建对应的分拣线——JSON 格式的搭建 JSON 分拣线，标签格式的搭建标签分拣线。
 
-### 50.7.1 analyze_tools::build_parser() —— 分支调度
+### 49.7.1 analyze_tools::build_parser() —— 分支调度
 
 源码路径：`common/chat-auto-parser-generator.cpp` - `analyze_tools::build_parser()`（185-198 行）
 
@@ -1280,7 +1275,7 @@ common_peg_parser analyze_tools::build_parser(parser_build_context & ctx) const 
 
 `analyze_tools::build_parser()` 是工具调用解析器组装阶段的「分支调度员」。在分拣中心的比喻中，调度员读取格式法医的鉴定报告（format.mode），然后根据报告中的格式类型将工作分派给三个专业小组之一：JSON 原生格式交给 `build_tool_parser_json_native()`，标签 JSON 格式交给 `build_tool_parser_tag_json()`，标签标记格式交给 `build_tool_parser_tag_tagged()`。这种 switch 分派的设计使得三种格式的构建逻辑完全独立，每种格式都可以针对其特点进行优化，互不干扰。默认情况下的错误提示也为开发者提供了清晰的调试路径——如果格式模式无法确定（NONE），调度员会输出错误信息并返回一个空解析器（eps），确保系统不会崩溃但工具调用功能将不可用。
 
-### 50.7.2 build_tool_parser_json_native —— JSON 原生格式的「装配工」
+### 49.7.2 build_tool_parser_json_native —— JSON 原生格式的「装配工」
 
 源码路径：`common/chat-auto-parser-generator.cpp` - `build_tool_parser_json_native()`（202-240 行）
 
@@ -1329,7 +1324,7 @@ common_peg_parser analyze_tools::build_tool_parser_json_native(parser_build_cont
 
 `build_tool_parser_json_native()` 是 JSON 原生格式解析器的构建函数，负责将 JSON 格式的工具调用分析结果转化为可运行的 PEG 解析规则。在分拣中心的比喻中，这就像装配工根据「JSON 规格」搭建 JSON 分拣线。装配工首先处理字段名的点表示法——如果 function_field 存在且不是 "function"，则将 name_field 和 args_field 构造为 `function_field.name_field` 的形式，以匹配嵌套 JSON 结构（如 `{"tool": {"name": "func", "arguments": {...}}}`）。接着调用 `standard_json_tools()` 构建具体的工具调用解析规则，传入分析出的节标记、字段名、参数顺序等信息。如果内容总是被包裹（is_always_wrapped），装配工会将内容包装器嵌入到工具调用解析器中——通过 `build_optional_wrapped()` 构建可选的包裹内容解析器，确保在工具调用之前出现的正文也能被正确解析。最后，装配工将推理解析器、可选的正文内容、工具调用解析器和结束符按顺序串联，形成完整的解析规则。`force_tools` 标志（tool_choice 为 REQUIRED 时）会强制跳过可选的正文内容，确保解析器在强制工具调用模式下不接受普通文本。
 
-### 50.7.3 build_tool_parser_tag_json —— 标签 JSON 格式的「装配工」
+### 49.7.3 build_tool_parser_tag_json —— 标签 JSON 格式的「装配工」
 
 源码路径：`common/chat-auto-parser-generator.cpp` - `build_tool_parser_tag_json()`（274-337 行）
 
@@ -1414,7 +1409,7 @@ common_peg_parser analyze_tools::build_tool_parser_tag_json(parser_build_context
 
 `build_tool_parser_tag_json()` 是标签 JSON 格式解析器的构建函数，负责将标签包裹 JSON 的工具调用分析结果转化为 PEG 解析规则。在分拣中心的比喻中，这就像装配工根据「标签 JSON 规格」搭建分拣线——工具调用被包裹在 `<tool_call>` 和 `</tool_call>` 之间，参数是标准的 JSON 对象。装配工通过 `foreach_function` 遍历所有工具函数，为每个函数构建独立的解析规则：先根据 call_id 的位置（BETWEEN_FUNC_AND_ARGS）和前后缀标记构建可选的 call_id 解析器，再用 `p.schema(p.json(), ...)` 构建基于 JSON Schema 约束的参数解析器，并用 `arguments.start` / `arguments.end` 包裹参数块。每个函数的解析规则通过 `build_func_parser()` 辅助函数组装为 tool_open + call_id + args + tool_close 的统一结构。所有函数规则通过 `tool_choice` choice 节点合并后，装配工根据是否支持并行调用、是否有节标记等因素动态组合工具调用部分的解析规则——如果支持并行调用，工具调用部分会使用 `zero_or_more` 来匹配多个调用；如果有节标记，则在工具调用部分外再包裹一层节标记解析。最后，通过 `trigger_rule("tool-call", ...)` 将工具调用部分包装为可在流式解析中按需激活的规则，并与推理解析器、可选的正文内容串联为完整解析器。
 
-### 50.7.4 build_tool_parser_tag_tagged —— 标签标记格式的「装配工」
+### 49.7.4 build_tool_parser_tag_tagged —— 标签标记格式的「装配工」
 
 源码路径：`common/chat-auto-parser-generator.cpp` - `build_tool_parser_tag_tagged()`（340-474 行）
 
@@ -1582,7 +1577,7 @@ common_peg_parser analyze_tools::build_tool_parser_tag_tagged(parser_build_conte
 
 `build_tool_parser_tag_tagged()` 是标签标记格式解析器的构建函数，也是三种格式中最复杂的一个。在分拣中心的比喻中，这就像装配工根据「标签标记规格」搭建分拣线——每个参数都有独立的标签包裹（如 `<param=key>value</param>`），参数顺序灵活，必选参数必须出现，可选参数可以灵活排序。装配工根据参数的 schema 信息，为每个参数构建独立的解析规则：通过 `arguments.name_prefix` + `tool_arg_name(literal(param_name))` + `arguments.name_suffix` 构建参数名解析器，通过 `arguments.value_prefix` + `tool_arg_string_value/schema` + `tool_arg_close(literal(arguments.value_suffix))` 构建参数值解析器。类型推断逻辑从 schema 的 type 字段（支持字符串、数组、对象三种形式）和 enum 枚举值中推断参数类型，决定使用 `tool_arg_string_value`（字符串类型，用 until 匹配到 value_suffix 为止）还是 `tool_arg_json_value`（JSON 类型，用 schema 约束匹配）。必选参数按定义顺序组成序列（args_seq），可选参数通过 `repeat(p.space() + any_opt, 0, N)` 支持最多 N 次的灵活排序——`any_opt` 将所有可选参数解析器合并为 choice，repeat 确保每个可选参数最多出现一次且顺序任意。`atomic_peek` 机制通过 `peek(literal(arguments.name_prefix))` 确保只有在存在参数标签时才匹配，避免在没有参数标签时错误匹配。最后，所有函数规则通过 `tool_choice` choice 合并，根据 per_call 标记和并行调用标志组合为工具调用部分，并通过 `trigger_rule` 包装为可在流式解析中按需激活的规则。
 
-### 50.7.5 解析器组装架构图
+### 49.7.5 解析器组装架构图
 
 ```mermaid
 graph TD
@@ -1613,13 +1608,12 @@ graph TD
 
 ---
 
-# 源码解析单元 6：语法规则与触发词的编织 —— peg_generator 的双轨制
 
-## 50.8 语法规则与触发词的编织 —— 让模型学会「何时说、说什么、怎么说」
+## 49.8 语法规则与触发词的编织 —— 让模型学会「何时说、说什么、怎么说」
 
 解析器负责提取结构，而语法规则负责约束生成。这一节介绍如何将分析结果转化为 GBNF 语法，从而限制模型的输出格式。在分拣中心的比喻中，这就像为分拣线配备**自动包装机**——包装机根据包裹的规格（JSON schema）自动调整包装模板，确保每个包裹都按照指定的格式打包。响应格式的 JSON Schema 集成：生成包装在 ` ```json...``` ` 内的 schema 解析器，确保模型输出符合指定的 JSON 结构。工具 schema 的延迟解析：`grammar_lazy` 按需展开工具规则，只有当触发标记出现时才激活语法约束，避免不必要的性能开销。触发标记设计：`COMMON_GRAMMAR_TRIGGER_TYPE_WORD` 激活文法规则，通过 `trigger_marker` 指定触发词。JSON 工具解析的三种布局：函数名作为键、嵌套键、扁平键，分别对应不同的 JSON 结构化形式。
 
-### 50.8.1 peg_generator::generate_parser() —— 解析器与语法的双轨制
+### 49.8.1 peg_generator::generate_parser() —— 解析器与语法的双轨制
 
 源码路径：`common/chat-auto-parser-generator.cpp` - `peg_generator::generate_parser()`（48-91 行）
 
@@ -1686,7 +1680,7 @@ common_chat_params peg_generator::generate_parser(const common_chat_template &  
 
 双轨制的工作流程是：首先运行差分分析（autoparser.analyze_template）提取模板结构，然后调用 `build_parser()` 构建 PEG 解析器并序列化为字节流（parser.save()）。接着，根据是否存在工具和响应格式，决定是否生成 GBNF 语法。语法的生成通过 `build_grammar` 回调实现——它遍历所有工具函数并解析 JSON schema 中的引用（resolve_refs），然后调用 `parser.build_grammar(builder, data.grammar_lazy)` 将解析器规则转换为 GBNF 语法。`grammar_lazy` 标志是延迟语法的核心：当它为 true 时（仅在 tool_choice 为 AUTO 且无 response_format 时），语法规则是延迟的——只有当 `trigger_marker`（如 `<tool_call>`）出现在模型输出中时，语法约束才被激活。语法触发器通过 `grammar_triggers` 设置，类型为 `COMMON_GRAMMAR_TRIGGER_TYPE_WORD`，触发词为 `trigger_marker`。这种设计避免了在普通对话中对模型输出施加不必要的语法约束，只有在模型「表示」要调用工具时才激活约束。`include_grammar` 的条件覆盖了三种需要语法的场景：有 response_format 时（强制 JSON 输出）、tool_choice 为 REQUIRED 时（强制工具调用）、tool_choice 为 AUTO 且有 trigger_marker 时（允许自主决定但需要延迟激活）。
 
-### 50.8.2 python_style_tool_calls —— Python 风格工具调用的「快速构建器」
+### 49.8.2 python_style_tool_calls —— Python 风格工具调用的「快速构建器」
 
 源码路径：`common/chat-peg-parser.cpp` - `common_chat_peg_builder::python_style_tool_calls()`（407-466 行）
 
@@ -1764,7 +1758,7 @@ common_peg_parser common_chat_peg_builder::python_style_tool_calls(
 
 `python_style_tool_calls()` 是 Python 风格工具调用解析器的「快速构建器」，负责处理如 `func1(arg1="value1", arg2=value2)` 这种函数调用风格的工具调用格式。在分拣中心的比喻中，这就像一条**专用分拣线**——它识别的不是 JSON 或 XML 标签，而是编程语言风格的函数调用语法。构建器遍历所有工具函数，为每个函数根据其 schema 构建独立的解析规则：参数名直接用 `literal(prop_name)` 匹配，参数值根据 schema 中的 type 字段决定——字符串类型使用 `string_value_parser`（支持双引号和单引号两种字符串字面量），非字符串类型使用 `tool_arg_value(python_value())` 匹配 Python 风格的字面量值。每个参数通过 `tool_arg()` 包装为 tool_arg_open + tool_arg_name + `=` + arg_value + tool_arg_close 的结构，多个参数通过 `zero_or_more("," + space() + arg_choice)` 支持逗号分隔的并列参数。函数调用本身通过 `tool_open(tool_name(literal(name)) + literal("("))` 和 `tool_close(literal(")"))` 包裹，匹配 `funcname(...)` 的形式。如果支持并行调用，多个工具调用被包裹在方括号 `[...]` 中并用逗号分隔；否则单个工具调用也用方括号包裹。这种构建器为某些使用 Python 函数调用语法的模型模板（如早期的 llama.cpp 模板）提供了开箱即用的解析支持。
 
-### 50.8.3 三种 JSON 工具布局：function_is_key、nested_keys、flat_keys
+### 49.8.3 三种 JSON 工具布局：function_is_key、nested_keys、flat_keys
 
 三种 JSON 工具布局对应模型输出工具调用时的不同 JSON 结构化形式。在分拣中心的比喻中，这就像三种不同的包裹打包方式——它们都装的是同一个工具调用，但外包装的格式不同。
 
@@ -1774,7 +1768,7 @@ common_peg_parser common_chat_peg_builder::python_style_tool_calls(
 
 **扁平键（flat_keys）**：所有字段都在同一层级，如 `{"name": "func1", "arguments": {"arg1": "value1"}, "id": "call_id"}`。`build_json_tools_flat_keys()` 根据 `parameters_order` 对字段进行排序，确保解析器能够匹配字段顺序灵活的 JSON 结构。生成的解析器匹配扁平结构的 JSON，字段顺序可以自定义。
 
-### 50.8.4 双轨制架构图
+### 49.8.4 双轨制架构图
 
 ```mermaid
 graph TD
@@ -1800,13 +1794,12 @@ graph TD
 
 ---
 
-# 源码解析单元 7：辅助解析工具与基础设施 —— tag_based_peg_mapper、tagged_peg_parser 与差分工具集
 
-## 50.9 辅助解析工具与基础设施 —— 解析生态的「工具百宝箱」
+## 49.9 辅助解析工具与基础设施 —— 解析生态的「工具百宝箱」
 
 除了核心的 builder 和 mapper 之外，聊天 PEG 解析器还提供了一系列辅助工具，这些工具虽然不直接参与解析，但为解析器的构建、调试和测试提供了便利。在分拣中心的比喻中，这些辅助工具就像**工具百宝箱**——它们不直接参与包裹的分拣，但为分拣中心的日常运作提供了必不可少的支持。
 
-### 50.9.1 tag_based_peg_mapper 与 tagged_peg_parser —— 调试与测试的「便捷工具」
+### 49.9.1 tag_based_peg_mapper 与 tagged_peg_parser —— 调试与测试的「便捷工具」
 
 源码路径：`common/chat-peg-parser.h` - `tag_based_peg_mapper`（152-153 行）、`tagged_peg_parser`（156-176 行）
 
@@ -1831,7 +1824,7 @@ tagged_parse_result parse_anywhere_and_extract(const std::string & input) const;
 
 `tag_based_peg_mapper` 和 `tagged_peg_parser` 共同构成了聊天 PEG 解析器的基础设施。在分拣中心的比喻中，`tag_based_peg_mapper` 就像**标签收集员**——它不关心包裹的具体内容，只负责从 AST 中提取所有带标签的节点文本到标签映射中（`tags[node.tag] = node.text`），这对于调试和测试非常有用：开发者可以快速查看解析器在某个输入上匹配到了哪些标签。`tagged_peg_parser` 则是**便捷解析接口**，它封装了 PEG 解析器的解析和标签提取过程，提供了 `parse_and_extract()` 和 `parse_anywhere_and_extract()` 等方法，使得解析器的使用更加简单——调用者不需要手动创建解析上下文、调用解析、提取标签，只需一行代码即可完成。
 
-### 50.9.2 tagged_peg_parser::parse_anywhere_and_extract() —— 灵活的「任意位置解析器」
+### 49.9.2 tagged_peg_parser::parse_anywhere_and_extract() —— 灵活的「任意位置解析器」
 
 源码路径：`common/chat-peg-parser.cpp` - `tagged_peg_parser::parse_anywhere_and_extract()`（373-386 行）
 
@@ -1861,13 +1854,13 @@ tagged_parse_result tagged_peg_parser::parse_anywhere_and_extract(const std::str
 
 实现上，`parse_anywhere_and_extract()` 遍历输入的所有位置 i，从位置 i 开始解析。如果解析成功，立即返回结果；如果遍历到最后一个位置仍失败，也返回最后一个位置的解析结果（即使失败）。这种「尽力而为」的策略确保了函数总是返回一个结果，不会因为输入中没有匹配而崩溃。`parse_and_extract()` 是 `parse_anywhere_and_extract()` 的特例——当输入为空时，直接调用 `parse_and_extract()` 避免无意义的遍历。
 
-### 50.9.3 common_chat_peg_builder::standard_constructed_tools() —— 标记格式的「快速构建器」
+### 49.9.3 common_chat_peg_builder::standard_constructed_tools() —— 标记格式的「快速构建器」
 
 源码路径：`common/chat-peg-parser.cpp` - `common_chat_peg_builder::standard_constructed_tools()`（569-637 行）
 
 `common_chat_peg_builder::standard_constructed_tools()` 是标记格式（XML/标签式）工具调用的「快速构建器」，它接收一个标记映射（markers map）和工具列表，自动构建出完整的标记格式工具调用解析器。在分拣中心的比喻中，这就像**预设规格的打包机**——用户只需要提供包裹的规格（标记的前缀、后缀、参数名包裹方式等），打包机就能自动搭建对应的分拣线。构建器支持默认标记值（如 `<tool_call>`、`<function=`、`<param=` 等），当用户未提供某个标记时使用默认值，这使得常见的标记格式（如 GPT-OSS 的工具调用格式）可以通过一行代码快速构建。
 
-### 50.9.4 common_chat_peg_builder::prefix() —— 前缀匹配的「精准切片器」
+### 49.9.4 common_chat_peg_builder::prefix() —— 前缀匹配的「精准切片器」
 
 源码路径：`common/chat-peg-parser.cpp` - `common_chat_peg_builder::prefix()`（733-740 行）
 
@@ -1889,7 +1882,7 @@ common_peg_parser common_chat_peg_builder::prefix(const std::string & s, const s
 
 `common_chat_peg_builder::prefix()` 是前缀匹配的「精准切片器」，它返回一个解析器，匹配字符串 s 中直到指定分隔符之前的部分。在分拣中心的比喻中，这就像一把**精准的切刀**——给定一个字符串和分隔符，切刀精确地切出分隔符之前的部分。例如，`prefix("assistant\n\n", "\n\n")` 会匹配 "assistant"，而 `prefix("hello", "")` 会匹配整个 "hello"。这个函数在解析器构建中用于处理生成提示（generation prompt）的前缀匹配——例如，某些模板在推理内容之前有固定的前缀（如 "assistant\n\n"），解析器需要精确匹配这个前缀才能正确进入推理内容的解析。空字符串返回空解析器（eps），空分隔符返回完整字面量匹配，两者都做了边界处理，避免在解析器组合中产生未定义行为。
 
-### 50.9.5 parse_key_spec() —— 点表示法的「解析器」
+### 49.9.5 parse_key_spec() —— 点表示法的「解析器」
 
 源码路径：`common/chat-peg-parser.cpp` - `parse_key_spec()`（468-474 行）
 
@@ -1909,7 +1902,7 @@ static std::pair<std::string, std::string> parse_key_spec(const std::string & ke
 
 `parse_key_spec()` 是点表示法的「解析器」，它将点号分隔的键规范（如 `"function.name"`）拆分为前缀（`"function"`）和字段名（`"name"`）两个部分。在分拣中心的比喻中，这就像一个**地址解析器**——给定一个地址（如 "function.name"），解析器将其拆分为「建筑物」（function）和「房间号」（name）。这个函数在 `build_json_tools_nested_keys()` 中被用于解析嵌套 JSON 键的结构，使得解析器可以匹配如 `{"function": {"name": "func1", "arguments": {...}}}` 的嵌套 JSON 格式——前缀部分（function）作为外层对象的键，字段名部分（name/arguments）作为内层对象的键。如果键中不含点号，返回空前缀和完整字段名，表示这是一个顶层字段（扁平键格式）。
 
-### 50.9.6 差分分析辅助工具集
+### 49.9.6 差分分析辅助工具集
 
 源码路径：`common/chat-auto-parser-helpers.cpp` 和 `common/chat-auto-parser-helpers.h`
 
@@ -1926,7 +1919,7 @@ static std::pair<std::string, std::string> parse_key_spec(const std::string & ke
 - **`autoparser::apply_template()`**：应用聊天模板到给定参数，返回生成的文本字符串；应用失败时记录错误并返回空字符串。
 - **`autoparser::compare_variants()`**：对比两个模板变体的输出差异，通过修改参数生成变体 B 并与变体 A 比较，返回包含差异和两个输出字符串的结果对象。
 
-### 50.9.7 基础设施架构图
+### 49.9.7 基础设施架构图
 
 ```mermaid
 graph TD
@@ -1952,9 +1945,8 @@ graph TD
 
 ---
 
-# 源码解析单元 8：设计中的取舍
 
-## 50.10 设计中的取舍
+## 49.10 设计中的取舍
 
 在分拣中心的建设过程中，设计师们做出了几个关键的取舍，每一个都影响了分拣中心的最终形态。
 
@@ -1974,7 +1966,7 @@ PEG 解析器的灵活性带来了更高的实现复杂度和一定的运行时�
 
 标签系统将解析器的结构与数据消费逻辑解耦，使得同一套标签体系可以驱动多种输出格式——`common_chat_peg_mapper` 和 `common_chat_peg_gemma4_mapper` 都使用同一套标签体系，但分别处理标准格式和 Gemma4 特殊格式。但这也意味着解析器需要维护额外的标签信息（每个 AST 节点都需要存储 tag 字段），增加了内存开销。直接解析 JSON 则更加高效——解析器直接将 JSON 文本转换为 json 对象，不需要中间的标签层——但缺乏灵活性，难以适应不同的输出格式需求。在这个取舍中，标签系统的灵活性胜出，因为聊天模板的格式多样性是这个系统面临的最大的挑战。
 
-## 50.11 动手练习
+## 49.11 动手练习
 
 在学习了聊天 PEG 解析器的完整工作原理之后，我们鼓励你通过以下练习来加深理解。
 
@@ -1984,7 +1976,7 @@ PEG 解析器的灵活性带来了更高的实现复杂度和一定的运行时�
 
 第三个练习是尝试为一种新的工具调用格式（例如 Anthropic 的 XML 格式）编写差分分析代码——先构造两个变体（有工具调用和无工具调用），计算它们的差异分割，然后从差异中提取工具调用的标记。通过这个练习，你会深刻体会到差分分析的威力——它让你不需要理解模板源码，就能自动推断出解析规则。
 
-## 50.12 本章小结
+## 49.12 本章小结
 
 这一章中我们学习了聊天 PEG 解析器的完整工作原理。首先，我们了解了解析器的三段式设计（推理内容、正文、工具调用）与装配流水线架构，理解了 `common_chat_peg_builder` 如何组合原子解析器构建复杂状态机，以及 trim、json_brace_depth、escape_json_string_inner、normalize_quotes_to_json 等文本工具函数如何为 AST 映射提供标准化预处理。其次，我们掌握了 `common_chat_peg_mapper` 将 AST 节点映射为结构化 `common_chat_msg` 的职责，以及 Gemma4 专用映射器处理特殊工具调用语法树的机制。接着，我们学会了使用差分分析技术（`calculate_diff_split`、`compare_variants`）自动逆向推断聊天模板的隐藏结构，理解了 `autoparser` 如何协调推理、内容和工具三个分析阶段，以及 `collect_preserved_tokens` 如何汇总所有标记。然后，我们深入探讨了三种工具调用格式（JSON_NATIVE、TAG_WITH_JSON、TAG_WITH_TAGGED）的解析策略，以及触发器（trigger marker）与延迟语法（grammar_lazy）在流式解析中的应用，同时涵盖了 `python_style_tool_calls` 对 Python 风格工具调用的支持。最后，我们了解了 JSON 转义规范化与括号深度计算的实现细节，以及辅助解析工具与基础设施的作用。
 

@@ -1,7 +1,7 @@
 
 
 
-# 第30章 Mamba 与混合架构 —— SSM 与 Attention 的协同进化
+# 第29章 Mamba 与混合架构 —— SSM 与 Attention 的协同进化
 
 ## 学习目标
 
@@ -13,11 +13,11 @@
 - 了解 PLaMo 系列预归一化（attn_q_norm/attn_k_norm）以及后归一化（attn_post_norm/ffn_post_norm）的设计哲学
 - 掌握 Granite-Hybrid 的残差缩放（f_residual_scale）和 logits 缩放（f_logit_scale）等架构特性
 
-## 30.1 生活类比
+## 29.1 生活类比
 
 想象 SSM 与 Attention 的混合架构是一场**“特种部队的协同作战”**：**Mamba（SSM 循环层）** = 高速公路巡逻队，擅长长距离快速扫描，对历史信息有“记忆缓存”；**Attention（注意力层）** = 精准狙击手，能锁定任意位置的关键信息，但每次行动成本较高；**Jamba（按层切换）** = 班长调度员，按地形决定派哪支队伍上场（SSM 层 / Attention 层交替）；**Falcon-H1（并行融合）** = 双警组同时出动，一队巡逻一队狙击，情报汇总后联合决策；**Nemotron-H（三分支）** = 三军种联合作战，可全 SSM、全 Attention 或纯 FFN 任意搭配；**Granite-Hybrid** = 强调“作战日志标准化”的部队，所有行动都按统一的残差缩放比例记录；**PLaMo2/PLaMo3** = 强调“前后检查站”的精锐部队，每个动作前后都有独立的安全检查（post-norm）；**状态缓存（conv state / ssm state）** = 巡逻队的“交接班记录本”，下一班直接继承上一班的工作；**get_ssm_rows lambda** = “按需调阅”机制——只调取未修改部分，避免重复劳动；**ISWA（Intermittent Sliding Window Attention）** = 滑动窗口哨兵，重要路段加强巡逻，普通路段常规处理。
 
-## 30.2 源码地图
+## 29.2 源码地图
 
 ```
 src/models/mamba-base.cpp
@@ -109,13 +109,13 @@ src/models/plamo3.cpp
   template struct llm_build_plamo3<true>;  # 显式实例化
 ```
 
-## 30.3 Mamba 基础构建器 —— SSM 循环层的"万能工厂"
+## 29.3 Mamba 基础构建器 —— SSM 循环层的"万能工厂"
 
 **`llm_build_mamba_base` 的角色：Mamba 系列的"共同基因"**
 
 作为 Mamba/Mamba2/Jamba/Falcon-H1 等模型的共同基类，它提供了 SSM 层的核心构建方法。通过 `build_mamba_layer` 和 `build_mamba2_layer` 两个关键方法，支持两代 SSM 架构的差异。内部通过 `hparams`（模型超参数）、`ctx0`（ggml 计算图）、`gf`（前向图）、`inp`（输入）来完成构图。
 
-### 30.3.1 llm_build_mamba_base::llm_build_mamba_base()：基类构造与参数透传
+### 29.3.1 llm_build_mamba_base::llm_build_mamba_base()：基类构造与参数透传
 
 **源码路径**：`src/models/mamba-base.cpp` - `llm_build_mamba_base`（第1-5行）
 
@@ -126,7 +126,7 @@ src/models/plamo3.cpp
 llm_build_mamba_base::llm_build_mamba_base(const llm_graph_params & params) : llm_graph_context(params) {}
 ```
 
-### 30.3.2 build_mamba_layer()：Mamba1 三段式流水线（Conv1D + SSM 扫描 + 门控融合）
+### 29.3.2 build_mamba_layer()：Mamba1 三段式流水线（Conv1D + SSM 扫描 + 门控融合）
 
 **源码路径**：`src/models/mamba-base.cpp` - `llm_build_mamba_base::build_mamba_layer()`（第7-106行）
 
@@ -205,7 +205,7 @@ ggml_tensor * llm_build_mamba_base::build_mamba_layer(llm_graph_input_rs * inp,
 }
 ```
 
-### 30.3.3 build_mamba2_layer()：Mamba2 多头分组实现
+### 29.3.3 build_mamba2_layer()：Mamba2 多头分组实现
 
 **源码路径**：`src/models/mamba-base.cpp` - `llm_build_mamba_base::build_mamba2_layer()`（第108-218行）
 
@@ -284,13 +284,13 @@ ggml_tensor * llm_build_mamba_base::build_mamba2_layer(llm_graph_input_rs * inp,
 }
 ```
 
-## 30.4 Mamba 与 Mamba2 模型 —— 纯 SSM 的"独行者"
+## 29.4 Mamba 与 Mamba2 模型 —— 纯 SSM 的"独行者"
 
 **`llm_build_mamba` 的极简结构：循环层的"标准化样板"**
 
 与 Transformer 最大的不同：循环层没有 QKV、RoPE 和 Attention 计算。每一层调用一次 `build_mamba_layer` 或 `build_mamba2_layer`，由 `model.arch` 判断属于哪种 SSM。通过 `rs_inp = build_rs_inp()` 获取循环输入上下文，再交给基类的 layer 构建器。
 
-### 30.4.1 llm_build_mamba::llm_build_mamba()：纯 SSM 模型主构建流程
+### 29.4.1 llm_build_mamba::llm_build_mamba()：纯 SSM 模型主构建流程
 
 **源码路径**：`src/models/mamba.cpp` - `llm_build_mamba::llm_build_mamba()`（第1-45行）
 
@@ -335,13 +335,13 @@ llm_build_mamba::llm_build_mamba(const llama_model & model, const llm_graph_para
 }
 ```
 
-## 30.5 Jamba 混合架构 —— Mamba 与 Attention 的"交叉跑道"
+## 29.5 Jamba 混合架构 —— Mamba 与 Attention 的"交叉跑道"
 
 **`llm_build_jamba` 的核心设计：按层类型切换路径**
 
 通过 `hparams.n_head_kv(il) == 0` 判断该层是否是 Mamba 层。`n_head_kv == 0` 表示该层没有 KV 头，即为纯 SSM 层。否则为标准 Self-Attention 层，执行 QKV 投影 + `build_attn`。
 
-### 30.5.1 llm_build_jamba::llm_build_jamba()：按层切换的混合构建
+### 29.5.1 llm_build_jamba::llm_build_jamba()：按层切换的混合构建
 
 **源码路径**：`src/models/jamba.cpp` - `llm_build_jamba::llm_build_jamba()`（第5-95行）
 
@@ -423,13 +423,13 @@ llm_build_jamba::llm_build_jamba(const llama_model & model, const llm_graph_para
 }
 ```
 
-## 30.6 Falcon-H1 混合架构 —— Mamba2 + Attention 的"分支汇流"
+## 29.6 Falcon-H1 混合架构 —— Mamba2 + Attention 的"分支汇流"
 
 **`llm_build_falcon_h1` 的核心设计：每层并行 Attention 与 Mamba2**
 
 与 Jamba 按层切换不同，Falcon-H1 每层同时计算 Attention 和 Mamba2。两者结果通过 `ggml_add` 加和，再经过 FFN 输出。这种“并行混合”在保持 SSM 线性复杂度的同时，提供了 Attention 的精确位置建模能力。
 
-### 30.6.1 llm_build_falcon_h1::llm_build_falcon_h1()：并行融合的层构建
+### 29.6.1 llm_build_falcon_h1::llm_build_falcon_h1()：并行融合的层构建
 
 **源码路径**：`src/models/falcon-h1.cpp` - `llm_build_falcon_h1::llm_build_falcon_h1()`（第1-107行）
 
@@ -481,13 +481,13 @@ for (int il = 0; il < n_layer; ++il) {
 | **Norm 复用** | 每分支独立 Norm | Attention 与 Mamba2 共享同一 `attn_norm` |
 | **FFN Bias** | 无 | 有 (`ffn_up_b`, `ffn_gate_b`, `ffn_down_b`) |
 
-## 30.7 Nemotron-H 混合架构 —— 「按层类型」的三路分支
+## 29.7 Nemotron-H 混合架构 —— 「按层类型」的三路分支
 
 **`llm_build_nemotron_h` 的三分支设计**
 
 通过 `hparams.is_recurrent(il)` 判断该层是否是循环层（Mamba2）。否则 `hparams.n_ff(il) == 0` 时为纯 Attention 层。否则为 FFN 层（包含普通 FFN 和 MoE FFN）。这种设计允许模型在同一架构中混用三种层类型。
 
-### 30.7.1 llm_build_nemotron_h::llm_build_nemotron_h()：三分支主循环
+### 29.7.1 llm_build_nemotron_h::llm_build_nemotron_h()：三分支主循环
 
 **源码路径**：`src/models/nemotron-h.cpp` - `llm_build_nemotron_h::llm_build_nemotron_h()`（第1-49行）
 
@@ -526,7 +526,7 @@ llm_build_nemotron_h::llm_build_nemotron_h(const llama_model & model, const llm_
 }
 ```
 
-### 30.7.2 build_attention_layer()：标准 Attention + 可选 Bias
+### 29.7.2 build_attention_layer()：标准 Attention + 可选 Bias
 
 **源码路径**：`src/models/nemotron-h.cpp` - `llm_build_nemotron_h::build_attention_layer()`（第50-93行）
 
@@ -553,7 +553,7 @@ ggml_tensor * llm_build_nemotron_h::build_attention_layer(ggml_tensor *         
 }
 ```
 
-### 30.7.3 build_ffn_layer()：MoE + 共享专家的 Nemotron 特色
+### 29.7.3 build_ffn_layer()：MoE + 共享专家的 Nemotron 特色
 
 **源码路径**：`src/models/nemotron-h.cpp` - `llm_build_nemotron_h::build_ffn_layer()`（第94-144行）
 
@@ -621,13 +621,13 @@ ggml_tensor * llm_build_nemotron_h::build_ffn_layer(ggml_tensor * cur, const lla
 | **共享专家** | `ffn_shexp` 独立于路由专家，保证基础表达能力 |
 | **潜空间压缩** | `ffn_latent_down/up` 在路由前压缩维度，降低 MoE 计算量 |
 
-## 30.8 Granite-Hybrid 混合架构 —— IBM 的"Mamba2 + 标准注意力 + MoE"
+## 29.8 Granite-Hybrid 混合架构 —— IBM 的"Mamba2 + 标准注意力 + MoE"
 
 **`llm_build_granite_hybrid` 的混合模式**
 
 与 Nemotron-H 类似的二分结构：`is_recurrent(il)` 判断是 Mamba2 还是 Attention。但 MoE 在 FFN 中处理，不与 SSM 层耦合。这种“线性层（SSM/Attn） + FFN（含 MoE）”的二段设计更接近标准 Transformer 风格。
 
-### 30.8.1 llm_build_granite_hybrid::llm_build_granite_hybrid()：主构建流程
+### 29.8.1 llm_build_granite_hybrid::llm_build_granite_hybrid()：主构建流程
 
 **源码路径**：`src/models/granite-hybrid.cpp` - `llm_build_granite_hybrid::llm_build_granite_hybrid()`（第3-38行）
 
@@ -650,7 +650,7 @@ if (hparams.f_logit_scale) {  // Logits 缩放
 }
 ```
 
-### 30.8.2 build_attention_layer()：条件 RoPE 与 YaRN 支持
+### 29.8.2 build_attention_layer()：条件 RoPE 与 YaRN 支持
 
 **源码路径**：`src/models/granite-hybrid.cpp` - `llm_build_granite_hybrid::build_attention_layer()`（第40-103行）
 
@@ -664,7 +664,7 @@ if (use_rope) {
 }
 ```
 
-### 30.8.3 build_layer_ffn()：残差缩放 + MoE + 共享专家
+### 29.8.3 build_layer_ffn()：残差缩放 + MoE + 共享专家
 
 **源码路径**：`src/models/granite-hybrid.cpp` - `llm_build_granite_hybrid::build_layer_ffn()`（第105-160行）
 
@@ -699,13 +699,13 @@ cur = ggml_add(ctx0, cur, ffn_inp);  // FFN 残差
 3. **Logits 缩放**：`f_logit_scale` 在 LM Head 后缩放 logits，控制输出分布方差。
 4. **MoE + 共享专家**：复用标准 `build_moe_ffn` + `build_ffn(shexp)` 模式，门控用 Softmax。
 
-## 30.9 PLaMo2 混合架构 —— 日本模型的"Mamba + 自定义注意力"
+## 29.9 PLaMo2 混合架构 —— 日本模型的"Mamba + 自定义注意力"
 
 **`llm_build_plamo2` 的独特结构：双残差 + 后归一化**
 
 与 Falcon-H1/Jamba 不同，PLaMo2 实现了“pre-mixer-norm + post-mixer-norm”。每个 block 由两个子层组成：mixer（SSM 或 Attn）和 FFN，每个子层都前后归一化。这种结构类似于 LLaMA 的 RMSNorm 设计，但 mixer 也有独立的 post_norm。
 
-### 30.9.1 llm_build_plamo2::llm_build_plamo2()：双归一化主循环
+### 29.9.1 llm_build_plamo2::llm_build_plamo2()：双归一化主循环
 
 **源码路径**：`src/models/plamo2.cpp` - `llm_build_plamo2::llm_build_plamo2()`（第1-203行）
 
@@ -735,7 +735,7 @@ for (int il = 0; il < n_layer; ++il) {
 }
 ```
 
-### 30.9.2 build_plamo2_attn_layer()：QKV 联合投影 + Q/K 预归一化
+### 29.9.2 build_plamo2_attn_layer()：QKV 联合投影 + Q/K 预归一化
 
 **源码路径**：`src/models/plamo2.cpp` - `llm_build_plamo2::build_plamo2_attn_layer()`（第47-108行）
 
@@ -754,7 +754,7 @@ Kcur = ggml_rope_ext(...);
 cur = build_attn(inp, model.layers[il].wo, NULL, Qcur, Kcur, Vcur, ..., 1.0f/sqrtf(float(n_embd_head_v)), il);
 ```
 
-### 30.9.3 build_plamo2_mamba_layer()：定制化 Mamba2 变体
+### 29.9.3 build_plamo2_mamba_layer()：定制化 Mamba2 变体
 
 **源码路径**：`src/models/plamo2.cpp` - `llm_build_plamo2::build_plamo2_mamba_layer()`（第110-260行）
 
@@ -789,13 +789,13 @@ y = ggml_swiglu_split(ctx0, ggml_cont(ctx0, z), y);  // 门控融合
 - **强制三元组归一化**：B/C/dt 无条件 RMS Norm，区别于基类的条件归一化。
 - **SEQ 模式 FFN**：`LLM_FFN_SEQ` 串行执行（gate→up→down），而非并行 PAR 模式。
 
-## 30.10 PLaMo3 模板化架构 —— 显式实例化的"ISWA 复用术"
+## 29.10 PLaMo3 模板化架构 —— 显式实例化的"ISWA 复用术"
 
 **`llm_build_plamo3<iswa>` 的模板化设计**
 
 通过 `template <bool iswa>` 模板参数，让同一份代码既能生成标准版也能生成 ISWA 版。文件末尾 `template struct llm_build_plamo3<false>;` 和 `template struct llm_build_plamo3<true>;` 显式实例化。这种方式让 C++ 编译器自动为不同模板参数生成两份独立的类，零运行时开销。
 
-### 30.10.1 llm_build_plamo3<iswa>::llm_build_plamo3()：模板化构建入口
+### 29.10.1 llm_build_plamo3<iswa>::llm_build_plamo3()：模板化构建入口
 
 **源码路径**：`src/models/plamo3.cpp` - `llm_build_plamo3<iswa>::llm_build_plamo3()`（第1-108行）
 
@@ -852,7 +852,7 @@ llm_build_plamo3<iswa>::llm_build_plamo3(const llama_model & model, const llm_gr
 }
 ```
 
-### 30.10.2 显式模板实例化
+### 29.10.2 显式模板实例化
 
 **源码路径**：`src/models/plamo3.cpp` - 全局实例化（第109-111行）
 
@@ -872,7 +872,7 @@ template struct llm_build_plamo3<true>;   // ISWA 版本
 | `model.get_rope_freq_base(cparams, il)` | 每层差异化 RoPE | ISWA 模式支持层级频率，标准模式用全局频率 |
 | `template struct ...` | 显式实例化 | 保证两个版本的符号在编译期生成，链接器可直接解析 |
 
-## 30.11 设计中的取舍
+## 29.11 设计中的取舍
 
 为什么 Mamba 基类要同时提供 `build_mamba_layer` 和 `build_mamba2_layer`？
 
@@ -894,7 +894,7 @@ C++ 类模板显式实例化（`template struct ...`）为何必须写在 `.cpp`
 
 类模板成员函数定义在头文件会导致代码膨胀；定义在 `.cpp` 又会导致隐式实例化失败（其他编译单元看不到定义）。显式实例化在 `.cpp` 末尾强制编译器生成 `iswa=false/true` 两个版本的完整类代码，既保持接口在头文件整洁，又保证链接期符号可见，是大型 C++ 项目模板复用的标准工程实践。
 
-## 30.12 动手练习
+## 29.12 动手练习
 
 1. **对比 Mamba1 与 Mamba2 的 SSM 层构建差异**
    - 阅读 `src/models/mamba-base.cpp` 第 15-186 行（`build_mamba_layer`）和第 188-358 行（`build_mamba2_layer`）。
@@ -940,7 +940,7 @@ C++ 类模板显式实例化（`template struct ...`）为何必须写在 `.cpp`
      4. 如果你需要在状态保存后立即读取（例如做残差流验证），应该在计算图的哪个位置插入读取节点？
      5. 思考：Mamba 状态管理为何比 Transformer 的 KV Cache 复杂？提示：从「按 token 增量更新」与「按序列整体重算」两个角度分析。
 
-## 30.13 本章小结
+## 29.13 本章小结
 
 这一章中我们学习了 Mamba/SSM 与 Attention 混合架构在 llama.cpp 中的图构建实现。首先我们深入 `llm_build_mamba_base` 基类，理解了 Mamba1 三段式流水线（Conv1D + SSM 扫描 + 门控融合）与 Mamba2 多头分组设计（一次性投影、分组 RMS Norm）的核心差异。其次我们剖析了四种主流混合策略：Jamba 的按层切换（`n_head_kv==0` 判断）、Falcon-H1 的并行融合（`ggml_add` 聚合双分支）、Nemotron-H 的三分支任意排布（`is_recurrent`/`n_ff` 判断）以及 Granite-Hybrid 的标准化二段式（线性层+FFN 含 MoE）。接着我们探讨了 PLaMo2 的双归一化结构与定制化 Mamba2 变体，最后掌握了 PLaMo3 的模板化显式实例化技巧（`std::conditional_t` + `if constexpr` + 显式实例化）实现 ISWA 与标准版零开销复用。
 

@@ -2,7 +2,7 @@
 
 
 
-# 第 25 章 llama.cpp 内部工具与基础设施：精密工厂的「后勤保障部」
+# 第24章 llama.cpp 内部工具与基础设施：精密工厂的「后勤保障部」
 
 ## 学习目标
 
@@ -16,7 +16,7 @@
 - 理解 llama_model_load_from_file_impl 的设备选择逻辑（RPC/GPU/IGPU 去重与排序）
 - 了解 chat 模板应用接口 llama_chat_apply_template 与模型路径分片工具 llama_split_path / llama_split_prefix 的实现
 
-## 25.1 生活类比
+## 24.1 生活类比
 
 想象 llama.cpp 的内部基础设施是一座**精密工厂的「后勤保障部」**：
 - **日志系统** = 工厂的播音室与传声筒
@@ -57,7 +57,7 @@
 
 就像后勤保障部不直接生产产品，但缺了它整座工厂就无法有序运转，这些基础设施就是 llama.cpp 的「无名英雄」——它们默默记录每一步操作、统计每一毫秒、翻译每一段元数据、接通每一根数据线，并智能调度每台设备、合理裁剪每件产品。
 
-## 25.2 源码地图
+## 24.2 源码地图
 
 ```mermaid
 graph TD
@@ -100,11 +100,11 @@ graph TD
     E --> E14[llama_print_system_info: 静态字符串复用+动态特性枚举]
 ```
 
-## 25.3 日志系统探微：引擎的「传声筒」与「播报员」
+## 24.3 日志系统探微：引擎的「传声筒」与「播报员」
 
 作为底层推理引擎，llama.cpp 需要把内部状态（加载进度、量化信息、内存告警等）暴露给上层 CLI、Server 和工具。日志系统通过宏家族、回调机制、可变参数处理与编译期校验，构建了一套高性能、可扩展的日志基础设施。
 
-### 25.3.1 LLAMA_LOG 宏家族与编译期格式校验
+### 24.3.1 LLAMA_LOG 宏家族与编译期格式校验
 
 **llama-impl.h:1-31: LLAMA_ATTRIBUTE_FORMAT 与 LLAMA_LOG_* 宏定义**
 
@@ -133,7 +133,7 @@ graph TD
 **代码解释：**
 这段代码定义了 llama.cpp 的日志宏体系。`LLAMA_ATTRIBUTE_FORMAT` 利用编译器属性在编译阶段校验 `printf` 格式字符串与参数匹配度，避免运行时崩溃。在 GCC/Clang 下使用 `__attribute__((format(printf, ...)))`，MinGW 特殊情况用 `gnu_printf`，MSVC 等不支持的编译器留空。六个日志宏（`LLAMA_LOG` 到 `LLAMA_LOG_CONT`）分别对应不同严重级别，统一转发给 `llama_log_internal`，实现了「宏定义分发、函数实现处理」的经典模式。
 
-### 25.3.2 llama_logger_state/g_logger_state：日志回调状态的单例存储
+### 24.3.2 llama_logger_state/g_logger_state：日志回调状态的单例存储
 
 **llama-impl.cpp:9-14: 全局日志状态结构体与实例**
 
@@ -150,7 +150,7 @@ static llama_logger_state g_logger_state;  // 静态全局变量，唯一存储�
 **代码解释：**
 `llama_logger_state` 结构体仅包含两个字段：回调函数指针与用户数据指针。`g_logger_state` 作为静态全局变量，确保进程内仅有一份日志回调状态，构成了「单例模式」的轻量级实现。
 
-### 25.3.3 llama_log_set/llama_log_get：日志回调的对称注册与查询
+### 24.3.3 llama_log_set/llama_log_get：日志回调的对称注册与查询
 
 **llama-impl.cpp:35-46: 回调注册与查询实现**
 
@@ -169,7 +169,7 @@ void llama_log_set(ggml_log_callback log_callback, void * user_data) {
 **代码解释：**
 `llama_log_set` 是用户替换日志输出的唯一入口。它同时更新底层 GGML 的日志回调与本地 `g_logger_state`。若用户传入 `nullptr`，自动回退到默认实现 `llama_log_callback_default`，保证「永远有地方输出日志」。`llama_log_get` 提供对称的查询能力，允许上层临时保存、恢复日志回调（例如在测试或特定作用域内静默日志）。
 
-### 25.3.4 llama_log_internal_v：栈缓冲 128 字节 + 堆自动扩容的变长参数处理
+### 24.3.4 llama_log_internal_v：栈缓冲 128 字节 + 堆自动扩容的变长参数处理
 
 **llama-impl.cpp:48-63: 变长参数核心处理逻辑**
 
@@ -197,7 +197,7 @@ static void llama_log_internal_v(ggml_log_level level, const char * format, va_l
 **代码解释：**
 这是日志系统的核心实现。`va_copy` 保证 `va_list` 可被两次消费。栈缓冲 `char buffer[128]` 覆盖了绝大多数短日志（如进度点 `.`、单行信息），实现「零堆分配」。超长消息（如完整模型信息打印）自动切换到堆分配，`new char[len + 1]` 精确匹配所需内存，避免浪费。
 
-### 25.3.5 llama_log_internal：va_start/end 包装的公开入口
+### 24.3.5 llama_log_internal：va_start/end 包装的公开入口
 
 **llama-impl.cpp:65-71: 公开日志入口封装**
 
@@ -213,7 +213,7 @@ void llama_log_internal(ggml_log_level level, const char * format, ...) {
 **代码解释：**
 `llama_log_internal` 是宏展开后的真实调用目标，仅负责 `va_start/end` 包装，将可变参数转为 `va_list` 后转发给 `_v` 版本。
 
-### 25.3.6 llama_log_callback_default：stderr 输出的默认回调实现
+### 24.3.6 llama_log_callback_default：stderr 输出的默认回调实现
 
 **llama-impl.cpp:73-80: 默认日志回调**
 
@@ -228,7 +228,7 @@ void llama_log_callback_default(ggml_log_level level, const char * text, void * 
 **代码解释：**
 默认回调将文本直接写入 `stderr` 并强制 `fflush`，确保即使程序崩溃、缓冲区未满也能看到最后的日志。它忽略 `level` 与 `user_data`，体现「简单可靠」的设计哲学。
 
-### 25.3.7 no_init<T>：跳过值初始化的性能包装模板
+### 24.3.7 no_init<T>：跳过值初始化的性能包装模板
 
 **llama-impl.h:48-53: no_init 模板定义**
 
@@ -243,7 +243,7 @@ struct no_init {
 **代码解释：**
 `no_init<T>` 是一个极简包装模板，利用 `= default` 禁止编译器生成零初始化代码。在性能敏感路径（如大数组分配、临时缓冲区）可避免不必要的 `memset` 开销。
 
-### 25.3.8 buffer_view<T>：指针长度轻量视图
+### 24.3.8 buffer_view<T>：指针长度轻量视图
 
 **llama-impl.h:70-76: buffer_view 结构体定义**
 
@@ -262,7 +262,7 @@ struct buffer_view {
 **代码解释：**
 `buffer_view<T>` 提供「指针 + 长度」的轻量视图语义，`has_data()` 一行代码完成非空判断，替代繁琐的 `ptr != nullptr && len > 0` 检查。
 
-### 25.3.9 LLAMA_TENSOR_NAME_*：特殊张量名常量定义
+### 24.3.9 LLAMA_TENSOR_NAME_*：特殊张量名常量定义
 
 **llama-impl.h:90-92: 特殊张量名常量**
 
@@ -275,9 +275,9 @@ struct buffer_view {
 **代码解释：**
 三个常量标记特殊计算节点的输出张量名称：Flash Attention（`__fattn__`）、Gated Delta Net 的 AR 与 CH 分支。它们在计算图构建与调试打印时作为「约定俗成」的锚点。
 
-## 25.4 作用域计时器：代码块的「秒表医生」
+## 24.4 作用域计时器：代码块的「秒表医生」
 
-### 25.4.1 time_meas：RAII 作用域计时器的数据结构定义
+### 24.4.1 time_meas：RAII 作用域计时器的数据结构定义
 
 **llama-impl.h:55-58: time_meas 类定义**
 
@@ -294,7 +294,7 @@ struct time_meas {
 **代码解释：**
 `time_meas` 采用经典 RAII 模式：构造时捕获「现在」，析构时计算「经过」并累加到外部引用 `t_acc`。`disable` 参数允许运行时关闭计时（如生产环境关闭性能采样），`t_start_us = -1` 作为哨兵值。
 
-### 25.4.2 time_meas::time_meas：构造时记录起始时间或禁用标记
+### 24.4.2 time_meas::time_meas：构造时记录起始时间或禁用标记
 
 **llama-impl.cpp:27-27: 构造函数实现**
 
@@ -306,7 +306,7 @@ time_meas::time_meas(int64_t & t_acc, bool disable)
 **代码解释：**
 构造函数通过初始化列表完成两件事：若 `disable` 则 `t_start_us = -1`，否则记录 `ggml_time_us()` 当前微秒时间戳；绑定外部累加器引用 `t_acc`。
 
-### 25.4.3 time_meas::~time_meas：析构时条件累加耗时到外部引用
+### 24.4.3 time_meas::~time_meas：析构时条件累加耗时到外部引用
 
 **llama-impl.cpp:29-34: 析构函数实现**
 
@@ -321,7 +321,7 @@ time_meas::~time_meas() {
 **代码解释：**
 析构函数仅在 `t_start_us >= 0` 时累加差值。异常安全由 C++ 保证：栈展开时析构必然执行，因此即使作用域内抛出异常，耗时也会被正确记录。
 
-### 25.4.4 llama_model_load：内嵌 time_meas 实现全流程自动计时
+### 24.4.4 llama_model_load：内嵌 time_meas 实现全流程自动计时
 
 **llama.cpp:866-870: 模型加载自动计时应用**
 
@@ -338,9 +338,9 @@ return 0;  // 析构：自动累加总耗时到 model.t_load_us
 **代码解释：**
 在 `llama_model_load` 入口构造 `time_meas tm(model.t_load_us)`，整个加载流程（架构识别、超参数加载、词表加载、张量加载）的耗时自动累加到 `model.t_load_us`。`model.t_start_us` 保留起始时间戳，供外部诊断「加载何时开始」。
 
-## 25.5 字符串处理与格式化：「瑞士军刀」级文本工具集
+## 24.5 字符串处理与格式化：「瑞士军刀」级文本工具集
 
-### 25.5.1 replace_all：Builder 模式的就地字符串替换
+### 24.5.1 replace_all：Builder 模式的就地字符串替换
 
 **llama-impl.cpp:82-99: 字符串就地替换实现**
 
@@ -365,7 +365,7 @@ void replace_all(std::string & s, const std::string & search, const std::string 
 **代码解释：**
 采用「Builder 模式」：预分配 `builder` 容量，逐段拼接未匹配部分与替换串，最后 `move` 回原字符串。空 `search` 边界检查防止无限循环。整个过程仅一次堆分配（`builder`），性能优于多次 `std::string::replace`。
 
-### 25.5.2 format：两次 vsnprintf 精确格式化
+### 24.5.2 format：两次 vsnprintf 精确格式化
 
 **llama-impl.cpp:101-115: printf 风格格式化实现**
 
@@ -387,7 +387,7 @@ std::string format(const char * fmt, ...) {
 **代码解释：**
 「两次 `vsnprintf`」是 C 语言格式化的标准范式：第一次传 `NULL, 0` 获取所需字节数，第二次精确分配缓冲并填充。`va_copy` 保证参数列表可二次消费。返回 `std::string` 由移动语义优化，零拷贝。
 
-### 25.5.3 llama_format_tensor_shape：固定宽度的张量形状格式化（双重载）
+### 24.5.3 llama_format_tensor_shape：固定宽度的张量形状格式化（双重载）
 
 **llama-impl.cpp:117-133: 张量形状格式化两个重载**
 
@@ -414,9 +414,9 @@ std::string llama_format_tensor_shape(const struct ggml_tensor * t) {
 **代码解释：**
 两个重载分别接受 `vector<int64_t>` 与 `ggml_tensor*`，输出格式统一为 `[xxxxxx, xxxxxx, xxxxxx, xxxxxx]`（每维占 6 字符，右对齐）。栈上 `char buf[256]` 足以容纳最大维度（`GGML_MAX_DIMS=4`）的格式化结果，完全避免堆分配。
 
-## 25.6 GGUF 元数据转字符串：模型信息的「解码翻译官」
+## 24.6 GGUF 元数据转字符串：模型信息的「解码翻译官」
 
-### 25.6.1 gguf_data_to_str：基础类型分发
+### 24.6.1 gguf_data_to_str：基础类型分发
 
 **llama-impl.cpp:135-148: 基础类型字符串化**
 
@@ -442,7 +442,7 @@ static std::string gguf_data_to_str(enum gguf_type type, const void * data, int 
 **代码解释：**
 通过 `switch-case` 将 GGUF 所有标量类型（UINT8 到 FLOAT64、BOOL）分发到对应的 `std::to_string` 或布尔字面量。指针 `data` 按类型强转后取下标 `i`，支持数组元素逐个转换。未知类型回退到 `format("unknown type %d", type)`，保证不漏处理。
 
-### 25.6.2 gguf_kv_to_str：顶层入口与 ARRAY 特殊处理
+### 24.6.2 gguf_kv_to_str：顶层入口与 ARRAY 特殊处理
 
 **llama-impl.cpp:150-182: GGUF KV 完整字符串化**
 
@@ -490,9 +490,9 @@ std::string gguf_kv_to_str(const struct gguf_context * ctx_gguf, int i) {
 - **ARRAY**：遍历元素。STRING 元素需「双重转义」：先 `replace_all(val, "\\", "\\\\")` 再 `replace_all(val, "\"", "\\\"")`，确保 JSON 风格可读性；嵌套 ARRAY 输出 `???` 占位，避免递归复杂度与潜在栈溢出；其他标量类型复用 `gguf_data_to_str`。
 - **标量**：调用 `gguf_data_to_str` 处理单值。
 
-## 25.7 I/O 抽象接口：序列化与反序列化的「通用插座」
+## 24.7 I/O 抽象接口：序列化与反序列化的「通用插座」
 
-### 25.7.1 llama_io_write_i：写抽象基类与纯虚契约
+### 24.7.1 llama_io_write_i：写抽象基类与纯虚契约
 
 **llama-io.h:9-21: 写接口类定义**
 
@@ -523,7 +523,7 @@ public:
 **代码解释：**
 `llama_io_write_i` 定义了三个纯虚函数，子类必须实现：`write`（原始字节）、`write_tensor`（张量数据，支持偏移与长度）、`n_bytes`（进度统计）。`write_string` 提供默认实现：**长度前缀协议**——先写 `uint32_t` 长度，再写字节内容，这是 GGUF 文件格式中字符串存储的标准编码。
 
-### 25.7.2 llama_io_read_i：读抽象基类与对称契约
+### 24.7.2 llama_io_read_i：读抽象基类与对称契约
 
 **llama-io.h:23-38: 读接口类定义**
 
@@ -554,7 +554,7 @@ public:
 **代码解释：**
 `llama_io_read_i` 与写接口对称。`read` 返回内部缓冲指针（适合零拷贝、内存映射场景），`read_to` 拷贝到外部缓冲（适合文件读取、网络流）。`read_string` 严格遵循「长度前缀」协议：先 `read_to` 读取 `uint32_t` 长度，再 `read` 读取内容并 `assign` 到 `std::string`。
 
-### 25.7.3 llama_io_write_i::write_string/llama_io_read_i::read_string：长度前缀序列化协议的默认实现
+### 24.7.3 llama_io_write_i::write_string/llama_io_read_i::read_string：长度前缀序列化协议的默认实现
 
 **llama-io.cpp:3-17: 字符串读写实现**
 
@@ -575,9 +575,9 @@ void llama_io_read_i::read_string(std::string & str) {
 **代码解释：**
 实现极其简洁，完全遵循头文件中声明的协议。`write` 与 `read` 的对称性保证了序列化/反序列化的无损往返。
 
-## 25.8 系统信息汇总与后端能力探测：「体检报告」生成器
+## 24.8 系统信息汇总与后端能力探测：「体检报告」生成器
 
-### 25.8.1 llama_supports_mmap/mlock/gpu_offload/rpc：四大能力查询接口的实现
+### 24.8.1 llama_supports_mmap/mlock/gpu_offload/rpc：四大能力查询接口的实现
 
 **llama.cpp:831-843: 能力查询函数**
 
@@ -604,7 +604,7 @@ bool llama_supports_rpc(void) {
 **代码解释：**
 四个函数提供标准化的能力声明。`llama_supports_gpu_offload` 综合判定：存在 GPU 设备、或存在 IGPU（集显）、或支持 RPC 远程推理，任一为真即返回 `true`。上层 CLI/Server 可据此决定是否启用 `--n-gpu-layers` 等参数。
 
-### 25.8.2 llama_print_system_info：静态字符串复用与动态特性枚举的体检报告生成
+### 24.8.2 llama_print_system_info：静态字符串复用与动态特性枚举的体检报告生成
 
 **llama.cpp:1250-1275: 系统信息汇总实现**
 
@@ -637,9 +637,9 @@ const char * llama_print_system_info(void) {
 **代码解释：**
 `static std::string s` 避免重复分配，`s.clear()` 保证每次调用产生全新报告。核心逻辑遍历所有注册后端（`ggml_backend_reg_count`），通过 `ggml_backend_reg_get_proc_address` **动态加载** `ggml_backend_get_features` 函数指针（而非硬链接），实现「插件化能力发现」。每个后端的特性以 `name = value | ` 格式拼接，最终返回 `Metal : feature1 = value1 | feature2 = value2 | CUDA : ...` 形式的完整报告。
 
-## 25.9 模型加载与设备调度：「智能调度室」的多入口管理
+## 24.9 模型加载与设备调度：「智能调度室」的多入口管理
 
-### 25.9.1 llama_model_load：五阶段流水线加载与 RAII 自动计时
+### 24.9.1 llama_model_load：五阶段流水线加载与 RAII 自动计时
 
 **llama.cpp:866-906: 核心加载流水线**
 
@@ -673,7 +673,7 @@ static int llama_model_load(struct gguf_context * metadata, ...,
 **代码解释：**
 `llama_model_load` 是核心加载流水线，**内部构造 `time_meas tm(model.t_load_us)` 实现自动计时**。五阶段加载：架构 → 超参数 → 词表 → 统计 → 张量。异常捕获统一转为错误码（-1），取消加载返回 -2。`vocab_only` 模式跳过张量加载，用于仅需词表的场景。
 
-### 25.9.2 llama_model_load_from_file_impl：设备分类去重与优先级排序的调度核心
+### 24.9.2 llama_model_load_from_file_impl：设备分类去重与优先级排序的调度核心
 
 **llama.cpp:906-1100: 模型加载主入口与设备选择逻辑**
 
@@ -757,7 +757,7 @@ if (params.split_mode == LLAMA_SPLIT_MODE_NONE) {
 4. **组装顺序**：RPC 放最前（远程优先减少网络跳数）→ 离散 GPU → 仅当完全无设备时才用 IGPU。
 5. **单 GPU 模式**（`LLAMA_SPLIT_MODE_NONE`）仅保留 `main_gpu` 指定的设备，其余全部丢弃。
 
-### 25.9.3 llama_model_init_from_user/load_from_file/load_from_splits/load_from_file_ptr：四大公开入口的委托差异
+### 24.9.3 llama_model_init_from_user/load_from_file/load_from_splits/load_from_file_ptr：四大公开入口的委托差异
 
 **llama.cpp:1100-1147: 四大公开加载入口**
 
@@ -794,7 +794,7 @@ llama_model * llama_model_load_from_file_ptr(FILE * file, params) {
 **代码解释：**
 四个公开入口统一委托给 `llama_model_load_from_file_impl`，仅在数据源（路径、分片列表、文件指针、用户元数据）与初始参数（`use_mmap` 等）上差异化。
 
-### 25.9.4 llama_model_save_to_file：模型序列化回 GGUF 文件
+### 24.9.4 llama_model_save_to_file：模型序列化回 GGUF 文件
 
 **llama.cpp:1147-1152: 模型保存实现**
 
@@ -810,7 +810,7 @@ void llama_model_save_to_file(const struct llama_model * model, const char * pat
 **代码解释：**
 `llama_model_save_to_file` 通过 `llama_model_saver` 将内存模型完整写回 GGUF 文件。
 
-### 25.9.5 实用工具函数集
+### 24.9.5 实用工具函数集
 
 **llama.cpp:22-37, 1158-1220, 1867-1948: 实用函数**
 
@@ -857,9 +857,9 @@ int32_t llama_split_prefix(char * split_prefix, size_t maxlen, const char * spli
 **代码解释：**
 这些工具函数覆盖了枚举显示、硬性上限、采样默认值、聊天模板渲染、分片命名与解析等高频需求。
 
-## 25.10 自动参数拟合：给模型「量体裁衣」的智能算法
+## 24.10 自动参数拟合：给模型「量体裁衣」的智能算法
 
-### 25.10.1 llama_params_fit：异常捕获与状态码映射的公共入口
+### 24.10.1 llama_params_fit：异常捕获与状态码映射的公共入口
 
 **llama.cpp:800-820: 参数拟合公共入口**
 
@@ -885,7 +885,7 @@ enum llama_params_fit_status llama_params_fit(...) {
 **代码解释：**
 `llama_params_fit` 计时调用 `llama_params_fit_impl`，捕获两类异常：`llama_params_fit_exception`（用户参数冲突、缓冲不足等预期内失败）返回 `FAILURE`；`std::runtime_error`（内存不足、后端错误等意外）返回 `ERROR`。成功返回 `SUCCESS`。
 
-### 25.10.2 llama_params_fit_impl：三阶段拟合流程与假位法层分配核心算法
+### 24.10.2 llama_params_fit_impl：三阶段拟合流程与假位法层分配核心算法
 
 **llama.cpp:87-472: 核心拟合算法实现**
 
@@ -955,7 +955,7 @@ static void llama_params_fit_impl(...) {
    - `LAYER_FRACTION_GATE`：仅 gate 投影溢出
    - `LAYER_FRACTION_ATTN`：注意力权重溢出（最激进）
 
-### 25.10.3 llama_get_device_memory_data/llama_device_memory_data：设备内存基线采集与三段式分解结构
+### 24.10.3 llama_get_device_memory_data/llama_device_memory_data：设备内存基线采集与三段式分解结构
 
 **llama.cpp:33-105, 40-44: 内存数据采集与结构定义**
 
@@ -980,7 +980,7 @@ static std::vector<llama_device_memory_data> llama_get_device_memory_data(...) {
 **代码解释：**
 `llama_device_memory_data` 将设备内存视图标准化：`free/total` 来自后端查询，`mb` 来自上下文的 `memory_breakdown()`，三段式分解（模型权重、KV Cache 上下文、计算缓冲）让拟合算法能精准知道「哪部分占内存」。
 
-### 25.10.4 layer_fraction_t/get_overflow_pattern：四级溢出策略枚举与正则模式生成
+### 24.10.4 layer_fraction_t/get_overflow_pattern：四级溢出策略枚举与正则模式生成
 
 **llama.cpp:139-180: 溢出策略枚举与正则生成**
 
@@ -1007,7 +1007,7 @@ auto get_overflow_pattern = [&](size_t il, layer_fraction_t lf) -> const char * 
 **代码解释：**
 `layer_fraction_t` 定义了四级「溢出颗粒度」。`get_overflow_pattern` 生成正则表达式匹配张量名称（如 `blk.12.ffn_gate_exps`），配合 `tensor_buft_overrides` 将匹配张量重定向到 CPU 缓冲区。静态 `array<string,1000>` 缓存避免重复构造正则字符串。
 
-### 25.10.5 set_ngl_tensor_split_tbo/get_memory_for_layers：三参数同步设置与试加载内存测量工具函数
+### 24.10.5 set_ngl_tensor_split_tbo/get_memory_for_layers：三参数同步设置与试加载内存测量工具函数
 
 **llama.cpp:180-260: 配置同步与试加载工具**
 
@@ -1033,7 +1033,7 @@ auto get_memory_for_layers = [&](func_name, ngl_per_device, overflow_bufts) -> v
 **代码解释：**
 `set_ngl_tensor_split_tbo` 一次性同步三个输出参数：`n_gpu_layers`（总层数）、`tensor_split`（按层数比例）、`tensor_buft_overrides`（部分层溢出正则）。`get_memory_for_layers` 封装「应用配置 → 试加载 → 读内存」的完整流程，作为假位法迭代的核心子程序。
 
-### 25.10.6 llama_params_fit_impl（MoE 阶段）：global_surplus_cpu_moe 桥梁与 dense-only 层前向填充
+### 24.10.6 llama_params_fit_impl（MoE 阶段）：global_surplus_cpu_moe 桥梁与 dense-only 层前向填充
 
 **llama.cpp:260-320, 472-715: MoE 特殊处理逻辑**
 
@@ -1073,7 +1073,7 @@ if (hp_nex > 0 && global_surplus_cpu_moe > 0) {
 **代码解释：**
 `global_surplus_cpu_moe` 是关键桥梁：它衡量「把所有 MoE 专家权重卸载到 CPU 后，显存还剩多少」。若为正，说明稠密权重完全可以装进显存，算法进入阶段 4，将原本只放稠密权重的 `dense-only` 层转为 `full` 层（含注意力+FFN），并尝试用 `UP/GATE/ATTN` 三级策略把部分 FFN 子模块溢出到下一设备或系统内存，最大化显存利用率。
 
-## 25.11 设计中的取舍
+## 24.11 设计中的取舍
 
 **为什么日志系统不用 spdlog 等成熟库？**
 llama.cpp 追求「零依赖、单文件可运行」。引入 spdlog 会增加构建复杂度、二进制体积与编译时间。自研的 100 行日志系统（宏 + 回调 + 栈缓冲）覆盖了核心需求：分级、可替换回调、编译期格式校验、零分配短路径，且无任何外部依赖。
@@ -1090,9 +1090,9 @@ llama.cpp 追求「零依赖、单文件可运行」。引入 spdlog 会增加�
 **为什么 MoE 场景要先把所有专家权重移到 CPU 再测？**
 MoE 专家权重（`ffn_*_exps`）体积巨大且稀疏激活。若直接参与假位法迭代，每次试加载都要搬运海量专家张量，极其缓慢。预检阶段一次性将所有 MoE 张量卸载到 CPU，测得「纯稠密权重」的显存占用基线，后续迭代仅操作稠密层，加速度数量级。
 
-## 25.12 动手练习
+## 24.12 动手练习
 
-### 25.12.1 练习 1：阅读 llama.cpp 日志系统的实现
+### 24.12.1 练习 1：阅读 llama.cpp 日志系统的实现
 阅读 `src/llama-impl.h` 第 18-31 行与 `src/llama-impl.cpp` 第 30-73 行，理解日志系统：
 1. `LLAMA_LOG_INFO` 宏的展开过程
 2. `llama_log_internal_v` 中栈缓冲 128 字节的作用
@@ -1105,7 +1105,7 @@ MoE 专家权重（`ffn_*_exps`）体积巨大且稀疏激活。若直接参与�
 - `llama_log_set` 第二个参数 `user_data` 的作用是什么？
 - `llama_log_get` 与 `llama_log_set` 的对称性如何体现？
 
-### 25.12.2 练习 2：分析 time_meas 的 RAII 计时模式
+### 24.12.2 练习 2：分析 time_meas 的 RAII 计时模式
 阅读 `src/llama-impl.h` 第 49-58 行与 `src/llama-impl.cpp` 第 21-28 行，理解 time_meas：
 1. 构造函数中的 `t_start_us(disable ? -1 : ggml_time_us())` 三元表达式
 2. 析构函数中 `if (t_start_us >= 0)` 的条件判断
@@ -1117,7 +1117,7 @@ MoE 专家权重（`ffn_*_exps`）体积巨大且稀疏激活。若直接参与�
 - 在 `llama_model_load` 中，`time_meas tm(model.t_load_us)` 这一行的语义是什么？它会把耗时记录到哪个成员变量？
 - 为什么需要 `t_start_us` 作为成员变量保存？
 
-### 25.12.3 练习 3：理解 GGUF 元数据的字符串化
+### 24.12.3 练习 3：理解 GGUF 元数据的字符串化
 阅读 `src/llama-impl.cpp` 第 124-175 行，理解 GGUF 元数据转换：
 1. `gguf_data_to_str` 中的 switch-case 分发
 2. `gguf_kv_to_str` 对 STRING / ARRAY / 默认类型的三种处理
@@ -1129,7 +1129,7 @@ MoE 专家权重（`ffn_*_exps`）体积巨大且稀疏激活。若直接参与�
 - `gguf_get_val_str` 与 `gguf_get_arr_data` 在 STRING 类型上的返回差异是什么？
 - 如果未来要支持 ARRAY of ARRAY，代码架构应如何改造（递归 vs 扁平化）？
 
-### 25.12.4 练习 4：I/O 抽象接口的设计分析
+### 24.12.4 练习 4：I/O 抽象接口的设计分析
 阅读 `src/llama-io.h` 第 10-34 行与 `src/llama-io.cpp` 第 1-14 行，理解 llama_io 抽象：
 1. `llama_io_write_i` 三个纯虚函数 `write` / `write_tensor` / `n_bytes` 的语义
 2. `write_string` 的两步协议：先写 `uint32_t str_size` 再写字节
@@ -1143,7 +1143,7 @@ MoE 专家权重（`ffn_*_exps`）体积巨大且稀疏激活。若直接参与�
 - 通过这种抽象，理论上可以支持哪些不同的 I/O 后端（请列出至少 3 种）？
 - `read` 与 `read_to` 各适用于什么场景？
 
-### 25.12.5 练习 5：后端能力探测的系统阅读
+### 24.12.5 练习 5：后端能力探测的系统阅读
 阅读 `src/llama.cpp` 第 1054-1066 行的能力查询函数与第 1163-1183 行的 `llama_print_system_info`：
 1. `llama_supports_gpu_offload` 综合检查三类设备的逻辑
 2. `llama_print_system_info` 中 `static std::string s` 的跨调用复用
@@ -1154,7 +1154,7 @@ MoE 专家权重（`ffn_*_exps`）体积巨大且稀疏激活。若直接参与�
 - `llama_print_system_info` 中为什么用 `s.clear()` 而不是每次新声明？
 - 如果某个后端没有导出 `ggml_backend_get_features` 函数指针，代码会发生什么？
 
-### 25.12.6 练习 6：设备选择与多入口模型加载
+### 24.12.6 练习 6：设备选择与多入口模型加载
 阅读 `src/llama.cpp` 中 `llama_model_load_from_file_impl`（约 1250 行起）的设备选择逻辑：
 1. 默认进度回调的实现（progress_callback 的 lambda 闭包）
 2. RPC/GPU/IGPU 三类设备的分类与排序
@@ -1168,7 +1168,7 @@ MoE 专家权重（`ffn_*_exps`）体积巨大且稀疏激活。若直接参与�
 - `llama_model_init_from_user` 为什么强制关闭 `use_mmap` 与 `use_extra_bufts`？
 - 比较 `llama_model_load_from_file` 与 `llama_model_load_from_splits` 在 splits 处理上的区别。
 
-### 25.12.7 练习 7：llama_params_fit 自动参数拟合算法
+### 24.12.7 练习 7：llama_params_fit 自动参数拟合算法
 阅读 `src/llama.cpp` 中 `llama_params_fit_impl` 的完整实现（约 180-935 行）：
 1. `layer_fraction_t` 枚举与四种溢出策略
 2. `get_overflow_pattern` 静态模式生成
@@ -1182,7 +1182,7 @@ MoE 专家权重（`ffn_*_exps`）体积巨大且稀疏激活。若直接参与�
 - `global_surplus_cpu_moe` 这个全局剩余量代表什么？它在步骤 3 与步骤 4 之间起什么连接作用？
 - `ngl_per_device_high[id].overflow_type = LAYER_FRACTION_MOE` 为什么不能用于第一个部分层？
 
-## 25.13 本章小结
+## 24.13 本章小结
 
 这一章中我们学习了 llama.cpp 内部基础设施的核心组件。首先深入剖析了日志系统：从 `LLAMA_ATTRIBUTE_FORMAT` 编译期校验、六大日志宏家族分发、到 `llama_logger_state` 全局单例、`llama_log_set/get` 对称注册查询、以及 `llama_log_internal_v` 栈缓冲 128 字节 + 堆扩容的变长参数优雅处理。其次掌握了 `time_meas` RAII 计时器的构造/析构语义与 `llama_model_load` 自动计时实战。接着探讨了字符串工具集：`replace_all` 的 Builder 模式就地替换、`format` 两次 `vsnprintf` 精确格式化、`llama_format_tensor_shape` 固定宽度张量形状输出。随后解读了 GGUF 元数据字符串化：`gguf_data_to_str` 标量分发、`gguf_kv_to_str` STRING/ARRAY/标量三分支与双重转义机制。然后分析了 I/O 抽象接口：`llama_io_write_i/read_i` 纯虚函数契约、`write_string/read_string` 长度前缀协议、`write_tensor` 的 offset+size 部分写入设计。再然后阅读了后端能力探测与系统信息汇总：四大 `llama_supports_*` 查询、`llama_print_system_info` 静态字符串复用与动态 `get_proc_address` 特性枚举。最后详细拆解了模型加载多入口架构与设备调度策略（RPC 优先、GPU 去重、IGPU 兜底、单 GPU 强制），以及自动参数拟合 `llama_params_fit` 的三阶段流程（基线检查、上下文缩减、假位法层分配）与 MoE 特殊处理（`global_surplus_cpu_moe` 桥梁、dense-only→full 层转换、三级溢出策略）。
 
